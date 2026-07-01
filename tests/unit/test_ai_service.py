@@ -148,3 +148,35 @@ class TestAIService:
         with patch.object(ai_service, "_call_llm", return_value=("", None)):
             result = ai_service.agent("test", max_steps=1)
             assert result is not None
+
+    def test_review_sql_returns_report(self, ai_service):
+        """review_sql returns a review report for a given SQL query."""
+        test_sql = "SELECT * FROM users WHERE id = 1"
+        mock_report = (
+            "## 🔴 SECURITY ISSUES\n- Using `SELECT *` exposes all columns\n\n"
+            "## 🟡 PERFORMANCE ISSUES\n- No issues found\n\n"
+            "## 🔵 BEST PRACTICES\n- Avoid `SELECT *`, specify columns explicitly\n\n"
+            "## 🟢 SUMMARY\n**Risk: LOW**"
+        )
+        with patch.object(ai_service, "_call_llm_text", return_value=mock_report):
+            result = ai_service.review_sql(test_sql)
+            assert "SECURITY" in result
+            assert "RISK" in result or "risk" in result.lower()
+
+    def test_review_sql_accepts_schema_context(self, ai_service):
+        """review_sql passes schema context for deeper analysis."""
+        sql = "DELETE FROM users"
+        schema = "users(id INT PK, name VARCHAR, email VARCHAR)"
+        with patch.object(ai_service, "_call_llm_text", return_value="HIGH RISK: Missing WHERE clause") as mock:
+            result = ai_service.review_sql(sql, schema_context=schema)
+            assert "HIGH RISK" in result
+            # Verify schema context was included in the prompt
+            call_args = mock.call_args[0][0]
+            prompt_text = call_args[1]["content"]
+            assert "users(id INT PK" in prompt_text or "schema_context" in prompt_text.lower()
+
+    def test_review_sql_empty_on_failure(self, ai_service):
+        """review_sql returns empty string on LLM failure."""
+        with patch.object(ai_service, "_call_llm_text", return_value=""):
+            result = ai_service.review_sql("SELECT 1")
+            assert result == ""

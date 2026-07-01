@@ -341,6 +341,49 @@ class AIService:
         ]
         return self._call_llm_text(messages).strip()
 
+    def review_sql(
+        self,
+        sql: str,
+        schema_context: str = "",
+        db_type: str = "mysql",
+    ) -> str:
+        """Security and performance review of a SQL query.
+
+        Analyzes the SQL for:
+        - Security issues (SQL injection vectors, missing WHERE clauses on DELETE/UPDATE)
+        - Performance problems (missing indexes, full table scans, inefficient joins)
+        - Best-practice violations (SELECT *, missing LIMIT, implicit columns)
+        - Schema-specific concerns (type mismatches, missing FK usage)
+
+        Args:
+            sql: The SQL query to review.
+            schema_context: Optional table/column schema context for deeper analysis.
+            db_type: "mysql" or "postgresql" — adjusts advice accordingly.
+
+        Returns:
+            A structured review report with severity-labeled findings.
+        """
+        schema_part = f"\n\nDatabase schema context:\n{schema_context}" if schema_context else ""
+        prompt = (
+            f"Review this {db_type} SQL query for security, performance, and best-practice issues:\n\n"
+            f"```sql\n{sql}\n```{schema_part}\n\n"
+            f"Provide a structured review with these sections:\n"
+            f"1. 🔴 SECURITY ISSUES (if any): SQL injection risks, privilege escalation, data exposure\n"
+            f"2. 🟡 PERFORMANCE ISSUES (if any): Missing indexes, full table scans, inefficient patterns\n"
+            f"3. 🔵 BEST PRACTICES: Naming conventions, SELECT *, missing LIMIT, explicit columns\n"
+            f"4. 🟢 SUMMARY: Overall assessment and recommended fixes (with corrected SQL if applicable)\n\n"
+            f"Rate the overall risk: LOW / MEDIUM / HIGH"
+        )
+        messages = [
+            {"role": "system", "content": (
+                "You are a SQL security and performance auditor. "
+                "Analyze queries thoroughly and provide actionable, specific advice. "
+                "Be concise but complete. Use severity labels (HIGH/MEDIUM/LOW)."
+            )},
+            {"role": "user", "content": prompt},
+        ]
+        return self._call_llm_text(messages, temperature=0.1)
+
     def design_schema(self, description: str) -> str:
         """Design a database schema from a natural language description."""
         prompt = (
