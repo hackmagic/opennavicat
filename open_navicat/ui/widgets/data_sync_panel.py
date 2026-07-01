@@ -326,7 +326,7 @@ class DataSyncPanel(QWidget):
             return
 
         self._progress.show()
-        self._progress.setRange(0, len(self._result.inserts) + len(self._result.updates) + len(self._result.deletes))
+        self._progress.setRange(0, n)
         errors = []
         done = 0
         for stmt in script.split("\n"):
@@ -339,6 +339,7 @@ class DataSyncPanel(QWidget):
                 errors.append(f"{stmt[:60]}... → {e}")
             done += 1
             self._progress.setValue(done)
+            self._status.setText(f"同步中 … {done}/{n} ({'完成' if not errors else f'{len(errors)} 错误'})")
 
         self._progress.hide()
         if errors:
