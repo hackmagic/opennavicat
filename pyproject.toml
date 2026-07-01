@@ -1,0 +1,73 @@
+[tool.poetry]
+name = "open-navicat"
+version = "0.1.0"
+description = "CLI-First, AI-Native database management tool — open-source Navicat alternative"
+authors = ["hackmagic"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/hackmagic/OpenNavicat"
+repository = "https://github.com/hackmagic/OpenNavicat"
+documentation = "https://github.com/hackmagic/OpenNavicat/tree/main/docs"
+keywords = ["database", "mysql", "gui", "navicat", "admin", "ai", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Database :: Front-Ends",
+    "Topic :: Utilities",
+]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+PySide6 = ">=6.5.0"
+asyncpg = "^0.29.0"
+aiomysql = "^0.2.0"
+pymysql = "^1.1.0"
+sqlparse = "^0.5.0"
+paramiko = "^3.4.0"
+cryptography = "^42.0.0"
+keyring = "^25.0.0"
+APScheduler = "^3.10.0"
+pygments = "^2.17.0"
+aiofiles = "^23.2.0"
+openpyxl = "^3.1.0"
+orjson = "^3.9.0"
+typer = {extras = ["all"], version = "^0.12.0"}
+rich = "^13.7.0"
+httpx = "^0.27.0"
+openai = "^1.12.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.0.0"
+pytest-qt = "^4.4.0"
+pytest-asyncio = "^0.23.0"
+pytest-cov = "^4.1.0"
+ruff = "^0.3.0"
+mypy = "^1.8.0"
+pre-commit = "^3.6.0"
+
+[tool.poetry.scripts]
+opennavicat = "open_navicat.main:cli_main"
+opennavicat-gui = "open_navicat.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = ["E", "F", "I", "N", "W"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+ignore_missing_imports = true

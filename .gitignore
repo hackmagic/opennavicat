@@ -1,0 +1,32 @@
+# IDE / Editor
+/.atomcode/
+/.idea/
+/.playwright-mcp/
+/.playwright-cli/
+/.playwright/
+/.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+/dist/
+/build/
+*.egg
+
+# Rust / Tauri
+open_navicat_rs/node_modules/
+open_navicat_rs/dist/
+open_navicat_rs/src-tauri/target/
+open_navicat_rs/src-tauri/gen/
+
+# Project
+/screenshots/
+/.github/
+
+# Internal / Temp
+_files.txt
+原型.html
+参考原navicat界面/
+进度监控.md
+step1_data_tab.yml

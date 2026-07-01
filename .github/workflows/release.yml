@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install dependencies
+        run: poetry install
+
+      - name: Run linter
+        run: poetry run ruff check open_navicat/
+
+      - name: Run tests
+        run: poetry run pytest tests/unit/ -v
+
+  build:
+    name: Build Distribution
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Build package
+        run: poetry build
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          PREV_TAG=$(git tag -l "v*" --sort=-version:refname | head -2 | tail -1)
+          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$TAG" ]; then
+            CHANGES=$(git log --oneline --no-decorate -20)
+          else
+            CHANGES=$(git log --oneline --no-decorate ${PREV_TAG}..${TAG})
+          fi
+          echo "changes<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "OpenNavicat ${{ steps.tag.outputs.tag }}"
+          body: |
+            ## What's Changed
+
+            ${{ steps.changelog.outputs.changes }}
+
+            ## Installation
+
+            ```bash
+            pip install open-navicat==${{ steps.tag.outputs.tag }}
+            ```
+
+            ## Assets
+
+            - `open_navicat-${{ steps.tag.outputs.tag }}.tar.gz` — Source distribution
+            - `open_navicat-${{ steps.tag.outputs.tag }}-py3-none-any.whl` — Wheel
+          files: dist/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

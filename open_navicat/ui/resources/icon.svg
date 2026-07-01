@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#5a8cf0"/>
+      <stop offset="100%" stop-color="#3b5cde"/>
+    </linearGradient>
+  </defs>
+  <!-- Solid rounded square background -->
+  <rect x="4" y="4" width="120" height="120" rx="24" ry="24" fill="url(#bg)"/>
+
+  <!-- Database cylinder - bold white -->
+  <ellipse cx="64" cy="82" rx="30" ry="7" fill="none" stroke="#ffffff" stroke-width="2.5"/>
+  <path d="M34 50 Q64 38 94 50 L94 82 Q64 96 34 82Z" fill="rgba(255,255,255,0.20)" stroke="#ffffff" stroke-width="2.5"/>
+
+  <!-- Data rows -->
+  <line x1="34" y1="58" x2="94" y2="58" stroke="#ffffff" stroke-width="2" stroke-opacity="0.4"/>
+  <line x1="34" y1="66" x2="94" y2="66" stroke="#ffffff" stroke-width="2" stroke-opacity="0.4"/>
+  <line x1="34" y1="74" x2="94" y2="74" stroke="#ffffff" stroke-width="2" stroke-opacity="0.4"/>
+
+  <!-- Dolphin / N curve - bold white -->
+  <path d="M46 42 Q52 28 64 32 Q76 36 72 46" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M72 46 Q68 34 78 30 Q88 27 90 38" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

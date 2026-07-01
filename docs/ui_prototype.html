@@ -1,0 +1,1779 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenNavicat — CLI-First, AI-Native 数据库管理工具 (UI Prototype)</title>
+<style>
+/* ==================== 全局重置 ==================== */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: "Segoe UI", "Microsoft YaHei", -apple-system, sans-serif; font-size: 13px; overflow: hidden; height: 100vh; display: flex; flex-direction: column; background: #1e1e1e; color: #ccc; }
+
+/* ==================== 配色方案 ==================== */
+:root {
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-tertiary: #2d2d30;
+  --bg-hover: #3c3c3c;
+  --bg-active: #094771;
+  --border-color: #3c3c3c;
+  --text-primary: #cccccc;
+  --text-secondary: #969696;
+  --text-muted: #6e6e6e;
+  --accent: #0078d4;
+  --accent-hover: #1a8ae8;
+  --green: #4ec9b0;
+  --red: #f44747;
+  --yellow: #dcdcaa;
+  --orange: #ce9178;
+  --blue: #569cd6;
+  --scrollbar-bg: #1e1e1e;
+  --scrollbar-thumb: #424242;
+}
+
+/* ==================== 菜单栏 ==================== */
+.menubar { background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); padding: 2px 8px; display: flex; align-items: center; height: 30px; -webkit-app-region: drag; }
+.menubar-item { padding: 4px 10px; cursor: pointer; border-radius: 3px; font-size: 12px; color: var(--text-primary); -webkit-app-region: no-drag; }
+.menubar-item:hover { background: var(--bg-hover); }
+.menubar-logo { color: var(--accent); font-weight: bold; margin-right: 12px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+
+/* ==================== 工具栏 ==================== */
+.toolbar { background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); padding: 4px 8px; display: flex; align-items: center; gap: 2px; height: 36px; }
+.toolbar-btn { padding: 4px 8px; border: 1px solid transparent; border-radius: 3px; cursor: pointer; background: transparent; display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-primary); white-space: nowrap; }
+.toolbar-btn:hover { background: var(--bg-hover); border-color: var(--border-color); }
+.toolbar-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.toolbar-btn.primary:hover { background: var(--accent-hover); }
+.toolbar-btn.icon-only { padding: 4px 6px; font-size: 14px; }
+.toolbar-sep { width: 1px; height: 22px; background: var(--border-color); margin: 0 4px; }
+.toolbar-btn .badge { background: var(--red); color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 8px; margin-left: 2px; }
+.toolbar-spacer { flex: 1; }
+
+/* ==================== 主体区域 ==================== */
+.main-container { display: flex; flex: 1; overflow: hidden; }
+
+/* ==================== 左侧边栏 ==================== */
+.sidebar { width: 280px; min-width: 200px; background: var(--bg-secondary); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; }
+.sidebar-header { background: var(--bg-tertiary); padding: 6px 10px; border-bottom: 1px solid var(--border-color); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-secondary); display: flex; justify-content: space-between; align-items: center; }
+.sidebar-tabs { display: flex; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); font-size: 11px; }
+.sidebar-tab { padding: 6px 14px; cursor: pointer; color: var(--text-secondary); border-bottom: 2px solid transparent; }
+.sidebar-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.sidebar-search { padding: 6px 8px; border-bottom: 1px solid var(--border-color); }
+.sidebar-search input { width: 100%; padding: 4px 8px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 3px; font-size: 12px; color: var(--text-primary); outline: none; }
+.sidebar-search input:focus { border-color: var(--accent); }
+.tree-container { flex: 1; overflow-y: auto; padding: 4px 0; }
+.tree-node { user-select: none; }
+.tree-node-header { display: flex; align-items: center; padding: 3px 8px; cursor: pointer; gap: 3px; }
+.tree-node-header:hover { background: var(--bg-hover); }
+.tree-node-header.selected { background: var(--bg-active); color: #fff; }
+.tree-toggle { width: 14px; text-align: center; font-size: 9px; color: var(--text-muted); flex-shrink: 0; }
+.tree-icon { font-size: 13px; width: 18px; text-align: center; flex-shrink: 0; }
+.tree-label { font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-badge { font-size: 10px; color: var(--text-muted); margin-left: auto; padding: 0 4px; }
+.tree-node-header .status-dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; flex-shrink: 0; }
+.status-dot.online { background: var(--green); }
+.status-dot.offline { background: var(--text-muted); }
+.tree-children { padding-left: 16px; display: none; }
+.tree-children.expanded { display: block; }
+
+/* ==================== 右侧内容区域 ==================== */
+.content-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-primary); }
+
+/* ==================== 标签栏 ==================== */
+.tabs-bar { background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); display: flex; align-items: stretch; padding: 0; min-height: 35px; overflow-x: auto; }
+.tab { padding: 8px 16px; cursor: pointer; border-right: 1px solid var(--border-color); font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; white-space: nowrap; background: var(--bg-tertiary); min-width: 0; }
+.tab.active { background: var(--bg-primary); color: var(--text-primary); border-bottom: 1px solid var(--bg-primary); margin-bottom: -1px; }
+.tab:hover:not(.active) { background: var(--bg-hover); }
+.tab-close { width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; margin-left: 4px; flex-shrink: 0; }
+.tab-close:hover { background: rgba(255,255,255,0.1); color: var(--red); }
+.tab-icon { font-size: 12px; }
+.tab .loading-spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--text-muted); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ==================== 面板通用 ==================== */
+.tab-panel { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+.tab-panel.active { display: flex; }
+
+/* ==================== 欢迎面板 ==================== */
+.welcome-panel { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); position: relative; overflow: hidden; }
+.welcome-panel::before { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(circle, rgba(0,120,212,0.03) 0%, transparent 70%); animation: pulse 8s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+.welcome-panel h1 { font-size: 32px; margin-bottom: 8px; position: relative; }
+.welcome-panel h1 span { color: var(--accent); }
+.welcome-panel .subtitle { font-size: 14px; opacity: 0.6; margin-bottom: 32px; position: relative; }
+.welcome-actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; position: relative; }
+.welcome-btn { padding: 12px 24px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; cursor: pointer; font-size: 13px; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+.welcome-btn:hover { background: rgba(255,255,255,0.12); border-color: var(--accent); transform: translateY(-1px); }
+.welcome-btn.primary { background: var(--accent); border-color: var(--accent); }
+.welcome-btn.primary:hover { background: var(--accent-hover); }
+.welcome-features { margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; position: relative; }
+.welcome-feature { text-align: center; padding: 16px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); }
+.welcome-feature .icon { font-size: 24px; margin-bottom: 8px; }
+.welcome-feature .name { font-size: 12px; opacity: 0.7; }
+
+/* ==================== SQL 编辑器 ==================== */
+.query-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.query-editor-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.query-editor { flex: 1; display: flex; overflow: hidden; }
+.line-numbers { background: var(--bg-secondary); border-right: 1px solid var(--border-color); padding: 8px 0; text-align: right; min-width: 44px; overflow: hidden; user-select: none; }
+.line-numbers div { padding: 0 10px; font-family: "Consolas", "Courier New", monospace; font-size: 13px; line-height: 21px; color: var(--text-muted); }
+.sql-editor { flex: 1; padding: 8px 14px; font-family: "Consolas", "Courier New", monospace; font-size: 13px; line-height: 21px; border: none; outline: none; resize: none; overflow-y: auto; background: var(--bg-primary); color: var(--text-primary); tab-size: 4; }
+.sql-editor::placeholder { color: var(--text-muted); }
+
+/* ==================== 结果面板 ==================== */
+.result-panel { border-top: 1px solid var(--border-color); display: flex; flex-direction: column; min-height: 180px; max-height: 45%; }
+.result-toolbar { background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); padding: 3px 8px; display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.result-toolbar .tab-group { display: flex; gap: 0; }
+.result-toolbar .tab-item { padding: 3px 10px; cursor: pointer; border-radius: 3px; color: var(--text-secondary); }
+.result-toolbar .tab-item.active { background: var(--bg-hover); color: var(--text-primary); }
+.result-view { flex: 1; overflow: auto; }
+
+/* ==================== 数据表格 ==================== */
+.data-grid { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-grid thead { position: sticky; top: 0; z-index: 1; }
+.data-grid th { background: var(--bg-tertiary); border: 1px solid var(--border-color); padding: 4px 10px; text-align: left; font-weight: 500; white-space: nowrap; cursor: pointer; color: var(--text-primary); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+.data-grid th:hover { background: var(--bg-hover); }
+.data-grid th .sort-icon { color: var(--text-muted); margin-left: 4px; }
+.data-grid td { border: 1px solid var(--border-color); padding: 4px 10px; white-space: nowrap; max-width: 250px; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
+.data-grid tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+.data-grid tr:hover td { background: rgba(0,120,212,0.08); }
+.data-grid tr.selected td { background: rgba(0,120,212,0.15); }
+.data-grid td.null { color: var(--text-muted); font-style: italic; }
+.data-grid td .fk-badge { background: var(--accent); color: #fff; font-size: 9px; padding: 1px 5px; border-radius: 3px; margin-left: 4px; cursor: pointer; }
+.data-grid .row-num { color: var(--text-muted); text-align: center; width: 30px; }
+
+/* ==================== 分页 ==================== */
+.pagination { background: var(--bg-secondary); border-top: 1px solid var(--border-color); padding: 4px 12px; display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-secondary); }
+.pagination .page-info { display: flex; align-items: center; gap: 6px; }
+.pagination input[type=text] { width: 40px; text-align: center; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 2px; padding: 2px 4px; font-size: 11px; }
+.pagination button { background: transparent; border: 1px solid var(--border-color); color: var(--text-primary); padding: 2px 8px; border-radius: 2px; cursor: pointer; font-size: 11px; }
+.pagination button:hover { background: var(--bg-hover); }
+.pagination button:disabled { opacity: 0.3; cursor: default; }
+.pagination select { background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); padding: 2px 4px; border-radius: 2px; font-size: 11px; }
+
+/* ==================== 状态栏 ==================== */
+.statusbar { background: var(--accent); padding: 2px 12px; display: flex; justify-content: space-between; font-size: 11px; color: #fff; height: 22px; align-items: center; }
+.statusbar-left { display: flex; gap: 16px; }
+.statusbar-right { display: flex; gap: 16px; }
+.statusbar .status-item { display: flex; align-items: center; gap: 4px; }
+.statusbar .status-dot-sm { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.5); display: inline-block; }
+.statusbar .status-dot-sm.active { background: #fff; }
+
+/* ==================== 模态框 ==================== */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(4px); }
+.modal-overlay.show { display: flex; }
+.modal { background: var(--bg-secondary); border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); width: 560px; max-height: 85vh; overflow: hidden; border: 1px solid var(--border-color); }
+.modal-header { padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); }
+.modal-header h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.modal-header .close-btn { cursor: pointer; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
+.modal-header .close-btn:hover { background: var(--bg-hover); }
+.modal-body { padding: 18px; max-height: 65vh; overflow-y: auto; }
+.modal-footer { padding: 12px 18px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px; }
+.modal-tabs { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 16px; }
+.modal-tab { padding: 8px 16px; cursor: pointer; font-size: 12px; color: var(--text-secondary); border-bottom: 2px solid transparent; }
+.modal-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.modal-tab:hover { color: var(--text-primary); }
+
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; margin-bottom: 4px; font-size: 12px; color: var(--text-secondary); }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 6px 10px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 3px; font-size: 13px; color: var(--text-primary); outline: none; }
+.form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+.form-row { display: flex; gap: 12px; }
+.form-row .form-group { flex: 1; }
+.form-group .hint { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+.form-group .toggle-row { display: flex; align-items: center; gap: 8px; }
+
+/* ==================== 按钮 ==================== */
+.btn { padding: 6px 16px; border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; font-size: 12px; background: var(--bg-tertiary); color: var(--text-primary); }
+.btn:hover { background: var(--bg-hover); }
+.btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-primary:hover { background: var(--accent-hover); }
+.btn-danger { background: var(--red); color: #fff; border-color: var(--red); }
+.btn-danger:hover { background: #d63a3a; }
+.btn-sm { padding: 3px 10px; font-size: 11px; }
+
+/* ==================== AI 面板 ==================== */
+.ai-panel { flex: 1; display: flex; flex-direction: column; background: var(--bg-primary); }
+.ai-header { background: linear-gradient(135deg, #1a1a2e, #0f3460); padding: 16px 20px; border-bottom: 1px solid var(--border-color); }
+.ai-header h2 { font-size: 16px; margin-bottom: 4px; }
+.ai-header p { font-size: 12px; opacity: 0.6; }
+.ai-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.ai-message { max-width: 80%; padding: 10px 14px; border-radius: 8px; font-size: 12px; line-height: 1.6; }
+.ai-message.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 2px; }
+.ai-message.assistant { align-self: flex-start; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-bottom-left-radius: 2px; }
+.ai-message .msg-time { font-size: 10px; opacity: 0.5; margin-top: 4px; }
+.ai-message .sql-block { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 8px 12px; margin: 8px 0; font-family: Consolas, monospace; font-size: 11px; overflow-x: auto; }
+.ai-message .sql-block .keyword { color: var(--blue); }
+.ai-message .sql-block .func { color: var(--yellow); }
+.ai-input { padding: 12px 16px; border-top: 1px solid var(--border-color); display: flex; gap: 8px; background: var(--bg-secondary); }
+.ai-input input { flex: 1; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px 12px; border-radius: 4px; font-size: 13px; outline: none; }
+.ai-input input:focus { border-color: var(--accent); }
+.ai-input .ai-suggestions { display: flex; gap: 4px; }
+.ai-input .ai-suggestions button { background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 12px; padding: 4px 10px; font-size: 11px; color: var(--text-secondary); cursor: pointer; }
+.ai-input .ai-suggestions button:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ==================== 表设计器 ==================== */
+.design-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.design-grid td { padding: 2px; }
+.design-grid input[type=text], .design-grid select { width: 100%; padding: 3px 6px; background: transparent; border: 1px solid transparent; color: var(--text-primary); font-size: 12px; outline: none; }
+.design-grid input[type=text]:focus, .design-grid select:focus { border-color: var(--accent); background: var(--bg-primary); }
+.design-grid select { cursor: pointer; }
+.design-grid input[type=checkbox] { cursor: pointer; }
+
+/* ==================== 差异面板 ==================== */
+.diff-panel { flex: 1; overflow: auto; padding: 16px; }
+.diff-item { padding: 8px 12px; margin-bottom: 4px; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
+.diff-item.added { background: rgba(78, 201, 176, 0.1); border: 1px solid rgba(78, 201, 176, 0.3); }
+.diff-item.removed { background: rgba(244, 71, 71, 0.1); border: 1px solid rgba(244, 71, 71, 0.3); }
+.diff-item.modified { background: rgba(220, 204, 170, 0.1); border: 1px solid rgba(220, 204, 170, 0.3); }
+.diff-item .diff-icon { font-size: 14px; }
+.diff-item .diff-sql { font-family: Consolas, monospace; font-size: 11px; color: var(--text-secondary); }
+
+/* ==================== 右键菜单 ==================== */
+.context-menu { position: fixed; background: var(--bg-secondary); border: 1px solid var(--border-color); box-shadow: 2px 4px 16px rgba(0,0,0,0.4); border-radius: 4px; padding: 4px 0; z-index: 2000; display: none; min-width: 180px; }
+.context-menu.show { display: block; }
+.context-menu-item { padding: 6px 16px; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+.context-menu-item:hover { background: var(--accent); color: #fff; }
+.context-menu-item.danger { color: var(--red); }
+.context-menu-item.danger:hover { background: var(--red); color: #fff; }
+.context-menu-sep { height: 1px; background: var(--border-color); margin: 4px 0; }
+
+/* ==================== AI Copilot 侧边栏 ==================== */
+.ai-copilot-toggle { position: fixed; right: 0; top: 50%; transform: translateY(-50%); background: linear-gradient(135deg, #1a1a2e, #0f3460); border: 1px solid var(--border-color); border-right: none; border-radius: 6px 0 0 6px; padding: 10px 6px; cursor: pointer; z-index: 500; writing-mode: vertical-lr; font-size: 11px; color: #fff; letter-spacing: 2px; display: flex; align-items: center; gap: 6px; user-select: none; }
+.ai-copilot-toggle:hover { background: linear-gradient(135deg, #2a2a3e, #1a4a70); }
+.ai-copilot { position: fixed; right: -420px; top: 0; width: 420px; height: 100vh; background: var(--bg-secondary); border-left: 1px solid var(--border-color); z-index: 900; display: flex; flex-direction: column; transition: right 0.3s ease; box-shadow: -4px 0 20px rgba(0,0,0,0.3); }
+.ai-copilot.open { right: 0; }
+.ai-copilot-header { background: linear-gradient(135deg, #1a1a2e, #0f3460); padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+.ai-copilot-header h3 { font-size: 14px; color: #fff; display: flex; align-items: center; gap: 8px; }
+.ai-copilot-header .close-btn { color: rgba(255,255,255,0.6); cursor: pointer; font-size: 18px; padding: 2px 6px; border-radius: 4px; }
+.ai-copilot-header .close-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+.ai-copilot-modes { display: flex; border-bottom: 1px solid var(--border-color); background: var(--bg-tertiary); flex-shrink: 0; }
+.ai-copilot-mode { flex: 1; padding: 8px 4px; text-align: center; cursor: pointer; font-size: 11px; color: var(--text-secondary); border-bottom: 2px solid transparent; transition: all 0.2s; }
+.ai-copilot-mode:hover { color: var(--text-primary); }
+.ai-copilot-mode.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--bg-secondary); }
+.ai-copilot-mode .mode-icon { font-size: 16px; display: block; margin-bottom: 2px; }
+.ai-copilot-messages { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.ai-copilot-msg { padding: 10px 12px; border-radius: 8px; font-size: 12px; line-height: 1.6; max-width: 95%; }
+.ai-copilot-msg.system { align-self: flex-start; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-bottom-left-radius: 2px; width: 100%; }
+.ai-copilot-msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 2px; }
+.ai-copilot-msg .msg-sql { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 10px; margin: 6px 0; font-family: Consolas, monospace; font-size: 11px; overflow-x: auto; color: var(--text-primary); }
+.ai-copilot-msg .msg-actions { display: flex; gap: 4px; margin-top: 6px; }
+.ai-copilot-msg .msg-actions button { padding: 2px 8px; font-size: 10px; border: 1px solid var(--border-color); border-radius: 3px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.ai-copilot-msg .msg-actions button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.ai-copilot-input { padding: 10px 12px; border-top: 1px solid var(--border-color); background: var(--bg-tertiary); flex-shrink: 0; }
+.ai-copilot-input .input-row { display: flex; gap: 6px; }
+.ai-copilot-input input { flex: 1; padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-primary); font-size: 12px; outline: none; }
+.ai-copilot-input input:focus { border-color: var(--accent); }
+.ai-copilot-input .quick-tips { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+.ai-copilot-input .quick-tips button { padding: 3px 8px; font-size: 10px; border: 1px solid var(--border-color); border-radius: 10px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.ai-copilot-input .quick-tips button:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ==================== AI SQL 编辑器集成 ==================== */
+.ai-sql-bar { display: flex; gap: 4px; padding: 4px 8px; background: var(--bg-tertiary); border-bottom: 1px solid var(--border-color); align-items: center; flex-shrink: 0; }
+.ai-sql-bar .ai-btn { padding: 3px 10px; border: 1px solid var(--border-color); border-radius: 3px; background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+.ai-sql-bar .ai-btn:hover { background: var(--bg-hover); color: var(--accent); border-color: var(--accent); }
+.ai-sql-bar .ai-btn.primary { background: linear-gradient(135deg, #1a1a2e, #0f3460); color: #fff; border-color: var(--accent); }
+.ai-sql-bar .ai-btn.primary:hover { background: linear-gradient(135deg, #2a2a3e, #1a4a70); }
+.ai-suggestion { background: var(--bg-tertiary); border: 1px solid var(--accent); border-radius: 4px; margin: 4px 14px; overflow: hidden; flex-shrink: 0; }
+.ai-suggestion .sug-head { background: var(--accent); color: #fff; padding: 4px 10px; font-size: 10px; display: flex; justify-content: space-between; align-items: center; }
+.ai-suggestion .sug-body { padding: 8px 10px; font-family: Consolas, monospace; font-size: 12px; color: var(--text-primary); line-height: 1.6; }
+.ai-suggestion .sug-actions { padding: 4px 10px; border-top: 1px solid var(--border-color); display: flex; gap: 6px; }
+.ai-suggestion .sug-actions button { padding: 2px 10px; font-size: 11px; border-radius: 3px; border: none; cursor: pointer; }
+.ai-suggestion .sug-actions .accept { background: var(--green); color: #fff; }
+.ai-suggestion .sug-actions .dismiss { background: var(--bg-hover); color: var(--text-secondary); }
+
+/* ==================== AI Schema 设计对话框 ==================== */
+.ai-schema-result { background: var(--bg-primary); border: 1px solid var(--accent); border-radius: 6px; padding: 16px; margin-top: 12px; max-height: 400px; overflow-y: auto; }
+.ai-schema-result .st { margin-bottom: 12px; padding: 10px; background: var(--bg-tertiary); border-radius: 4px; border-left: 3px solid var(--accent); }
+.ai-schema-result .st .st-name { font-weight: bold; color: var(--accent); font-size: 13px; margin-bottom: 4px; }
+.ai-schema-result .st .st-field { font-family: Consolas, monospace; font-size: 11px; color: var(--text-primary); padding: 1px 0; }
+.ai-schema-result .st-rel { color: var(--text-secondary); font-size: 11px; padding: 2px 0; margin: 4px 0; font-style: italic; }
+
+/* ==================== AI 数据生成预览 ==================== */
+.ai-gen-preview { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: 8px; margin-top: 8px; max-height: 300px; overflow-y: auto; }
+.ai-gen-preview table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.ai-gen-preview td, .ai-gen-preview th { padding: 3px 6px; border: 1px solid var(--border-color); }
+.ai-gen-preview th { background: var(--bg-tertiary); color: var(--text-secondary); }
+.ai-gen-preview tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+/* ==================== AI 标记 ==================== */
+.ai-badge { display: inline-flex; align-items: center; gap: 3px; background: linear-gradient(135deg, #1a1a2e, #0f3460); color: #fff; font-size: 9px; padding: 1px 6px; border-radius: 8px; }
+
+/* ==================== 通知 ==================== */
+.notification { position: fixed; top: 50px; right: 20px; padding: 12px 20px; border-radius: 6px; font-size: 13px; z-index: 3000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); animation: slideIn 0.3s; display: flex; align-items: center; gap: 8px; }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+.notification.success { background: #1b3a2d; border: 1px solid var(--green); color: var(--green); }
+.notification.error { background: #3a1b1b; border: 1px solid var(--red); color: var(--red); }
+.notification.info { background: #1b2a3a; border: 1px solid var(--accent); color: var(--accent); }
+
+/* ==================== 滚动条 ==================== */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-bg); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #555; }
+
+/* ==================== 数据字典 ==================== */
+.data-dict-panel { flex: 1; overflow: auto; padding: 16px; }
+.data-dict-panel .dict-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+.data-dict-panel .dict-table caption { text-align: left; font-weight: bold; padding: 8px 0; font-size: 14px; color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- ==================== 菜单栏 ==================== -->
+<div class="menubar">
+  <div class="menubar-logo"><span style="color:#4ec9b0;">◆</span> OpenNavicat</div>
+  <div class="menubar-item">文件(F)</div>
+  <div class="menubar-item">编辑(E)</div>
+  <div class="menubar-item">查看(V)</div>
+  <div class="menubar-item">工具(T)</div>
+  <div class="menubar-item">AI</div>
+  <div class="menubar-item">窗口(W)</div>
+  <div class="menubar-item">帮助(H)</div>
+</div>
+
+<!-- ==================== 工具栏 ==================== -->
+<div class="toolbar">
+  <button class="toolbar-btn primary" onclick="showModal('connectionModal')" title="新建连接"><span>🔌</span> 连接</button>
+  <div class="toolbar-sep"></div>
+  <button class="toolbar-btn" onclick="newQueryTab()" title="新建查询"><span>📝</span> 新建查询</button>
+  <button class="toolbar-btn primary" onclick="executeQuery()" title="运行 (Ctrl+Enter)" id="btnRun"><span>▶</span> 运行</button>
+  <button class="toolbar-btn" title="运行已选"><span>⏩</span> 运行已选</button>
+  <div class="toolbar-sep"></div>
+  <button class="toolbar-btn" onclick="showTableDesign()" title="表设计器"><span>📐</span> 设计表</button>
+  <button class="toolbar-btn" title="导入"><span>📥</span> 导入</button>
+  <button class="toolbar-btn" title="导出"><span>📤</span> 导出</button>
+  <div class="toolbar-sep"></div>
+  <button class="toolbar-btn" onclick="showBackup()" title="备份"><span>💾</span> 备份</button>
+  <button class="toolbar-btn" onclick="showSchemaSync()" title="结构同步"><span>🔄</span> 同步</button>
+  <div class="toolbar-sep"></div>
+  <button class="toolbar-btn primary" onclick="aiNLQuery()" title="AI 自然语言查数据" style="background:linear-gradient(135deg,#1a1a2e,#0f3460);border-color:var(--accent);"><span>🤖</span> AI 查询</button>
+  <div class="toolbar-sep"></div>
+  <button class="toolbar-btn" onclick="addRow()" title="添加行"><span>➕</span> 添加行</button>
+  <button class="toolbar-btn" onclick="deleteRow()" title="删除行"><span>➖</span> 删除行</button>
+  <button class="toolbar-btn" onclick="notify('success','更改已应用')" title="保存更改"><span>✅</span> 应用</button>
+  <div class="toolbar-spacer"></div>
+  <button class="toolbar-btn icon-only" onclick="toggleSidebar()" title="切换侧边栏">☰</button>
+</div>
+
+<!-- ==================== 主体区域 ==================== -->
+<div class="main-container">
+
+  <!-- ===== 左侧边栏 ===== -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-tabs">
+      <div class="sidebar-tab active" onclick="selectSidebarTab(this, 'browser')">浏览</div>
+      <div class="sidebar-tab" onclick="selectSidebarTab(this, 'ai')">AI</div>
+      <div class="sidebar-tab" onclick="selectSidebarTab(this, 'bookmarks')">收藏</div>
+    </div>
+    <div class="sidebar-search">
+      <input type="text" placeholder="🔍 筛选对象..." oninput="filterTree(this.value)">
+    </div>
+    <div class="tree-container" id="treeContainer">
+      <!-- 连接节点 -->
+      <div class="tree-node" id="connLocalhost">
+        <div class="tree-node-header selected" onclick="selectTreeNode(this); expandNode(event, 'connLocalhost')" oncontextmenu="showContextMenu(event, 'connection')">
+          <span class="tree-toggle" onclick="event.stopPropagation(); toggleExpand(event, 'connLocalhost')">▼</span>
+          <span class="status-dot online"></span>
+          <span class="tree-icon">🗄️</span>
+          <span class="tree-label">Localhost (MySQL 8.0)</span>
+        </div>
+        <div class="tree-children expanded">
+          <!-- 数据库 -->
+          <div class="tree-node">
+            <div class="tree-node-header" onclick="selectTreeNode(this); expandNode(event, 'dbEcommerce')">
+              <span class="tree-toggle" onclick="event.stopPropagation(); toggleExpand(event, 'dbEcommerce')">▼</span>
+              <span class="tree-icon">📂</span>
+              <span class="tree-label">ecommerce_db</span>
+              <span class="tree-badge">7</span>
+            </div>
+            <div class="tree-children expanded" id="dbEcommerce">
+              <div class="tree-node">
+                <div class="tree-node-header" onclick="selectTreeNode(this)">
+                  <span class="tree-toggle">▼</span>
+                  <span class="tree-icon">📋</span>
+                  <span class="tree-label">表 (9)</span>
+                </div>
+                <div class="tree-children expanded">
+                  <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this); openTable('users')"><span class="tree-toggle"></span><span class="tree-icon">📄</span><span class="tree-label">users</span></div></div>
+                  <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this); openTable('products')"><span class="tree-toggle"></span><span class="tree-icon">📄</span><span class="tree-label">products</span></div></div>
+                  <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this); openTable('orders')"><span class="tree-toggle"></span><span class="tree-icon">📄</span><span class="tree-label">orders</span></div></div>
+                  <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this); openTable('order_items')"><span class="tree-toggle"></span><span class="tree-icon">📄</span><span class="tree-label">order_items</span></div></div>
+                  <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this); openTable('categories')"><span class="tree-toggle"></span><span class="tree-icon">📄</span><span class="tree-label">categories</span></div></div>
+                  <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this); openTable('payments')"><span class="tree-toggle"></span><span class="tree-icon">📄</span><span class="tree-label">payments</span></div></div>
+                  <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this); openTable('reviews')"><span class="tree-toggle"></span><span class="tree-icon">📄</span><span class="tree-label">reviews</span></div></div>
+                  <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this); openTable('carts')"><span class="tree-toggle"></span><span class="tree-icon">📄</span><span class="tree-label">carts</span></div></div>
+                  <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this); openTable('shipping')"><span class="tree-toggle"></span><span class="tree-icon">📄</span><span class="tree-label">shipping</span></div></div>
+                </div>
+              </div>
+              <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this)"><span class="tree-toggle">▶</span><span class="tree-icon">👁️</span><span class="tree-label">视图 (2)</span></div></div>
+              <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this)"><span class="tree-toggle">▶</span><span class="tree-icon">⚡</span><span class="tree-label">存储过程 (3)</span></div></div>
+              <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this)"><span class="tree-toggle">▶</span><span class="tree-icon">📅</span><span class="tree-label">事件 (1)</span></div></div>
+              <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this)"><span class="tree-toggle">▶</span><span class="tree-icon">🔗</span><span class="tree-label">函数 (2)</span></div></div>
+            </div>
+          </div>
+          <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this)"><span class="tree-toggle">▶</span><span class="tree-icon">📂</span><span class="tree-label">sys</span></div></div>
+          <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this)"><span class="tree-toggle">▶</span><span class="tree-icon">📂</span><span class="tree-label">mysql</span></div></div>
+          <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this)"><span class="tree-toggle">▶</span><span class="tree-icon">📂</span><span class="tree-label">information_schema</span></div></div>
+          <div class="tree-node"><div class="tree-node-header" onclick="selectTreeNode(this)"><span class="tree-toggle">▶</span><span class="tree-icon">👥</span><span class="tree-label">用户</span></div></div>
+        </div>
+      </div>
+      <!-- 另一连接 -->
+      <div class="tree-node">
+        <div class="tree-node-header" onclick="selectTreeNode(this)">
+          <span class="tree-toggle">▶</span>
+          <span class="status-dot offline"></span>
+          <span class="tree-icon">🗄️</span>
+          <span class="tree-label">Production (AWS RDS)</span>
+        </div>
+        <div class="tree-children"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 右侧内容 ===== -->
+  <div class="content-area">
+    <!-- 标签栏 -->
+    <div class="tabs-bar" id="tabsBar">
+      <div class="tab active" data-tab="welcome" onclick="switchTab(this, 'welcome')">
+        <span class="tab-icon">🏠</span><span>欢迎</span>
+      </div>
+    </div>
+
+    <!-- ===== 欢迎面板 ===== -->
+    <div class="tab-panel active" id="panel-welcome">
+      <div class="welcome-panel">
+        <h1>🐬 Open<span>Navicat</span></h1>
+        <div class="subtitle">CLI-First, AI-Native 开源数据库管理工具 · 原型 v0.1.0</div>
+        <div class="welcome-actions">
+          <button class="welcome-btn primary" onclick="showModal('connectionModal')">🔌 新建连接</button>
+          <button class="welcome-btn" onclick="newQueryTab()">📝 新建查询</button>
+          <button class="welcome-btn" onclick="openTable('users')">📊 浏览数据</button>
+          <button class="welcome-btn" onclick="openAIChat()">🤖 AI 问答</button>
+          <button class="welcome-btn" onclick="showTableDesign()">📐 设计表</button>
+        </div>
+        <div class="welcome-features">
+          <div class="welcome-feature"><div class="icon">🗄️</div><div class="name">连接管理</div></div>
+          <div class="welcome-feature"><div class="icon">📝</div><div class="name">SQL 编辑器</div></div>
+          <div class="welcome-feature"><div class="icon">📊</div><div class="name">数据浏览</div></div>
+          <div class="welcome-feature"><div class="icon">🤖</div><div class="name">AI 自然语言查询</div></div>
+          <div class="welcome-feature"><div class="icon">🔄</div><div class="name">结构同步</div></div>
+          <div class="welcome-feature"><div class="icon">💾</div><div class="name">备份恢复</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 查询面板 ===== -->
+    <div class="tab-panel" id="panel-query">
+      <div class="query-panel">
+        <div class="query-editor-container">
+          <div class="query-editor">
+            <div class="line-numbers" id="lineNumbers">
+              <div>1</div><div>2</div><div>3</div><div>4</div><div>5</div><div>6</div><div>7</div><div>8</div><div>9</div><div>10</div>
+            </div>
+            <textarea class="sql-editor" id="sqlEditor" spellcheck="false" oninput="updateLineNumbers()" placeholder="输入 SQL 查询... (Ctrl+Enter 执行)">-- 查询最近30天销售额前5的商品
+SELECT
+  p.name AS 商品名称,
+  SUM(oi.quantity * oi.unit_price) AS 销售额,
+  COUNT(o.id) AS 订单数
+FROM products p
+  JOIN order_items oi ON p.id = oi.product_id
+  JOIN orders o ON oi.order_id = o.id
+WHERE o.created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+  AND o.status = '已完成'
+GROUP BY p.id
+ORDER BY 销售额 DESC
+LIMIT 5;</textarea>
+          </div>
+          <!-- 结果面板 -->
+          <div class="result-panel">
+            <div class="result-toolbar">
+              <div class="tab-group">
+                <div class="tab-item active" onclick="switchResultView(this, 'grid')">📊 结果集 1</div>
+                <div class="tab-item" onclick="switchResultView(this, 'message')">💬 消息</div>
+                <div class="tab-item" onclick="switchResultView(this, 'explain')">🔍 执行计划</div>
+                <div class="tab-item" onclick="switchResultView(this, 'history')">📜 历史</div>
+              </div>
+              <div class="toolbar-spacer"></div>
+              <span style="color:var(--text-muted);font-size:11px;">耗时: 0.032s · 5 行</span>
+            </div>
+            <div class="result-view" id="resultView">
+              <table class="data-grid">
+                <thead><tr><th style="width:30px;">#</th><th>商品名称 <span class="sort-icon">▲</span></th><th>销售额 <span class="sort-icon">▼</span></th><th>订单数</th><th>操作</th></tr></thead>
+                <tbody>
+                  <tr onclick="selectRow(this)" oncontextmenu="showDataGridMenu(event, this)"><td class="row-num">1</td><td>MacBook Pro 16"</td><td>189,990.00</td><td>10</td><td><span class="fk-badge">详情</span></td></tr>
+                  <tr onclick="selectRow(this)" oncontextmenu="showDataGridMenu(event, this)"><td class="row-num">2</td><td>iPhone 15 Pro Max</td><td>89,991.00</td><td>9</td><td><span class="fk-badge">详情</span></td></tr>
+                  <tr onclick="selectRow(this)" oncontextmenu="showDataGridMenu(event, this)"><td class="row-num">3</td><td>AirPods Pro 2</td><td>37,980.00</td><td>20</td><td><span class="fk-badge">详情</span></td></tr>
+                  <tr onclick="selectRow(this)" oncontextmenu="showDataGridMenu(event, this)"><td class="row-num">4</td><td>4K显示器 27寸</td><td>23,992.00</td><td>8</td><td><span class="fk-badge">详情</span></td></tr>
+                  <tr onclick="selectRow(this)" oncontextmenu="showDataGridMenu(event, this)"><td class="row-num">5</td><td>机械键盘 Cherry MX</td><td>8,985.00</td><td>15</td><td><span class="fk-badge">详情</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 数据表查看面板 ===== -->
+    <div class="tab-panel" id="panel-table">
+      <div style="background:var(--bg-secondary);border-bottom:1px solid var(--border-color);padding:4px 10px;display:flex;align-items:center;gap:8px;">
+        <span style="font-weight:bold;font-size:13px;" id="tableTitle">📊 users</span>
+        <span style="color:var(--text-muted);font-size:11px;" id="tableDb">ecommerce_db</span>
+        <div class="toolbar-spacer"></div>
+        <button class="btn btn-sm" onclick="showTableDesign()">📐 设计</button>
+        <button class="btn btn-sm" onclick="notify('info','导出中...')">📤 导出</button>
+      </div>
+      <div style="display:flex;background:var(--bg-secondary);border-bottom:1px solid var(--border-color);font-size:11px;">
+        <div class="result-toolbar tab-item active" onclick="switchTableView(this,'data')">📊 数据</div>
+        <div class="result-toolbar tab-item" onclick="switchTableView(this,'structure')">🏗️ 结构</div>
+        <div class="result-toolbar tab-item" onclick="switchTableView(this,'ddl')">📝 DDL</div>
+        <div class="result-toolbar tab-item" onclick="switchTableView(this,'indexes')">🔑 索引</div>
+      </div>
+      <div class="table-view-content" id="tableViewContent" style="flex:1;overflow:auto;">
+        <table class="data-grid" id="tableGrid">
+          <thead><tr><th style="width:30px;"><input type="checkbox"></th><th>id</th><th>username</th><th>email</th><th>phone</th><th>status</th><th>role</th><th>created_at</th><th>updated_at</th></tr></thead>
+          <tbody>
+            <tr><td><input type="checkbox"></td><td>1</td><td>zhangsan</td><td>zhangsan@email.com</td><td>13800138001</td><td style="color:var(--green)">● 活跃</td><td>admin</td><td>2024-01-15 10:30:00</td><td>2024-06-01 08:00:00</td></tr>
+            <tr><td><input type="checkbox"></td><td>2</td><td>lisi</td><td>lisi@email.com</td><td>13800138002</td><td style="color:var(--green)">● 活跃</td><td>user</td><td>2024-02-20 14:22:00</td><td>2024-06-01 08:00:00</td></tr>
+            <tr><td><input type="checkbox"></td><td>3</td><td>wangwu</td><td>wangwu@email.com</td><td>13800138003</td><td style="color:var(--red)">● 禁用</td><td>user</td><td>2024-03-10 09:15:00</td><td>2024-05-15 12:00:00</td></tr>
+            <tr><td><input type="checkbox"></td><td>4</td><td>zhaoliu</td><td>zhaoliu@email.com</td><td>13800138004</td><td style="color:var(--green)">● 活跃</td><td>user</td><td>2024-04-05 16:45:00</td><td>2024-06-01 08:00:00</td></tr>
+            <tr><td><input type="checkbox"></td><td>5</td><td>sunqi</td><td>sunqi@email.com</td><td>13800138005</td><td style="color:var(--green)">● 活跃</td><td>editor</td><td>2024-05-12 11:30:00</td><td>2024-05-20 10:00:00</td></tr>
+            <tr><td><input type="checkbox"></td><td>6</td><td>zhouba</td><td>zhouba@email.com</td><td>13800138006</td><td style="color:var(--green)">● 活跃</td><td>user</td><td>2024-06-18 08:20:00</td><td>2024-06-18 08:20:00</td></tr>
+            <tr><td><input type="checkbox"></td><td>7</td><td>wujiu</td><td>wujiu@email.com</td><td>13800138007</td><td style="color:var(--red)">● 禁用</td><td>user</td><td>2024-07-22 13:55:00</td><td>2024-08-01 09:00:00</td></tr>
+            <tr><td><input type="checkbox"></td><td>8</td><td>zhengshi</td><td>zhengshi@email.com</td><td>13800138008</td><td style="color:var(--green)">● 活跃</td><td>user</td><td>2024-08-30 17:10:00</td><td>2024-08-30 17:10:00</td></tr>
+            <tr><td><input type="checkbox"></td><td>9</td><td>chenayi</td><td>chenayi@email.com</td><td>13800138009</td><td style="color:var(--green)">● 活跃</td><td>admin</td><td>2024-09-10 09:00:00</td><td>2024-09-10 09:00:00</td></tr>
+            <tr><td><input type="checkbox"></td><td>10</td><td>liushi</td><td>liushi@email.com</td><td>13800138010</td><td style="color:var(--yellow)">● 待审核</td><td>user</td><td>2024-10-05 15:30:00</td><td>2024-10-05 15:30:00</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- 分页 -->
+      <div class="pagination">
+        <div class="page-info">
+          <span>总行: 10</span>
+          <span style="color:var(--text-muted)">|</span>
+          <span>筛选: 10 行</span>
+        </div>
+        <div class="page-info">
+          <button disabled>⏮</button>
+          <button disabled>◀</button>
+          <span>第 <input type="text" value="1" style="width:30px;"> / 1 页</span>
+          <button disabled>▶</button>
+          <button disabled>⏭</button>
+          <span style="color:var(--text-muted)">|</span>
+          <span>每页</span>
+          <select><option selected>50</option><option>100</option><option>200</option><option>500</option></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== AI 对话面板 ===== -->
+    <div class="tab-panel" id="panel-ai">
+      <div class="ai-panel">
+        <div class="ai-header">
+          <h2>🤖 OpenNavicat AI 助手</h2>
+          <p>自然语言查数据 · SQL 优化 · 智能设计 · 多轮对话 · 已连接 ecommerce_db</p>
+        </div>
+        <div class="ai-messages" id="aiMessages">
+          <div class="ai-message assistant">
+            <div>👋 你好！我是你的数据库 AI 助手。你可以:</div>
+            <div style="margin-top:8px;">• <strong>查数据</strong>: "上个月销售额前10的商品"</div>
+            <div>• <strong>优化 SQL</strong>: "帮我优化这个查询"</div>
+            <div>• <strong>设计表</strong>: "帮我设计一个博客系统的表结构"</div>
+            <div>• <strong>解释 SQL</strong>: "这个查询在做什么？"</div>
+            <div>• <strong>生成测试数据</strong>: "生成100条用户测试数据"</div>
+            <div class="msg-time">AI · 刚刚</div>
+          </div>
+          <div class="ai-message user">
+            <div>查询最近7天注册的用户数量，按日期分组</div>
+            <div class="msg-time">我 · 刚刚</div>
+          </div>
+          <div class="ai-message assistant">
+            <div>我来帮你生成并执行这个查询。</div>
+            <div class="sql-block">
+              <span style="color:var(--blue)">SELECT</span> <span style="color:var(--orange)">DATE</span>(created_at) <span style="color:var(--blue)">AS</span> 注册日期,<br>
+              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:var(--blue)">COUNT</span>(*) <span style="color:var(--blue)">AS</span> 注册用户数<br>
+              <span style="color:var(--blue)">FROM</span> users<br>
+              <span style="color:var(--blue)">WHERE</span> created_at &gt;= <span style="color:var(--orange)">DATE_SUB</span>(<span style="color:var(--orange)">CURDATE</span>(), <span style="color:var(--blue)">INTERVAL</span> 7 <span style="color:var(--blue)">DAY</span>)<br>
+              <span style="color:var(--blue)">GROUP BY</span> <span style="color:var(--orange)">DATE</span>(created_at)<br>
+              <span style="color:var(--blue)">ORDER BY</span> 注册日期 <span style="color:var(--blue)">DESC</span>
+            </div>
+            <div>✅ 查询完成，返回 7 条记录。</div>
+            <div class="msg-time">AI · 刚刚</div>
+          </div>
+        </div>
+        <div class="ai-input">
+          <input type="text" id="aiChatInput" placeholder="输入问题，如「查询库存不足的商品」..." onkeydown="if(event.key==='Enter')sendAIMessage()">
+          <button class="btn btn-primary" onclick="sendAIMessage()">发送</button>
+          <div class="ai-suggestions">
+            <button onclick="quickAI('分析 orders 表中的数据分布')">📊 分析</button>
+            <button onclick="quickAI('优化这个查询的性能')">⚡ 优化</button>
+            <button onclick="quickAI('设计一个库存管理系统的表')">📐 设计</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 表设计面板 ===== -->
+    <div class="tab-panel" id="panel-design">
+      <div class="design-panel">
+        <div style="background:var(--bg-secondary);border-bottom:1px solid var(--border-color);padding:4px 10px;display:flex;align-items:center;gap:8px;">
+          <span style="font-weight:bold;">📐 设计表: <span id="designTableName">users</span></span>
+          <span style="color:var(--text-muted);font-size:11px;">ecommerce_db</span>
+          <div class="toolbar-spacer"></div>
+          <button class="btn btn-sm" onclick="notify('info','DDL 已复制到剪贴板')">📋 复制 DDL</button>
+          <button class="btn btn-sm btn-primary" onclick="notify('success','表结构已保存')">💾 保存</button>
+        </div>
+        <div style="display:flex;background:var(--bg-secondary);border-bottom:1px solid var(--border-color);font-size:11px;">
+          <div class="result-toolbar tab-item active">📐 字段</div>
+          <div class="result-toolbar tab-item">🔑 索引</div>
+          <div class="result-toolbar tab-item">🔗 外键</div>
+          <div class="result-toolbar tab-item">⚙️ 选项</div>
+          <div class="result-toolbar tab-item">📝 DDL 预览</div>
+        </div>
+        <div style="flex:1;overflow:auto;">
+          <table class="data-grid design-grid">
+            <thead><tr><th style="width:30px;">#</th><th>字段名</th><th style="width:110px;">类型</th><th style="width:60px;">长度</th><th style="width:50px;">非空</th><th style="width:50px;">主键</th><th style="width:50px;">自增</th><th style="width:100px;">默认值</th><th>注释</th></tr></thead>
+            <tbody id="designBody">
+              <tr><td>1</td><td><input type="text" value="id"></td><td><select><option selected>INT</option><option>BIGINT</option><option>VARCHAR</option><option>TEXT</option></select></td><td><input type="text" value="11"></td><td><input type="checkbox" checked></td><td><input type="checkbox" checked></td><td><input type="checkbox" checked></td><td><input type="text"></td><td><input type="text" value="主键ID"></td></tr>
+              <tr><td>2</td><td><input type="text" value="username"></td><td><select><option>INT</option><option selected>VARCHAR</option><option>TEXT</option><option>DECIMAL</option></select></td><td><input type="text" value="50"></td><td><input type="checkbox" checked></td><td><input type="checkbox"></td><td><input type="checkbox"></td><td><input type="text"></td><td><input type="text" value="用户名"></td></tr>
+              <tr><td>3</td><td><input type="text" value="email"></td><td><select><option>INT</option><option selected>VARCHAR</option><option>TEXT</option></select></td><td><input type="text" value="100"></td><td><input type="checkbox" checked></td><td><input type="checkbox"></td><td><input type="checkbox"></td><td><input type="text"></td><td><input type="text" value="邮箱"></td></tr>
+              <tr><td>4</td><td><input type="text" value="phone"></td><td><select><option>INT</option><option selected>VARCHAR</option><option>TEXT</option></select></td><td><input type="text" value="20"></td><td><input type="checkbox"></td><td><input type="checkbox"></td><td><input type="checkbox"></td><td><input type="text" value="NULL"></td><td><input type="text" value="手机号"></td></tr>
+              <tr><td>5</td><td><input type="text" value="status"></td><td><select><option>INT</option><option selected>VARCHAR</option><option>TEXT</option><option>ENUM</option></select></td><td><input type="text" value="20"></td><td><input type="checkbox" checked></td><td><input type="checkbox"></td><td><input type="checkbox"></td><td><input type="text" value="'active'"></td><td><input type="text" value="状态: active/inactive/disabled"></td></tr>
+              <tr><td>6</td><td><input type="text" value="role"></td><td><select><option>INT</option><option selected>VARCHAR</option><option>TEXT></select></td><td><input type="text" value="20"></td><td><input type="checkbox" checked></td><td><input type="checkbox"></td><td><input type="checkbox"></td><td><input type="text" value="'user'"></td><td><input type="text" value="角色: admin/user/editor"></td></tr>
+              <tr><td>7</td><td><input type="text" value="avatar_url"></td><td><select><option>INT</option><option selected>VARCHAR</option><option>TEXT></select></td><td><input type="text" value="255"></td><td><input type="checkbox"></td><td><input type="checkbox"></td><td><input type="checkbox"></td><td><input type="text" value="NULL"></td><td><input type="text" value="头像URL"></td></tr>
+              <tr><td>8</td><td><input type="text" value="created_at"></td><td><select><option>INT</option><option>VARCHAR</option><option selected>DATETIME</option></select></td><td><input type="text"></td><td><input type="checkbox" checked></td><td><input type="checkbox"></td><td><input type="checkbox"></td><td><input type="text" value="CURRENT_TIMESTAMP"></td><td><input type="text" value="创建时间"></td></tr>
+              <tr><td>9</td><td><input type="text" value="updated_at"></td><td><select><option>INT</option><option>VARCHAR</option><option selected>DATETIME</option></select></td><td><input type="text"></td><td><input type="checkbox" checked></td><td><input type="checkbox"></td><td><input type="checkbox"></td><td><input type="text" value="CURRENT_TIMESTAMP ON UPDATE"></td><td><input type="text" value="更新时间"></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div style="background:var(--bg-secondary);border-top:1px solid var(--border-color);padding:4px 10px;display:flex;gap:8px;">
+          <button class="btn btn-sm" onclick="notify('info','新字段已添加')">➕ 添加字段</button>
+          <button class="btn btn-sm" onclick="notify('info','已删除选中字段')">🗑️ 删除</button>
+          <button class="btn btn-sm" onclick="notify('info','已上移')">↑ 上移</button>
+          <button class="btn btn-sm" onclick="notify('info','已下移')">↓ 下移</button>
+          <div class="toolbar-spacer"></div>
+          <span style="color:var(--text-muted);font-size:11px;">9 个字段 · InnoDB · utf8mb4</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 结构同步面板 ===== -->
+    <div class="tab-panel" id="panel-sync">
+      <div style="flex:1;overflow:auto;padding:16px;">
+        <div style="display:flex;gap:16px;margin-bottom:16px;">
+          <div style="flex:1;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;padding:12px;">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">来源 (Source)</div>
+            <div style="font-size:14px;font-weight:bold;">ecommerce_db</div>
+            <div style="font-size:11px;color:var(--text-secondary);">Localhost (MySQL 8.0)</div>
+          </div>
+          <div style="display:flex;align-items:center;font-size:24px;">→</div>
+          <div style="flex:1;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;padding:12px;">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">目标 (Target)</div>
+            <div style="font-size:14px;font-weight:bold;">ecommerce_db_staging</div>
+            <div style="font-size:11px;color:var(--text-secondary);">Production (AWS RDS)</div>
+          </div>
+          <button class="btn btn-primary" onclick="notify('success','同步完成！创建了 2 张表，修改了 3 个字段')">▶ 开始比较</button>
+        </div>
+        <div style="font-size:13px;margin-bottom:12px;">🔄 差异对比结果 <span style="color:var(--text-muted);font-size:11px;">5 处差异</span></div>
+        <div class="diff-item added"><span class="diff-icon">🟢</span><div><strong>新增表</strong> — shipping</div><div class="diff-sql">CREATE TABLE shipping (id INT PK, order_id INT, address VARCHAR(255), ...)</div></div>
+        <div class="diff-item added"><span class="diff-icon">🟢</span><div><strong>新增表</strong> — reviews</div><div class="diff-sql">CREATE TABLE reviews (id INT PK, product_id INT, user_id INT, rating INT, ...)</div></div>
+        <div class="diff-item modified"><span class="diff-icon">🟡</span><div><strong>修改字段</strong> — users.email VARCHAR(100) → VARCHAR(255)</div><div class="diff-sql">ALTER TABLE users MODIFY COLUMN email VARCHAR(255) NOT NULL;</div></div>
+        <div class="diff-item modified"><span class="diff-icon">🟡</span><div><strong>修改字段</strong> — products.price DECIMAL(10,2) → DECIMAL(12,2)</div><div class="diff-sql">ALTER TABLE products MODIFY COLUMN price DECIMAL(12,2) NOT NULL DEFAULT 0;</div></div>
+        <div class="diff-item removed"><span class="diff-icon">🔴</span><div><strong>删除表</strong> — temp_import_2024</div><div class="diff-sql">DROP TABLE IF EXISTS temp_import_2024;</div></div>
+        <div style="margin-top:16px;display:flex;gap:8px;">
+          <button class="btn btn-primary" onclick="notify('success','已应用所有更改到目标库')">✅ 应用更改</button>
+          <button class="btn">📋 复制脚本</button>
+          <button class="btn">💾 保存为文件</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 备份面板 ===== -->
+    <div class="tab-panel" id="panel-backup">
+      <div style="flex:1;overflow:auto;padding:16px;">
+        <div style="display:flex;gap:12px;margin-bottom:16px;">
+          <div style="flex:1;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;padding:16px;text-align:center;">
+            <div style="font-size:24px;margin-bottom:4px;">💾</div>
+            <div style="font-size:13px;">立即备份</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">完整数据库导出</div>
+            <button class="btn btn-primary btn-sm" onclick="notify('success','备份完成: backup_20260621.sql (12.3 MB)')">开始备份</button>
+          </div>
+          <div style="flex:1;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;padding:16px;text-align:center;">
+            <div style="font-size:24px;margin-bottom:4px;">↩️</div>
+            <div style="font-size:13px;">恢复</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">从备份文件恢复</div>
+            <button class="btn btn-sm">选择文件</button>
+          </div>
+          <div style="flex:1;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:6px;padding:16px;text-align:center;">
+            <div style="font-size:24px;margin-bottom:4px;">⏰</div>
+            <div style="font-size:13px;">定时备份</div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">每天 02:00 自动备份</div>
+            <div style="font-size:11px;">已启用 <span style="color:var(--green)">●</span></div>
+          </div>
+        </div>
+        <div style="font-size:13px;margin-bottom:8px;">📋 最近备份</div>
+        <table class="data-grid">
+          <thead><tr><th>文件名</th><th>大小</th><th>数据库</th><th>创建时间</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr><td>backup_20260621.sql.gz</td><td>12.3 MB</td><td>ecommerce_db</td><td>2026-06-21 02:00</td><td><button class="btn btn-sm">下载</button> <button class="btn btn-sm">恢复</button></td></tr>
+            <tr><td>backup_20260620.sql.gz</td><td>12.1 MB</td><td>ecommerce_db</td><td>2026-06-20 02:00</td><td><button class="btn btn-sm">下载</button> <button class="btn btn-sm">恢复</button></td></tr>
+            <tr><td>backup_20260619.sql.gz</td><td>11.9 MB</td><td>ecommerce_db</td><td>2026-06-19 02:00</td><td><button class="btn btn-sm">下载</button> <button class="btn btn-sm">恢复</button></td></tr>
+            <tr><td>backup_20260615_manual.sql</td><td>15.7 MB</td><td>ecommerce_db</td><td>2026-06-15 14:30</td><td><button class="btn btn-sm">下载</button> <button class="btn btn-sm">恢复</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /content-area -->
+</div><!-- /main-container -->
+
+<!-- ==================== 状态栏 ==================== -->
+<div class="statusbar">
+  <div class="statusbar-left">
+    <div class="status-item"><span class="status-dot-sm active"></span> 已连接: Localhost</div>
+    <div class="status-item">数据库: ecommerce_db</div>
+    <div class="status-item" id="statusInfo">就绪</div>
+  </div>
+  <div class="statusbar-right">
+    <div class="status-item" id="statusRows">行: 0</div>
+    <div class="status-item">MySQL 8.0.35</div>
+    <div class="status-item">UTF-8</div>
+    <div class="status-item">opennavicat v0.1.0</div>
+  </div>
+</div>
+
+<!-- ==================== AI Copilot 触发器按钮 ==================== -->
+<div class="ai-copilot-toggle" onclick="toggleAICopilot()" title="AI 助手">
+  <span style="font-size:16px;">🤖</span> AI 助手
+</div>
+
+<!-- ==================== AI Copilot 侧边栏 ==================== -->
+<div class="ai-copilot" id="aiCopilot">
+  <div class="ai-copilot-header">
+    <h3>🤖 AI Copilot <span style="font-size:10px;opacity:0.6;">DeepSeek</span></h3>
+    <span class="close-btn" onclick="toggleAICopilot()">✕</span>
+  </div>
+  <div class="ai-copilot-modes">
+    <div class="ai-copilot-mode active" onclick="switchAIMode(this,'ask')"><span class="mode-icon">💬</span>问答</div>
+    <div class="ai-copilot-mode" onclick="switchAIMode(this,'optimize')"><span class="mode-icon">⚡</span>优化</div>
+    <div class="ai-copilot-mode" onclick="switchAIMode(this,'design')"><span class="mode-icon">📐</span>设计</div>
+    <div class="ai-copilot-mode" onclick="switchAIMode(this,'generate')"><span class="mode-icon">🧪</span>生成</div>
+  </div>
+  <div class="ai-copilot-messages" id="aiCopilotMsgs">
+    <div class="ai-copilot-msg system">
+      <div>👋 我是你的 AI 数据库助手，当前模式: <strong>问答</strong></div>
+      <div style="margin-top:6px;">你可以这样问我：</div>
+      <div style="margin-top:4px;">• "上个月销售额前10的商品"</div>
+      <div>• "帮我分析这个查询的性能"</div>
+      <div>• "设计一个订单管理系统的表"</div>
+      <div>• "给 users 表生成 100 条测试数据"</div>
+    </div>
+  </div>
+  <div class="ai-copilot-input">
+    <div class="input-row">
+      <input type="text" id="aiCopilotInput" placeholder="输入问题，按 Enter 发送..." onkeydown="if(event.key==='Enter')sendAICopilot()">
+      <button class="btn btn-primary btn-sm" onclick="sendAICopilot()">发送</button>
+    </div>
+    <div class="quick-tips">
+      <button onclick="quickAICopilot('查询最近7天的注册用户数')">📊 最近7天注册</button>
+      <button onclick="quickAICopilot('优化 SELECT * FROM orders WHERE YEAR(date)=2026')">⚡ SQL 优化</button>
+      <button onclick="quickAICopilot('设计一个博客系统，包含用户、文章、评论')">📐 设计 Schema</button>
+      <button onclick="quickAICopilot('帮我解释 LEFT JOIN 和 INNER JOIN 的区别')">💡 SQL 教学</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== AI Schema 设计对话框 ==================== -->
+<div class="modal-overlay" id="aiSchemaModal">
+  <div class="modal" style="width:640px;">
+    <div class="modal-header">
+      <h3>📐 AI Schema 设计</h3>
+      <span class="close-btn" onclick="closeModal('aiSchemaModal')">✕</span>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>用自然语言描述你的业务需求</label>
+        <textarea style="width:100%;height:80px;background:var(--bg-primary);border:1px solid var(--border-color);border-radius:3px;color:var(--text-primary);padding:8px;font-size:13px;" placeholder="例如: 电商系统，包含用户、商品、订单、支付功能...">电商系统: 用户(用户名,邮箱,手机号,地址), 商品(名称,价格,库存,分类), 订单(用户,商品,数量,总价,状态,时间), 支付(订单,金额,方式,时间)</textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>数据库引擎</label><select><option>InnoDB</option><option>MyISAM</option></select></div>
+        <div class="form-group"><label>字符集</label><select><option>utf8mb4</option><option>utf8</option><option>latin1</option></select></div>
+        <div class="form-group"><label>部署</label><select><option>仅预览</option><option>预览并部署</option></select></div>
+      </div>
+      <button class="btn btn-primary" onclick="generateAISchema()">🤖 开始设计</button>
+      <div id="aiSchemaResult" style="display:none;" class="ai-schema-result">
+        <div class="st">
+          <div class="st-name">📄 users</div>
+          <div class="st-field">id INT(11) PRIMARY KEY AUTO_INCREMENT</div>
+          <div class="st-field">username VARCHAR(50) NOT NULL UNIQUE</div>
+          <div class="st-field">email VARCHAR(100) NOT NULL</div>
+          <div class="st-field">phone VARCHAR(20)</div>
+          <div class="st-field">address TEXT</div>
+          <div class="st-field">created_at DATETIME DEFAULT CURRENT_TIMESTAMP</div>
+        </div>
+        <div class="st">
+          <div class="st-name">📄 products</div>
+          <div class="st-field">id INT(11) PRIMARY KEY AUTO_INCREMENT</div>
+          <div class="st-field">name VARCHAR(200) NOT NULL</div>
+          <div class="st-field">price DECIMAL(10,2) NOT NULL</div>
+          <div class="st-field">stock INT(11) NOT NULL DEFAULT 0</div>
+          <div class="st-field">category_id INT(11) → categories.id</div>
+        </div>
+        <div class="st-rel">🔗 users.id ← orders.user_id</div>
+        <div class="st-rel">🔗 products.id ← orders.product_id</div>
+        <div style="margin-top:10px;display:flex;gap:6px;">
+          <button class="btn btn-sm btn-primary" onclick="notify('success','DDL 已执行，4 张表创建成功')">▶ 部署到数据库</button>
+          <button class="btn btn-sm" onclick="notify('info','DDL 已复制到剪贴板')">📋 复制 DDL</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== AI 数据生成对话框 ==================== -->
+<div class="modal-overlay" id="aiGenModal">
+  <div class="modal" style="width:600px;">
+    <div class="modal-header">
+      <h3>🧪 AI 数据生成</h3>
+      <span class="close-btn" onclick="closeModal('aiGenModal')">✕</span>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>目标表</label><select><option>users (9 字段)</option><option>products (6 字段)</option><option>orders (5 字段)</option></select></div>
+        <div class="form-group"><label>生成条数</label><input type="number" value="100"></div>
+      </div>
+      <div class="form-group">
+        <label>业务规则 (可选)</label>
+        <input type="text" value="中国用户真实姓名、手机号" placeholder="例如: 中国用户真实信息、邮箱格式">
+      </div>
+      <button class="btn btn-primary" onclick="generateAIData()">🤖 生成</button>
+      <div id="aiGenPreview" style="display:none;" class="ai-gen-preview">
+        <table><thead><tr><th>id</th><th>username</th><th>email</th><th>phone</th><th>status</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>张三</td><td>zhangsan@test.com</td><td>13800138001</td><td>active</td></tr>
+          <tr><td>2</td><td>李四</td><td>lisi@test.com</td><td>13800138002</td><td>active</td></tr>
+          <tr><td>3</td><td>王五</td><td>wangwu@test.com</td><td>13800138003</td><td>active</td></tr>
+          <tr><td>...</td><td>...</td><td>...</td><td>...</td><td>...</td></tr>
+        </tbody></table>
+        <div style="margin-top:8px;display:flex;gap:6px;">
+          <button class="btn btn-sm btn-primary" onclick="notify('success','100 条数据已插入到 users 表')">📥 插入到数据库</button>
+          <button class="btn btn-sm" onclick="notify('info','JSON 已导出')">📤 导出为 JSON</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 连接对话框 ==================== -->
+<div class="modal-overlay" id="connectionModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>🔌 新建连接</h3>
+      <span class="close-btn" onclick="closeModal('connectionModal')">✕</span>
+    </div>
+    <div class="modal-body">
+      <div class="modal-tabs">
+        <div class="modal-tab active" onclick="selectModalTab(this,'general')">常规</div>
+        <div class="modal-tab" onclick="selectModalTab(this,'ssh')">SSH</div>
+        <div class="modal-tab" onclick="selectModalTab(this,'ssl')">SSL</div>
+        <div class="modal-tab" onclick="selectModalTab(this,'advanced')">高级</div>
+      </div>
+      <div id="modalGeneral">
+        <div class="form-group"><label>连接名</label><input type="text" value="Localhost" placeholder="输入连接名称"></div>
+        <div class="form-row">
+          <div class="form-group"><label>主机</label><input type="text" value="127.0.0.1"></div>
+          <div class="form-group" style="max-width:120px;"><label>端口</label><input type="number" value="3306"></div>
+        </div>
+        <div class="form-group"><label>用户名</label><input type="text" value="root"></div>
+        <div class="form-group"><label>密码</label><input type="password" placeholder="输入密码"></div>
+        <div class="form-group"><label>默认数据库</label><input type="text" placeholder="(可选)"></div>
+        <div class="form-row">
+          <div class="form-group"><label>字符集</label><select><option>utf8mb4</option><option>utf8</option><option>latin1</option></select></div>
+          <div class="form-group"><label>排序规则</label><select><option>utf8mb4_general_ci</option><option>utf8mb4_unicode_ci</option></select></div>
+        </div>
+      </div>
+      <div id="modalSSH" style="display:none;">
+        <div class="form-group"><div class="toggle-row"><input type="checkbox"> <label>使用 SSH 隧道</label></div></div>
+        <div class="form-group"><label>SSH 主机</label><input type="text" placeholder="bastion.example.com"></div>
+        <div class="form-row">
+          <div class="form-group"><label>SSH 端口</label><input type="number" value="22"></div>
+          <div class="form-group"><label>SSH 用户</label><input type="text" placeholder="jump"></div>
+        </div>
+        <div class="form-group"><label>认证方式</label><select><option>密码</option><option>密钥文件</option></select></div>
+        <div class="form-group"><label>密码 / 密钥路径</label><input type="password" placeholder="输入密码或选择密钥文件"></div>
+      </div>
+      <div id="modalSSL" style="display:none;">
+        <div class="form-group"><div class="toggle-row"><input type="checkbox"> <label>使用 SSL</label></div></div>
+        <div class="form-group"><label>CA 证书</label><input type="text" placeholder="ca.pem 路径"></div>
+        <div class="form-group"><label>客户端证书</label><input type="text" placeholder="client-cert.pem 路径"></div>
+        <div class="form-group"><label>客户端密钥</label><input type="text" placeholder="client-key.pem 路径"></div>
+      </div>
+      <div id="modalAdvanced" style="display:none;">
+        <div class="form-row">
+          <div class="form-group"><label>最小连接数</label><input type="number" value="1"></div>
+          <div class="form-group"><label>最大连接数</label><input type="number" value="10"></div>
+        </div>
+        <div class="form-group"><label>连接超时 (秒)</label><input type="number" value="10"></div>
+        <div class="form-group"><label>颜色标签</label><select><option>🟦 蓝色</option><option>🟩 绿色</option><option>🟥 红色</option><option>🟨 黄色</option></select></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="testConn()">🔗 测试连接</button>
+      <button class="btn" onclick="closeModal('connectionModal')">取消</button>
+      <button class="btn btn-primary" onclick="closeModal('connectionModal');notify('success','连接已保存')">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 右键菜单 — 对象树 ==================== -->
+<div class="context-menu" id="contextMenu">
+  <div class="context-menu-item" onclick="newQueryTab()">📝 新建查询</div>
+  <div class="context-menu-item" onclick="openTable('users')">📊 打开表</div>
+  <div class="context-menu-sep"></div>
+  <div class="context-menu-item" onclick="showTableDesign()">📐 设计表</div>
+  <div class="context-menu-item" onclick="notify('info','表已清空')">📋 清空表</div>
+  <div class="context-menu-item danger" onclick="notify('error','表已删除')">🗑️ 删除表</div>
+  <div class="context-menu-sep"></div>
+  <div class="context-menu-item" onclick="notify('info','导出中...')">📤 导出数据</div>
+  <div class="context-menu-item" onclick="notify('info','导入中...')">📥 导入数据</div>
+  <div class="context-menu-sep"></div>
+  <div class="context-menu-item" onclick="notify('info','已复制')">📋 复制表名</div>
+  <div class="context-menu-item">🔄 刷新</div>
+</div>
+
+<!-- ==================== 右键菜单 — 数据网格 ==================== -->
+<div class="context-menu" id="dataGridMenu">
+  <div class="context-menu-item" onclick="copyCell()">📋 复制单元格</div>
+  <div class="context-menu-item" onclick="copyRow()">📋 复制行 (JSON)</div>
+  <div class="context-menu-sep"></div>
+  <div class="context-menu-item" onclick="copyAsInsert()">📝 复制为 INSERT</div>
+  <div class="context-menu-item" onclick="copyAsUpdate()">✏️ 复制为 UPDATE</div>
+  <div class="context-menu-sep"></div>
+  <div class="context-menu-item" onclick="copyAsSelect()">🔍 复制为 SELECT</div>
+  <div class="context-menu-item" onclick="copyAsWhere()">🔗 复制为 WHERE 条件</div>
+  <div class="context-menu-sep"></div>
+  <div class="context-menu-item" onclick="copyAsWhereIn()" id="menuWhereIn">📋 复制为 WHERE IN <span style="color:var(--text-muted);font-size:10px;" id="whereInHint">(点击目标列)</span></div>
+  <div class="context-menu-sep"></div>
+  <div class="context-menu-item" onclick="copyAsCSV()">📊 复制为 CSV</div>
+  <div class="context-menu-item" onclick="copyAsJSON()">📋 复制为 JSON</div>
+</div>
+
+<script>
+// ==================== 标签管理 ====================
+let currentTable = null;
+
+function switchTab(tabEl, tabId) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  tabEl.classList.add('active');
+  const panel = document.getElementById('panel-' + tabId);
+  if (panel) panel.classList.add('active');
+}
+
+function newQueryTab() {
+  const bar = document.getElementById('tabsBar');
+  let existing = document.querySelector('[data-tab="query"]');
+  if (existing) { switchTab(existing, 'query'); return; }
+  
+  const tab = document.createElement('div');
+  tab.className = 'tab active';
+  tab.dataset.tab = 'query';
+  tab.innerHTML = '<span class="tab-icon">📝</span><span>查询</span><span class="tab-close" onclick="closeTab(event,this)">✕</span>';
+  tab.onclick = function() { switchTab(this, 'query'); };
+  bar.appendChild(tab);
+  
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('panel-query').classList.add('active');
+}
+
+function openTable(name) {
+  currentTable = name;
+  const bar = document.getElementById('tabsBar');
+  const tabId = 'table_' + name;
+  let tab = document.querySelector(`[data-tab="${tabId}"]`);
+  if (!tab) {
+    tab = document.createElement('div');
+    tab.className = 'tab active';
+    tab.dataset.tab = tabId;
+    const icons = {users:'👤', products:'📦', orders:'🧾', order_items:'📋', categories:'📁', payments:'💳', reviews:'⭐', carts:'🛒', shipping:'🚚'};
+    const icon = icons[name] || '📊';
+    tab.innerHTML = `<span class="tab-icon">${icon}</span><span>${name}</span><span class="tab-close" onclick="closeTab(event,this)">✕</span>`;
+    tab.onclick = function() { switchTab(this, tabId); };
+    bar.appendChild(tab);
+  }
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('panel-table').classList.add('active');
+  document.getElementById('tableTitle').textContent = '📊 ' + name;
+  document.getElementById('statusInfo').textContent = `表: ${name} · 10 行`;
+}
+
+function openAIChat() {
+  const bar = document.getElementById('tabsBar');
+  let existing = document.querySelector('[data-tab="ai"]');
+  if (existing) { switchTab(existing, 'ai'); return; }
+  const tab = document.createElement('div');
+  tab.className = 'tab active';
+  tab.dataset.tab = 'ai';
+  tab.innerHTML = '<span class="tab-icon">🤖</span><span>AI 助手</span><span class="tab-close" onclick="closeTab(event,this)">✕</span>';
+  tab.onclick = function() { switchTab(this, 'ai'); };
+  bar.appendChild(tab);
+  
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('panel-ai').classList.add('active');
+}
+
+function showSchemaSync() {
+  const bar = document.getElementById('tabsBar');
+  let existing = document.querySelector('[data-tab="sync"]');
+  if (existing) { switchTab(existing, 'sync'); return; }
+  const tab = document.createElement('div');
+  tab.className = 'tab active';
+  tab.dataset.tab = 'sync';
+  tab.innerHTML = '<span class="tab-icon">🔄</span><span>结构同步</span><span class="tab-close" onclick="closeTab(event,this)">✕</span>';
+  tab.onclick = function() { switchTab(this, 'sync'); };
+  bar.appendChild(tab);
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('panel-sync').classList.add('active');
+}
+
+function showBackup() {
+  const bar = document.getElementById('tabsBar');
+  let existing = document.querySelector('[data-tab="backup"]');
+  if (existing) { switchTab(existing, 'backup'); return; }
+  const tab = document.createElement('div');
+  tab.className = 'tab active';
+  tab.dataset.tab = 'backup';
+  tab.innerHTML = '<span class="tab-icon">💾</span><span>备份</span><span class="tab-close" onclick="closeTab(event,this)">✕</span>';
+  tab.onclick = function() { switchTab(this, 'backup'); };
+  bar.appendChild(tab);
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('panel-backup').classList.add('active');
+}
+
+function closeTab(e, el) {
+  e.stopPropagation();
+  const tab = el.closest('.tab');
+  const tabId = tab.dataset.tab;
+  tab.remove();
+  const panel = document.getElementById('panel-' + tabId);
+  if (panel) panel.classList.remove('active');
+  // activate first remaining tab
+  const remaining = document.querySelectorAll('.tabs-bar .tab');
+  if (remaining.length > 0) {
+    const first = remaining[0];
+    first.classList.add('active');
+    const p = document.getElementById('panel-' + first.dataset.tab);
+    if (p) p.classList.add('active');
+  } else {
+    document.getElementById('panel-welcome').classList.add('active');
+  }
+}
+
+// ==================== 侧边栏 ====================
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  sb.style.display = sb.style.display === 'none' ? 'flex' : 'none';
+}
+
+function selectSidebarTab(el, name) {
+  document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+}
+
+function selectTreeNode(el) {
+  document.querySelectorAll('.tree-node-header').forEach(n => n.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function toggleExpand(e, nodeId) {
+  e.stopPropagation();
+  const node = e.target.closest('.tree-node');
+  const children = node.querySelector('.tree-children');
+  if (children) {
+    children.classList.toggle('expanded');
+    const toggle = node.querySelector('.tree-toggle');
+    if (toggle) toggle.textContent = children.classList.contains('expanded') ? '▼' : '▶';
+  }
+}
+
+function expandNode(e, id) { /* already handled by toggleExpand */ }
+
+function filterTree(value) {
+  document.querySelectorAll('.tree-label').forEach(label => {
+    const node = label.closest('.tree-node');
+    if (node) node.style.display = (value === '' || label.textContent.toLowerCase().includes(value.toLowerCase())) ? '' : 'none';
+  });
+}
+
+// ==================== SQL 编辑器 ====================
+function updateLineNumbers() {
+  const editor = document.getElementById('sqlEditor');
+  const lines = editor.value.split('\n').length;
+  const ln = document.getElementById('lineNumbers');
+  let html = '';
+  for (let i = 1; i <= Math.max(lines, 10); i++) html += `<div>${i}</div>`;
+  ln.innerHTML = html;
+}
+
+function executeQuery() {
+  const sql = document.getElementById('sqlEditor').value.trim();
+  if (!sql) return;
+  document.getElementById('statusInfo').textContent = '⏳ 执行查询中...';
+  newQueryTab();
+  setTimeout(() => {
+    document.getElementById('statusInfo').textContent = '✅ 查询完成, 返回 5 条记录 (耗时 0.032s)';
+    document.getElementById('statusRows').textContent = '行: 5';
+    // simulate result data switch
+    const view = document.getElementById('resultView');
+    view.innerHTML = `<table class="data-grid"><thead><tr><th>商品名称</th><th>销售额</th><th>订单数</th></tr></thead><tbody>
+      <tr><td>MacBook Pro 16"</td><td>189,990.00</td><td>10</td></tr>
+      <tr><td>iPhone 15 Pro Max</td><td>89,991.00</td><td>9</td></tr>
+      <tr><td>AirPods Pro 2</td><td>37,980.00</td><td>20</td></tr>
+      <tr><td>4K显示器 27寸</td><td>23,992.00</td><td>8</td></tr>
+      <tr><td>机械键盘 Cherry MX</td><td>8,985.00</td><td>15</td></tr>
+    </tbody></table>`;
+  }, 500);
+}
+
+function switchResultView(el, type) {
+  document.querySelectorAll('.result-toolbar .tab-item').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const view = document.getElementById('resultView');
+  if (type === 'explain') {
+    view.innerHTML = `<div style="padding:12px;font-family:Consolas,monospace;font-size:11px;">
+      <div style="color:var(--accent);margin-bottom:8px;">EXPLAIN FORMAT=JSON</div>
+      <pre>{
+  "query_block": {
+    "select_id": 1,
+    "cost_info": { "query_cost": "125.35" },
+    "ordering_operation": {
+      "using_filesort": false,
+      "table": {
+        "table_name": "products",
+        "access_type": "ALL",
+        "rows_examined_per_scan": 50,
+        "filtered": "100.00"
+      }
+    }
+  }
+}</pre></div>`;
+  } else if (type === 'message') {
+    view.innerHTML = `<div style="padding:12px;font-family:Consolas,monospace;font-size:12px;">
+      <div style="color:var(--green);">[09:30:15] Query OK, 5 rows affected (0.032 sec)</div>
+      <div style="color:var(--text-secondary);">[09:28:42] Query OK, 3 rows affected (0.018 sec)</div>
+      <div style="color:var(--text-secondary);">[09:25:10] Query OK, 1 row affected (0.005 sec)</div>
+    </div>`;
+  } else if (type === 'history') {
+    view.innerHTML = `<div style="padding:12px;font-family:Consolas,monospace;font-size:12px;">
+      <div style="margin-bottom:6px;"><strong style="color:var(--accent);">09:30:15</strong> SELECT p.name, SUM(oi.quantity * oi.unit_price) AS revenue ...</div>
+      <div style="margin-bottom:6px;"><strong style="color:var(--text-secondary);">09:28:42</strong> UPDATE users SET status='active' WHERE id=3</div>
+      <div style="margin-bottom:6px;"><strong style="color:var(--text-secondary);">09:25:10</strong> SELECT * FROM orders WHERE status='pending'</div>
+    </div>`;
+  }
+}
+
+// ==================== 数据表 ====================
+function selectRow(el) {
+  document.querySelectorAll('.data-grid tbody tr').forEach(r => r.classList.remove('selected'));
+  el.classList.add('selected');
+}
+
+function addRow() { notify('info', '新行已添加'); }
+function deleteRow() { notify('info', '已删除选中行'); }
+
+function switchTableView(el, type) {
+  document.querySelectorAll('.table-view-content ~ div .tab-item, .table-view-content + div .tab-item').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  if (type === 'data') { /* show data */ }
+  else if (type === 'structure') { showStructure(); }
+  else if (type === 'ddl') { showDDL(); }
+}
+
+function showStructure() {
+  document.getElementById('tableViewContent').innerHTML = `<table class="data-grid"><thead><tr><th>字段</th><th>类型</th><th>非空</th><th>键</th><th>默认</th><th>自增</th><th>注释</th></tr></thead><tbody>
+    <tr><td>id</td><td>INT(11)</td><td>NO</td><td>PRI</td><td></td><td>auto_increment</td><td>主键ID</td></tr>
+    <tr><td>username</td><td>VARCHAR(50)</td><td>NO</td><td></td><td></td><td></td><td>用户名</td></tr>
+    <tr><td>email</td><td>VARCHAR(100)</td><td>NO</td><td>UNI</td><td></td><td></td><td>邮箱</td></tr>
+    <tr><td>phone</td><td>VARCHAR(20)</td><td>YES</td><td></td><td>NULL</td><td></td><td>手机号</td></tr>
+    <tr><td>status</td><td>VARCHAR(20)</td><td>NO</td><td></td><td>'active'</td><td></td><td>状态</td></tr>
+    <tr><td>role</td><td>VARCHAR(20)</td><td>NO</td><td></td><td>'user'</td><td></td><td>角色</td></tr>
+    <tr><td>created_at</td><td>DATETIME</td><td>NO</td><td></td><td>CURRENT_TIMESTAMP</td><td></td><td>创建时间</td></tr>
+    <tr><td>updated_at</td><td>DATETIME</td><td>NO</td><td></td><td>CURRENT_TIMESTAMP</td><td></td><td>更新时间</td></tr>
+  </tbody></table>`;
+}
+
+function showDDL() {
+  document.getElementById('tableViewContent').innerHTML = `<div style="padding:12px;font-family:Consolas,monospace;font-size:12px;line-height:1.8;">
+    <div style="color:var(--accent);">-- DDL for ecommerce_db.users</div>
+    <div><span style="color:var(--blue);">CREATE TABLE</span> <span style="color:var(--yellow);">\`users\`</span> (</div>
+    <div>&nbsp;&nbsp;<span style="color:var(--yellow);">\`id\`</span> <span style="color:var(--orange);">INT</span>(11) <span style="color:var(--blue);">NOT NULL AUTO_INCREMENT</span>,</div>
+    <div>&nbsp;&nbsp;<span style="color:var(--yellow);">\`username\`</span> <span style="color:var(--orange);">VARCHAR</span>(50) <span style="color:var(--blue);">NOT NULL</span>,</div>
+    <div>&nbsp;&nbsp;<span style="color:var(--yellow);">\`email\`</span> <span style="color:var(--orange);">VARCHAR</span>(100) <span style="color:var(--blue);">NOT NULL</span>,</div>
+    <div>&nbsp;&nbsp;<span style="color:var(--yellow);">\`phone\`</span> <span style="color:var(--orange);">VARCHAR</span>(20) <span style="color:var(--blue);">DEFAULT NULL</span>,</div>
+    <div>&nbsp;&nbsp;<span style="color:var(--blue);">PRIMARY KEY</span> (<span style="color:var(--yellow);">\`id\`</span>),</div>
+    <div>&nbsp;&nbsp;<span style="color:var(--blue);">UNIQUE KEY</span> <span style="color:var(--yellow);">\`uk_email\`</span> (<span style="color:var(--yellow);">\`email\`</span>)</div>
+    <div>) <span style="color:var(--blue);">ENGINE</span>=InnoDB <span style="color:var(--blue);">DEFAULT CHARSET</span>=utf8mb4;</div>
+  </div>`;
+}
+
+function showTableDesign() {
+  const bar = document.getElementById('tabsBar');
+  let tab = document.querySelector('[data-tab="design"]');
+  if (!tab) {
+    tab = document.createElement('div');
+    tab.className = 'tab active';
+    tab.dataset.tab = 'design';
+    tab.innerHTML = '<span class="tab-icon">📐</span><span>设计表</span><span class="tab-close" onclick="closeTab(event,this)">✕</span>';
+    tab.onclick = function() { switchTab(this, 'design'); };
+    bar.appendChild(tab);
+  }
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  tab.classList.add('active');
+  document.getElementById('panel-design').classList.add('active');
+  document.getElementById('designTableName').textContent = currentTable || 'users';
+}
+
+// ==================== AI 对话 ====================
+function sendAIMessage() {
+  const input = document.getElementById('aiChatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  
+  const container = document.getElementById('aiMessages');
+  // user msg
+  const userDiv = document.createElement('div');
+  userDiv.className = 'ai-message user';
+  userDiv.innerHTML = `<div>${msg}</div><div class="msg-time">我 · 刚刚</div>`;
+  container.appendChild(userDiv);
+  input.value = '';
+  
+  // simulate AI response
+  setTimeout(() => {
+    const aiDiv = document.createElement('div');
+    aiDiv.className = 'ai-message assistant';
+    let response = '';
+    if (msg.includes('优化') || msg.includes('性能')) {
+      response = `<div>🔍 SQL 优化分析结果：</div>
+        <div style="margin-top:8px;"><strong>发现的问题：</strong></div>
+        <div>1. 使用了 SELECT *，建议只查询需要的列</div>
+        <div>2. 缺少 WHERE 条件的过滤</div>
+        <div>3. ORDER BY 列没有索引</div>
+        <div style="margin-top:8px;"><strong>优化建议：</strong></div>
+        <div>• 为排序字段添加索引</div>
+        <div>• 限制返回行数 (LIMIT)</div>
+        <div>• 使用覆盖索引避免回表查询</div>`;
+    } else if (msg.includes('设计') || msg.includes('表结构')) {
+      response = `<div>📐 根据您的需求，我设计了以下表结构：</div>
+        <div class="sql-block">
+          <span style="color:var(--blue)">CREATE TABLE</span> inventory (<br>
+          &nbsp;&nbsp;id <span style="color:var(--orange)">INT</span> <span style="color:var(--blue)">AUTO_INCREMENT PRIMARY KEY</span>,<br>
+          &nbsp;&nbsp;product_id <span style="color:var(--orange)">INT NOT NULL</span>,<br>
+          &nbsp;&nbsp;warehouse_id <span style="color:var(--orange)">INT NOT NULL</span>,<br>
+          &nbsp;&nbsp;quantity <span style="color:var(--orange)">INT NOT NULL DEFAULT</span> 0,<br>
+          &nbsp;&nbsp;<span style="color:var(--blue)">INDEX</span> idx_product (product_id),<br>
+          &nbsp;&nbsp;<span style="color:var(--blue)">FOREIGN KEY</span> (product_id) <span style="color:var(--blue)">REFERENCES</span> products(id)<br>
+          ) <span style="color:var(--blue)">ENGINE</span>=InnoDB;
+        </div>`;
+    } else {
+      response = `<div>✅ 查询执行完成：</div>
+        <div class="sql-block">
+          <span style="color:var(--blue)">SELECT</span> * <span style="color:var(--blue)">FROM</span> orders <span style="color:var(--blue)">WHERE</span> created_at >= <span style="color:var(--orange)">DATE_SUB</span>(<span style="color:var(--orange)">CURDATE</span>(), <span style="color:var(--blue)">INTERVAL</span> 7 <span style="color:var(--blue)">DAY</span>)<br>
+          <span style="color:var(--blue)">ORDER BY</span> total_amount <span style="color:var(--blue)">DESC</span> <span style="color:var(--blue)">LIMIT</span> 10
+        </div>
+        <div>📊 返回 10 条记录，总金额最高: ¥31,998.00</div>`;
+    }
+    aiDiv.innerHTML = response + `<div class="msg-time">AI · 刚刚</div>`;
+    container.appendChild(aiDiv);
+    container.scrollTop = container.scrollHeight;
+    document.getElementById('statusInfo').textContent = '✅ AI 查询完成';
+  }, 600);
+  
+  container.scrollTop = container.scrollHeight;
+  document.getElementById('statusInfo').textContent = '⏳ AI 分析中...';
+}
+
+function quickAI(prompt) {
+  document.getElementById('aiChatInput').value = prompt;
+  sendAIMessage();
+}
+
+// ==================== 模态框 ====================
+function showModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+function selectModalTab(el, tab) {
+  document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['general','ssh','ssl','advanced'].forEach(id => {
+    document.getElementById('modal' + id.charAt(0).toUpperCase() + id.slice(1)).style.display = id === tab ? 'block' : 'none';
+  });
+}
+
+function testConn() {
+  document.getElementById('statusInfo').textContent = '⏳ 测试连接中...';
+  setTimeout(() => {
+    document.getElementById('statusInfo').textContent = '✅ 连接测试成功! MySQL 8.0.35';
+    notify('success', '连接测试成功！');
+  }, 800);
+}
+
+// ==================== 右键菜单 ====================
+let contextMenuTarget = null; // { type: 'cell'|'tree', rowData: {...}, tableName: '...' }
+
+// 对象树右键
+function showContextMenu(e, type) {
+  e.preventDefault();
+  contextMenuTarget = { type: 'tree' };
+  const menu = document.getElementById('contextMenu');
+  menu.style.left = e.clientX + 'px';
+  menu.style.top = e.clientY + 'px';
+  menu.classList.add('show');
+}
+
+// 数据网格右键 (查询结果/数据浏览)
+function showDataGridMenu(e, rowEl) {
+  e.preventDefault();
+  const cell = e.target.closest('td');
+  const row = rowEl || e.target.closest('tr');
+  if (!row || !row.closest('tbody')) return;
+  row.classList.add('selected');
+
+  // 检测点击的是哪一列
+  let clickedColIndex = -1;
+  let clickedColName = '';
+  if (cell) {
+    const table = row.closest('table');
+    const allCells = row.querySelectorAll('td');
+    for (let i = 0; i < allCells.length; i++) {
+      if (allCells[i] === cell) { clickedColIndex = i; break; }
+    }
+    // 找对应的表头名称
+    if (table && clickedColIndex >= 0) {
+      const headerCells = table.querySelectorAll('thead th');
+      let headerIdx = 0;
+      for (let i = 0; i < headerCells.length; i++) {
+        const th = headerCells[i];
+        if (th.querySelector('input[type=checkbox]')) continue;
+        if (headerIdx === clickedColIndex) {
+          clickedColName = th.textContent.replace(/[▲▼]/g,'').trim();
+          break;
+        }
+        headerIdx++;
+      }
+    }
+  }
+
+  // 提取行数据
+  const table = row.closest('table');
+  if (!table) return;
+  const headers = [];
+  table.querySelectorAll('thead th').forEach((th, i) => {
+    if (i > 0 || th.querySelector('input') === null) {
+      let txt = th.textContent.replace(/[▲▼]/g,'').trim();
+      if (txt && !txt.startsWith('#')) headers.push(txt);
+    }
+  });
+  const cells = row.querySelectorAll('td');
+  const rowData = {};
+  let dataIdx = 0;
+  for (let i = 0; i < cells.length; i++) {
+    const cell = cells[i];
+    if (cell.querySelector('input[type=checkbox]')) continue;
+    const txt = cell.textContent.trim();
+    if (i === 0 && /^\d+$/.test(txt) && txt.length < 6) continue;
+    const key = dataIdx < headers.length ? headers[dataIdx] : 'col' + dataIdx;
+    rowData[key] = txt;
+    dataIdx++;
+  }
+
+  contextMenuTarget = {
+    type: 'cell',
+    rowData: rowData,
+    tableName: currentTable || 'users',
+    cells: cells,
+    headerNames: headers,
+    clickedColIndex: clickedColIndex,
+    clickedColName: clickedColName,
+    tableEl: table
+  };
+
+  // 更新 WHERE IN 菜单提示
+  const hint = document.getElementById('whereInHint');
+  if (clickedColName) {
+    hint.textContent = `(${clickedColName})`;
+    hint.style.color = 'var(--accent)';
+  } else {
+    hint.textContent = '(点击目标列)';
+    hint.style.color = '';
+  }
+
+  const menu = document.getElementById('dataGridMenu');
+  menu.style.left = e.clientX + 'px';
+  menu.style.top = e.clientY + 'px';
+  menu.classList.add('show');
+}
+
+document.addEventListener('click', () => {
+  document.getElementById('contextMenu').classList.remove('show');
+  document.getElementById('dataGridMenu').classList.remove('show');
+});
+
+// ==================== 复制功能 ====================
+function copyToClipboard(text, label) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => {
+      notify('success', label + ' (已复制到剪贴板)');
+    });
+  } else {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    notify('success', label + ' (已复制到剪贴板)');
+  }
+}
+
+function escStr(v) {
+  if (v === null || v === undefined || v === '' || v === '(NULL)') return 'NULL';
+  if (!isNaN(v) && v !== '') return v;
+  return "'" + String(v).replace(/'/g, "\\'") + "'";
+}
+
+function getTargetRow() {
+  const t = contextMenuTarget;
+  if (!t || !t.rowData || Object.keys(t.rowData).length === 0) {
+    notify('error', '请先右键选择一行数据');
+    return null;
+  }
+  return t;
+}
+
+function copyCell() {
+  const t = contextMenuTarget;
+  if (!t || !t.cells) return;
+  // 找到鼠标所在的具体单元格
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0) {
+    const node = sel.getRangeAt(0).startContainer;
+    const td = node?.closest?.('td');
+    if (td) {
+      copyToClipboard(td.textContent.trim(), '单元格已复制');
+      return;
+    }
+  }
+  // fallback: 复制第一个非空单元格
+  for (const c of t.cells) {
+    const v = c.textContent.trim();
+    if (v && !/^\d+$/.test(v)) { copyToClipboard(v, '单元格已复制'); return; }
+  }
+  copyToClipboard(t.cells[1]?.textContent?.trim() || '', '单元格已复制');
+}
+
+function copyRow() {
+  const t = getTargetRow();
+  if (!t) return;
+  copyToClipboard(JSON.stringify(t.rowData, null, 2), '行 (JSON) 已复制');
+}
+
+function copyAsInsert() {
+  const t = getTargetRow();
+  if (!t) return;
+  const cols = Object.keys(t.rowData);
+  const vals = cols.map(c => escStr(t.rowData[c]));
+  const sql = `INSERT INTO \`${t.tableName}\` (\n  ` +
+    cols.map(c => '`' + c + '`').join(',\n  ') +
+    `\n) VALUES (\n  ` +
+    vals.join(',\n  ') +
+    `\n);`;
+  copyToClipboard(sql, 'INSERT 语句已复制');
+}
+
+function copyAsUpdate() {
+  const t = getTargetRow();
+  if (!t) return;
+  const cols = Object.keys(t.rowData);
+  // 假设第一列是主键 (id)
+  const pkCol = cols[0];
+  const pkVal = escStr(t.rowData[pkCol]);
+  const setClause = cols.slice(1).map(c => `  \`${c}\` = ${escStr(t.rowData[c])}`).join(',\n');
+  const sql = `UPDATE \`${t.tableName}\`\nSET\n${setClause}\nWHERE \`${pkCol}\` = ${pkVal};`;
+  copyToClipboard(sql, 'UPDATE 语句已复制');
+}
+
+function copyAsSelect() {
+  const t = getTargetRow();
+  if (!t) return;
+  const cols = Object.keys(t.rowData);
+  const pkCol = cols[0];
+  const pkVal = escStr(t.rowData[pkCol]);
+  const sql = `SELECT * FROM \`${t.tableName}\` WHERE \`${pkCol}\` = ${pkVal};`;
+  copyToClipboard(sql, 'SELECT 语句已复制');
+}
+
+function copyAsWhere() {
+  const t = getTargetRow();
+  if (!t) return;
+  const conds = Object.entries(t.rowData).map(([k, v]) => `\`${k}\` = ${escStr(v)}`);
+  const where = conds.join('\n  AND ');
+  copyToClipboard(where, 'WHERE 条件已复制');
+}
+
+function copyAsCSV() {
+  const t = getTargetRow();
+  if (!t) return;
+  const vals = Object.values(t.rowData).map(v => {
+    const s = String(v);
+    return s.includes(',') || s.includes('"') ? '"' + s.replace(/"/g, '""') + '"' : s;
+  });
+  copyToClipboard(vals.join(','), 'CSV 行已复制');
+}
+
+function copyAsJSON() {
+  copyRow(); // 同 JSON
+}
+
+function copyAsWhereIn() {
+  const t = contextMenuTarget;
+  if (!t) { notify('error', '请先在数据表上右键点击一列'); return; }
+
+  let colName = t.clickedColName;
+  let colIndex = t.clickedColIndex;
+  const table = t.tableEl;
+  if (!table) { notify('error', '找不到表格'); return; }
+
+  // 如果右键没有直接点到列，尝试检测
+  if (!colName || colIndex < 0) {
+    notify('error', '请在数据表的具体列上右键');
+    return;
+  }
+
+  // 收集值：从所有选中行 + 勾选行
+  const allRows = table.querySelectorAll('tbody tr');
+  const values = new Set();
+
+  allRows.forEach(function(row) {
+    // 选中行（高亮）或勾选框选中的行
+    const isSelected = row.classList.contains('selected');
+    const isChecked = row.querySelector('input[type=checkbox]')?.checked;
+
+    if (isSelected || isChecked) {
+      const cells = row.querySelectorAll('td');
+      let dataCellIdx = 0;
+      for (let i = 0; i < cells.length; i++) {
+        if (cells[i].querySelector('input[type=checkbox]')) continue;
+        if (i === 0 && /^\d+$/.test(cells[i].textContent.trim()) && cells[i].textContent.trim().length < 6) continue;
+        if (dataCellIdx === colIndex) {
+          const val = cells[i].textContent.trim();
+          if (val && val !== '(NULL)') values.add(val);
+          break;
+        }
+        dataCellIdx++;
+      }
+    }
+  });
+
+  // 如果没有任何行选中，就用当前右键的行
+  if (values.size === 0 && t.rowData) {
+    for (const [k, v] of Object.entries(t.rowData)) {
+      // 找到匹配列名的
+      if (k.toLowerCase() === colName.toLowerCase()) {
+        values.add(v);
+        break;
+      }
+    }
+  }
+
+  if (values.size === 0) { notify('error', '没有找到可选中的值'); return; }
+
+  // 判断数据类型：全是数字就不加引号, 否则加
+  const allNumeric = Array.from(values).every(function(v) {
+    return v !== '' && !isNaN(v) && v.indexOf(',') < 0;
+  });
+
+  const quoted = Array.from(values).map(function(v) {
+    if (allNumeric) return v;
+    return "'" + String(v).replace(/'/g, "\\'") + "'";
+  }).join(', ');
+
+  const sql = '`' + t.tableName + '`.`' + colName + '` IN (' + quoted + ')';
+  copyToClipboard(sql, 'WHERE IN 已复制 (' + values.size + ' 个值)');
+}
+
+// ==================== 通知 ====================
+function notify(type, message) {
+  const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+  const notif = document.createElement('div');
+  notif.className = 'notification ' + type;
+  notif.innerHTML = (icons[type] || '') + ' ' + message;
+  document.body.appendChild(notif);
+  setTimeout(() => notif.remove(), 3000);
+}
+
+// ==================== AI Copilot ====================
+function toggleAICopilot() {
+  document.getElementById('aiCopilot').classList.toggle('open');
+}
+
+function switchAIMode(el, mode) {
+  document.querySelectorAll('.ai-copilot-mode').forEach(m => m.classList.remove('active'));
+  el.classList.add('active');
+  const msgs = document.getElementById('aiCopilotMsgs');
+  const hints = {
+    ask: '💬 问我任何关于数据库的问题，我会用自然语言回答',
+    optimize: '⚡ 粘贴一条 SQL 查询，我会分析性能问题并给出优化建议',
+    design: '📐 描述你的业务需求，我会设计完整的数据库表结构',
+    generate: '🧪 选择一张表，我会根据字段类型生成符合业务规则的测试数据'
+  };
+  const titles = { ask: '问答', optimize: '优化', design: '设计', generate: '生成' };
+  msgs.innerHTML = `<div class="ai-copilot-msg system">👋 切换到 <strong>${titles[mode]}</strong> 模式<br><br>${hints[mode]}</div>`;
+}
+
+function sendAICopilot() {
+  const input = document.getElementById('aiCopilotInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  const msgs = document.getElementById('aiCopilotMsgs');
+  msgs.innerHTML += `<div class="ai-copilot-msg user">${msg}</div>`;
+  input.value = '';
+  // Simulate AI response
+  const thinking = document.createElement('div');
+  thinking.className = 'ai-copilot-msg system';
+  thinking.id = 'aiThinking';
+  thinking.innerHTML = '<div style="display:flex;align-items:center;gap:8px;"><span class="loading-spin"></span> AI 思考中...</div>';
+  msgs.appendChild(thinking);
+  msgs.scrollTop = msgs.scrollHeight;
+  setTimeout(() => {
+    document.getElementById('aiThinking')?.remove();
+    let response = '';
+    const mode = document.querySelector('.ai-copilot-mode.active');
+    const m = mode ? mode.textContent.trim().includes('优化') ? 'optimize' :
+                    mode.textContent.trim().includes('设计') ? 'design' :
+                    mode.textContent.trim().includes('生成') ? 'generate' : 'ask' : 'ask';
+    if (m === 'optimize') {
+      response = `🔍 SQL 优化分析完成<br><br><strong>发现的问题：</strong><br>1. 使用了 SELECT *，建议只查询需要的列<br>2. 缺少 WHERE 条件过滤，导致全表扫描<br>3. 没有 LIMIT 限制返回行数<br><br><strong>优化建议：</strong><br>• 指定需要的列，避免 SELECT *<br>• 添加 WHERE 条件缩小扫描范围<br>• 使用 LIMIT 限制返回行数<br>• 为 WHERE 和 ORDER BY 涉及的列加索引<br><br><div class="msg-sql">SELECT id, name, created_at FROM orders<br>WHERE created_at >= \'2026-01-01\'<br>ORDER BY created_at DESC<br>LIMIT 100</div><div class="msg-actions"><button onclick="copyToClipboard(\'SELECT id, name, created_at FROM orders WHERE created_at >= \\\'2026-01-01\\\' ORDER BY created_at DESC LIMIT 100\',\'优化后的 SQL 已复制\')">📋 复制优化后 SQL</button></div>`;
+    } else if (m === 'design') {
+      response = `📐 根据您的需求，我设计了以下表结构：<br><br><strong>📄 orders 订单表</strong><br>id INT PK AUTO_INCREMENT<br>user_id INT NOT NULL → users.id<br>product_id INT NOT NULL → products.id<br>quantity INT NOT NULL DEFAULT 1<br>total_amount DECIMAL(12,2) NOT NULL<br>status VARCHAR(20) DEFAULT \'pending\'<br>created_at DATETIME DEFAULT CURRENT_TIMESTAMP<br><br><div class="msg-actions"><button onclick="notify(\'info\',\'DDL 已复制到剪贴板\')">📋 复制 DDL</button><button onclick="notify(\'success\',\'表已创建\')">▶ 执行</button></div>`;
+    } else if (m === 'generate') {
+      response = `🧪 已生成 100 条测试数据 (预览前 5 条)<br><br><div class="msg-sql">[
+  {"id":1,"username":"张三","email":"zhangsan@test.com","phone":"13800138001","status":"active"},
+  {"id":2,"username":"李四","email":"lisi@test.com","phone":"13800138002","status":"active"},
+  {"id":3,"username":"王五","email":"wangwu@test.com","phone":"13800138003","status":"inactive"},
+  {"id":4,"username":"赵六","email":"zhaoliu@test.com","phone":"13800138004","status":"active"},
+  {"id":5,"username":"孙七","email":"sunqi@test.com","phone":"13800138005","status":"active"}
+]</div><div class="msg-actions"><button onclick="notify(\'success\',\'100 条数据已插入\')">📥 插入到数据库</button></div>`;
+    } else {
+      response = `✅ 查询分析完成<br><br>基于你的问题，我生成了以下 SQL：<br><br><div class="msg-sql">SELECT DATE(created_at) AS 日期, COUNT(*) AS 注册数<br>FROM users<br>WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)<br>GROUP BY DATE(created_at)<br>ORDER BY 日期 DESC</div><br>📊 这个查询会返回最近 7 天每天的注册用户数，按日期倒序排列。<br><br><div class="msg-actions"><button onclick="executeQuery();notify(\'info\',\'SQL 已填入编辑器\')">▶ 执行此查询</button><button onclick="copyToClipboard(\'SELECT DATE(created_at) AS 日期, COUNT(*) AS 注册数 FROM users WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) GROUP BY DATE(created_at) ORDER BY 日期 DESC\',\'SQL 已复制\')">📋 复制 SQL</button></div>`;
+    }
+    msgs.innerHTML += `<div class="ai-copilot-msg system">${response}</div>`;
+    msgs.scrollTop = msgs.scrollHeight;
+  }, 800);
+}
+
+function quickAICopilot(text) {
+  document.getElementById('aiCopilotInput').value = text;
+  sendAICopilot();
+}
+
+// ==================== AI Schema ====================
+function showAISchemaDesign() {
+  showModal('aiSchemaModal');
+}
+
+function generateAISchema() {
+  const result = document.getElementById('aiSchemaResult');
+  result.style.display = 'block';
+  result.innerHTML = '<div style="text-align:center;padding:20px;"><span class="loading-spin"></span><br><br>🤖 AI 正在分析业务需求...</div>';
+  setTimeout(() => {
+    result.innerHTML = `<div class="st"><div class="st-name">📄 users 用户表</div><div class="st-field">id INT(11) PRIMARY KEY AUTO_INCREMENT</div><div class="st-field">username VARCHAR(50) NOT NULL UNIQUE</div><div class="st-field">email VARCHAR(100) NOT NULL</div><div class="st-field">phone VARCHAR(20)</div><div class="st-field">address TEXT</div><div class="st-field">created_at DATETIME DEFAULT CURRENT_TIMESTAMP</div></div><div class="st"><div class="st-name">📄 products 商品表</div><div class="st-field">id INT(11) PRIMARY KEY AUTO_INCREMENT</div><div class="st-field">name VARCHAR(200) NOT NULL</div><div class="st-field">price DECIMAL(10,2) NOT NULL</div><div class="st-field">stock INT(11) NOT NULL DEFAULT 0</div><div class="st-field">category_id INT(11) → categories.id</div></div><div class="st"><div class="st-name">📄 orders 订单表</div><div class="st-field">id INT(11) PRIMARY KEY AUTO_INCREMENT</div><div class="st-field">user_id INT(11) NOT NULL → users.id</div><div class="st-field">total DECIMAL(12,2) NOT NULL</div><div class="st-field">status VARCHAR(20) DEFAULT 'pending'</div><div class="st-field">created_at DATETIME DEFAULT CURRENT_TIMESTAMP</div></div><div class="st-rel">🔗 users.id ← orders.user_id</div><div class="st-rel">🔗 categories.id ← products.category_id</div><div style="margin-top:10px;display:flex;gap:6px;"><button class="btn btn-sm btn-primary" onclick="notify('success','4 张表已成功部署到数据库')">▶ 部署到数据库</button><button class="btn btn-sm" onclick="notify('info','DDL 已复制到剪贴板')">📋 复制 DDL</button></div>`;
+  }, 1200);
+}
+
+// ==================== AI 数据生成 ====================
+function showAIDataGen() {
+  showModal('aiGenModal');
+}
+
+function generateAIData() {
+  const preview = document.getElementById('aiGenPreview');
+  preview.style.display = 'block';
+  preview.innerHTML = '<div style="text-align:center;padding:20px;"><span class="loading-spin"></span><br><br>🤖 AI 正在生成数据...</div>';
+  setTimeout(() => {
+    preview.innerHTML = `<table><thead><tr><th>id</th><th>username</th><th>email</th><th>phone</th><th>status</th></tr></thead><tbody>
+      <tr><td>1</td><td>张三</td><td>zhangsan@test.com</td><td>13800138001</td><td>active</td></tr>
+      <tr><td>2</td><td>李四</td><td>lisi@test.com</td><td>13800138002</td><td>active</td></tr>
+      <tr><td>3</td><td>王五</td><td>wangwu@test.com</td><td>13800138003</td><td>inactive</td></tr>
+      <tr><td>4</td><td>赵六</td><td>zhaoliu@test.com</td><td>13800138004</td><td>active</td></tr>
+      <tr><td>5</td><td>孙七</td><td>sunqi@test.com</td><td>13800138005</td><td>active</td></tr>
+      <tr><td colspan="5" style="text-align:center;color:var(--text-muted);">... 还有 95 条</td></tr>
+    </tbody></table>
+    <div style="margin-top:8px;display:flex;gap:6px;">
+      <button class="btn btn-sm btn-primary" onclick="notify('success','100 条数据已插入到 users 表')">📥 插入到数据库</button>
+      <button class="btn btn-sm" onclick="notify('info','JSON 已导出')">📤 导出为 JSON</button>
+    </div>`;
+  }, 1000);
+}
+
+// ==================== AI SQL 引擎集成 ====================
+function aiExplainSQL() {
+  const editor = document.getElementById('sqlEditor');
+  const sql = editor.value.trim();
+  if (!sql) { notify('error', '请在 SQL 编辑器中输入查询'); return; }
+  toggleAICopilot();
+  document.getElementById('aiCopilotInput').value = '请解释这段 SQL:\n' + sql;
+  setTimeout(() => sendAICopilot(), 500);
+}
+
+function aiOptimizeSQL() {
+  const editor = document.getElementById('sqlEditor');
+  const sql = editor.value.trim();
+  if (!sql) { notify('error', '请在 SQL 编辑器中输入查询'); return; }
+  // Switch to optimize mode
+  document.querySelectorAll('.ai-copilot-mode').forEach(m => m.classList.remove('active'));
+  document.querySelector('.ai-copilot-mode:nth-child(2)').classList.add('active');
+  toggleAICopilot();
+  document.getElementById('aiCopilotInput').value = '请优化这段 SQL:\n' + sql;
+  setTimeout(() => sendAICopilot(), 500);
+}
+
+function aiFixSQL() {
+  const editor = document.getElementById('sqlEditor');
+  const sql = editor.value.trim();
+  if (!sql) { notify('error', '请在 SQL 编辑器中输入查询'); return; }
+  toggleAICopilot();
+  document.getElementById('aiCopilotInput').value = '这段 SQL 有错误，请帮我修复:\n' + sql;
+  setTimeout(() => sendAICopilot(), 500);
+}
+
+function aiNLQuery() {
+  toggleAICopilot();
+  document.getElementById('aiCopilotInput').value = '';
+  document.getElementById('aiCopilotInput').placeholder = '用自然语言描述你想查什么...';
+  document.getElementById('aiCopilotInput').focus();
+}
+
+// ==================== 键盘快捷键 ====================
+document.addEventListener('keydown', function(e) {
+  if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); executeQuery(); }
+  if (e.ctrlKey && e.key === 'n') { e.preventDefault(); newQueryTab(); }
+  if (e.ctrlKey && e.key === 'r') { e.preventDefault(); executeQuery(); }
+});
+
+// ==================== 初始化 ====================
+document.getElementById('statusInfo').textContent = '就绪 · 原型模式 · 静态数据';
+console.log('OpenNavicat UI Prototype loaded');
+</script>
+</body>
+</html>

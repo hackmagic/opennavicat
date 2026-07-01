@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 320">
+  <rect width="600" height="320" fill="#1e1e2e"/>
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#89b4fa"/>
+      <stop offset="100%" stop-color="#4a74c6"/>
+    </linearGradient>
+  </defs>
+  <!-- Logo -->
+  <ellipse cx="80" cy="160" rx="28" ry="7" fill="rgba(137,180,250,0.12)" stroke="url(#g)" stroke-width="1.5"/>
+  <path d="M52 138 Q80 128 108 138 Q108 152 108 160 Q80 170 52 160 Q52 152 52 138Z" fill="rgba(137,180,250,0.08)" stroke="url(#g)" stroke-width="1.5"/>
+  <path d="M62 134 Q68 122 76 125 Q84 128 82 136" fill="none" stroke="url(#g)" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M82 136 Q78 126 86 123 Q92 121 94 130" fill="none" stroke="url(#g)" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="73" cy="128" r="2" fill="#89b4fa" opacity="0.8"/>
+  <!-- Title -->
+  <text x="130" y="155" font-family="Segoe UI, Arial, sans-serif" font-size="36" font-weight="700" fill="#cdd6f4">Open</text>
+  <text x="234" y="155" font-family="Segoe UI, Arial, sans-serif" font-size="36" font-weight="600" fill="#89b4fa">Navicat</text>
+  <text x="130" y="180" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#a6adc8">CLI-First, AI-Native 开源数据库管理工具</text>
+  <!-- Loading bar bg -->
+  <rect x="130" y="205" width="340" height="4" rx="2" fill="#313244"/>
+  <!-- Loading bar fill -->
+  <rect x="130" y="205" width="200" height="4" rx="2" fill="#89b4fa">
+    <animate attributeName="width" from="0" to="340" dur="2s" repeatCount="indefinite"/>
+  </rect>
+  <!-- Version -->
+  <text x="130" y="250" font-family="Segoe UI, Arial, sans-serif" font-size="11" fill="#585b70">v0.1.0</text>
+</svg>
