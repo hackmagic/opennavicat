@@ -2,6 +2,7 @@
 
 Compares two tables (source vs target), detects row-level differences,
 and generates INSERT / UPDATE / DELETE DML to sync target to source.
+Supports both MySQL and PostgreSQL.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ from dataclasses import dataclass, field
 
 from open_navicat.dal.connection_pool import _loop as pool_loop
 from open_navicat.dal.connection_pool import connection_pool
+from open_navicat.models.connection import ConnectionInfo
 from open_navicat.models.table_schema import ColumnInfo
 
 
@@ -67,15 +69,32 @@ class DataSyncEngine:
         if not src_conn or not tgt_conn:
             raise ConnectionError("Source or target connection not found")
 
+        # Detect engine from connector info
+        src_engine = getattr(src_conn, "_info", None)
+        is_pg = src_engine and getattr(src_engine, "engine", "mysql") == "postgresql"
+        q = '"' if is_pg else "`"
+
         # Get column metadata from source
-        col_info_sql = (
-            "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, "
-            "CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, "
-            "COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT "
-            "FROM information_schema.COLUMNS "
-            "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
-            "ORDER BY ORDINAL_POSITION"
-        )
+        if is_pg:
+            col_info_sql = (
+                "SELECT column_name, data_type, is_nullable, "
+                "character_maximum_length, numeric_precision, numeric_scale, "
+                "column_default, '', column_description("
+                "attrelid::regclass, attnum) "
+                "FROM information_schema.columns "
+                "JOIN pg_attribute ON attname = column_name "
+                "WHERE table_schema = %s AND table_name = %s "
+                "ORDER BY ordinal_position"
+            )
+        else:
+            col_info_sql = (
+                "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, "
+                "CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE, "
+                "COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT "
+                "FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
+                "ORDER BY ORDINAL_POSITION"
+            )
         col_meta = pool_loop.run_until_complete(
             src_conn.execute(col_info_sql, (source_database, source_table))
         )
@@ -87,7 +106,7 @@ class DataSyncEngine:
                 name=r[0], data_type=r[1], nullable=(r[2] == "YES"),
                 char_max_length=r[3], numeric_precision=r[4],
                 numeric_scale=r[5], default=r[6], comment=r[8] or "",
-                is_auto_increment="auto_increment" in (r[7] or ""),
+                is_auto_increment=(not is_pg and "auto_increment" in (r[7] or "")),
             )
             columns.append(col)
             col_names.append(r[0])
@@ -97,13 +116,22 @@ class DataSyncEngine:
             return result
 
         # Detect PK columns
-        pk_sql = (
-            "SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE "
-            "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
-            "AND CONSTRAINT_NAME='PRIMARY' ORDER BY ORDINAL_POSITION"
-        )
+        if is_pg:
+            pk_sql = (
+                "SELECT a.attname "
+                "FROM pg_index i "
+                "JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey) "
+                "WHERE i.indrelid = %s::regclass AND i.indisprimary "
+                "ORDER BY a.attnum"
+            )
+        else:
+            pk_sql = (
+                "SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE "
+                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
+                "AND CONSTRAINT_NAME='PRIMARY' ORDER BY ORDINAL_POSITION"
+            )
         pk_meta = pool_loop.run_until_complete(
-            src_conn.execute(pk_sql, (source_database, source_table))
+            src_conn.execute(pk_sql, (source_table if is_pg else (source_database, source_table)))
         )
         pk_cols = [r[0] for r in (pk_meta.rows or [])]
         if not pk_cols:
@@ -111,9 +139,9 @@ class DataSyncEngine:
         result.pk_columns = pk_cols
 
         # Fetch all rows from both sides
-        cols_csv = "`, `".join(col_names)
-        src_sql = f"SELECT `{cols_csv}` FROM `{source_database}`.`{source_table}`"
-        tgt_sql = f"SELECT `{cols_csv}` FROM `{target_database}`.`{target_table}`"
+        cols_csv = ", ".join(f"{q}{c}{q}" for c in col_names)
+        src_sql = f"SELECT {cols_csv} FROM {q}{source_database}{q}.{q}{source_table}{q}"
+        tgt_sql = f"SELECT {cols_csv} FROM {q}{target_database}{q}.{q}{target_table}{q}"
 
         src_rows = pool_loop.run_until_complete(src_conn.execute(src_sql))
         tgt_rows = pool_loop.run_until_complete(tgt_conn.execute(tgt_sql))
@@ -173,12 +201,18 @@ class DataSyncEngine:
 
         return result
 
-    def generate_sync_script(self, result: DataCompareResult) -> str:
-        """Generate DML script to sync target to source."""
+    def generate_sync_script(self, result: DataCompareResult, engine: str = "mysql") -> str:
+        """Generate DML script to sync target to source.
+
+        Args:
+            engine: "mysql" or "postgresql" — controls quoting.
+        """
         if not result.columns:
             return ""
+        is_pg = engine == "postgresql"
+        q = '"' if is_pg else "`"
         stmts: list[str] = []
-        db_table = f"`{result.target_table}`"
+        db_table = f"{q}{result.target_table}{q}"
 
         def quote(v):
             if v is None:
@@ -189,15 +223,15 @@ class DataSyncEngine:
 
         # INSERT
         for diff in result.inserts:
-            cols = ", ".join(f"`{k}`" for k in diff.set_values)
+            cols = ", ".join(f"{q}{k}{q}" for k in diff.set_values)
             vals = ", ".join(quote(v) for v in diff.set_values.values())
             stmts.append(f"INSERT INTO {db_table} ({cols}) VALUES ({vals});")
 
         # UPDATE
         for diff in result.updates:
-            sets = ", ".join(f"`{k}` = {quote(v)}" for k, v in diff.set_values.items())
+            sets = ", ".join(f"{q}{k}{q} = {quote(v)}" for k, v in diff.set_values.items())
             where = " AND ".join(
-                f"`{k}` = {quote(v)}" if v is not None else f"`{k}` IS NULL"
+                f"{q}{k}{q} = {quote(v)}" if v is not None else f"{q}{k}{q} IS NULL"
                 for k, v in diff.pk_values.items()
             )
             stmts.append(f"UPDATE {db_table} SET {sets} WHERE {where};")
@@ -205,7 +239,7 @@ class DataSyncEngine:
         # DELETE
         for diff in result.deletes:
             where = " AND ".join(
-                f"`{k}` = {quote(v)}" if v is not None else f"`{k}` IS NULL"
+                f"{q}{k}{q} = {quote(v)}" if v is not None else f"{q}{k}{q} IS NULL"
                 for k, v in diff.pk_values.items()
             )
             stmts.append(f"DELETE FROM {db_table} WHERE {where};")

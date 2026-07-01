@@ -200,8 +200,16 @@ class SyncEngine:
 
     # ── DDL generation ─────────────────────────────────────────────────
 
-    def generate_sync_script(self, diff: SyncDiff, target_db: str = "") -> list[str]:
-        """Generate DDL statements to synchronize target with source."""
+    def generate_sync_script(
+        self, diff: SyncDiff, target_db: str = "", engine: str = "mysql",
+    ) -> list[str]:
+        """Generate DDL statements to synchronize target with source.
+
+        Args:
+            engine: "mysql" or "postgresql" — controls quoting and DDL syntax.
+        """
+        is_pg = engine == "postgresql"
+        q = '"' if is_pg else "`"
         statements: list[str] = []
 
         # New tables
@@ -211,12 +219,12 @@ class SyncEngine:
 
         # Removed tables
         for name in diff.removed_tables:
-            tn = f"`{target_db}`.`{name}`" if target_db else f"`{name}`"
+            tn = f"{q}{target_db}{q}.{q}{name}{q}" if target_db else f"{q}{name}{q}"
             statements.append(f"DROP TABLE IF EXISTS {tn};")
 
         # Modified tables
         for td in diff.modified_tables:
-            tn = f"`{target_db}`.`{td.table_name}`" if target_db else f"`{td.table_name}`"
+            tn = f"{q}{target_db}{q}.{q}{td.table_name}{q}" if target_db else f"{q}{td.table_name}{q}"
 
             for col in td.added_columns:
                 statements.append(
@@ -224,45 +232,57 @@ class SyncEngine:
                 )
             for col_name in td.removed_columns:
                 statements.append(
-                    f"ALTER TABLE {tn} DROP COLUMN `{col_name}`;"
+                    f"ALTER TABLE {tn} DROP COLUMN {q}{col_name}{q};"
                 )
             for cd in td.modified_columns:
                 src = cd.source_column
                 if src:
-                    statements.append(
-                        f"ALTER TABLE {tn} MODIFY COLUMN {_column_sql(src)};"
-                    )
+                    if is_pg:
+                        statements.append(
+                            f"ALTER TABLE {tn} ALTER COLUMN {q}{cd.column_name}{q} "
+                            f"TYPE {src.data_type};"
+                        )
+                    else:
+                        statements.append(
+                            f"ALTER TABLE {tn} MODIFY COLUMN {_column_sql(src)};"
+                        )
 
             for idx in td.added_indexes:
-                cols = ", ".join(f"`{c}`" for c in idx.columns)
+                cols = ", ".join(f"{q}{c}{q}" for c in idx.columns)
                 if idx.is_primary:
                     statements.append(
                         f"ALTER TABLE {tn} ADD PRIMARY KEY ({cols});"
                     )
                 elif idx.is_unique:
                     statements.append(
-                        f"ALTER TABLE {tn} ADD UNIQUE INDEX `{idx.name}` ({cols});"
+                        f"CREATE UNIQUE INDEX {q}{idx.name}{q} ON {tn} ({cols});"
                     )
                 else:
                     statements.append(
-                        f"ALTER TABLE {tn} ADD INDEX `{idx.name}` ({cols});"
+                        f"CREATE INDEX {q}{idx.name}{q} ON {tn} ({cols});"
                     )
             for idx_name in td.removed_indexes:
-                statements.append(
-                    f"ALTER TABLE {tn} DROP INDEX `{idx_name}`;"
-                )
+                if is_pg:
+                    statements.append(f"DROP INDEX {q}{idx_name}{q};")
+                else:
+                    statements.append(f"ALTER TABLE {tn} DROP INDEX {q}{idx_name}{q};")
 
             for fk in td.added_foreign_keys:
                 statements.append(
-                    f"ALTER TABLE {tn} ADD CONSTRAINT `{fk.name}` "
-                    f"FOREIGN KEY (`{fk.column}`) REFERENCES "
-                    f"`{fk.ref_table}` (`{fk.ref_column}`) "
+                    f"ALTER TABLE {tn} ADD CONSTRAINT {q}{fk.name}{q} "
+                    f"FOREIGN KEY ({q}{fk.column}{q}) REFERENCES "
+                    f"{q}{fk.ref_table}{q} ({q}{fk.ref_column}{q}) "
                     f"ON DELETE {fk.on_delete} ON UPDATE {fk.on_update};"
                 )
             for fk_name in td.removed_foreign_keys:
-                statements.append(
-                    f"ALTER TABLE {tn} DROP FOREIGN KEY `{fk_name}`;"
-                )
+                if is_pg:
+                    statements.append(
+                        f"ALTER TABLE {tn} DROP CONSTRAINT {q}{fk_name}{q};"
+                    )
+                else:
+                    statements.append(
+                        f"ALTER TABLE {tn} DROP FOREIGN KEY {q}{fk_name}{q};"
+                    )
 
         return statements
 
