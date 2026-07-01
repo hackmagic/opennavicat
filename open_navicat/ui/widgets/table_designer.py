@@ -2,14 +2,30 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QFont, QColor
+from typing import TYPE_CHECKING
+
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QSplitter,
-    QTabWidget, QComboBox, QLineEdit, QCheckBox, QTextEdit,
-    QAbstractItemView, QMessageBox, QStyledItemDelegate,
+    QAbstractItemView,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QStyledItemDelegate,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
+
+from open_navicat.i18n import t
+
+if TYPE_CHECKING:
+    from open_navicat.models.table_schema import TableInfo
 
 SQL_TYPES = [
     "INT", "BIGINT", "SMALLINT", "TINYINT", "MEDIUMINT",
@@ -276,14 +292,13 @@ class TableDesignerWidget(QWidget):
         self._update_preview()
 
     def _copy_ddl(self) -> None:
-        from PySide6.QtGui import QClipboard, QGuiApplication
+        from PySide6.QtGui import QGuiApplication
         QGuiApplication.clipboard().setText(self._ddl_preview.toPlainText())
 
     def _update_preview(self) -> None:
         """Live DDL preview - shows ALTER TABLE diff by default, full DDL optional."""
         try:
-            from open_navicat.utils.sql_generator import generate_create_table, generate_alter_table
-            from open_navicat.utils.sql_formatter import beautify
+            from open_navicat.utils.sql_generator import generate_alter_table, generate_create_table
             new_info = self._collect_table_info()
             if not new_info or not new_info.columns:
                 self._ddl_preview.setPlainText("-- 添加字段后自动生成 DDL --")
@@ -405,14 +420,14 @@ class TableDesignerWidget(QWidget):
 
     def _save(self) -> None:
         """Execute ALTER TABLE to save changes to the database."""
-        from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+        from open_navicat.dal.connection_pool import _loop as pool_loop
         connector = connection_pool.get(self._connection_id)
         if not connector:
             QMessageBox.warning(self, "保存失败", "数据库连接已断开。")
             return
 
-        from open_navicat.utils.sql_generator import generate_create_table, generate_alter_table
         from open_navicat.services.metadata_service import metadata_service
+        from open_navicat.utils.sql_generator import generate_alter_table
 
         old_info = metadata_service.get_table_info(self._connection_id, self._database, self._table)
         new_info = self._collect_table_info()
@@ -425,7 +440,7 @@ class TableDesignerWidget(QWidget):
                 if sql:
                     result = pool_loop.run_until_complete(connector.execute(sql))
                     if result.success:
-                        QMessageBox.information(self, "保存成功", f"表结构已更新。")
+                        QMessageBox.information(self, "保存成功", "表结构已更新。")
                     else:
                         QMessageBox.warning(self, "保存失败", result.error_message or "执行 SQL 出错")
                 else:
@@ -443,7 +458,10 @@ class TableDesignerWidget(QWidget):
 
     def _collect_table_info(self) -> TableInfo:
         """Collect current table info from the UI fields."""
-        from open_navicat.models.table_schema import TableInfo, ColumnInfo, IndexInfo, ForeignKeyInfo
+        from open_navicat.models.table_schema import (
+            ColumnInfo,
+            TableInfo,
+        )
         columns = []
         for i in range(self._col_table.rowCount()):
             name_item = self._col_table.item(i, 1)

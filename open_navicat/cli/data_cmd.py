@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 import typer
-from typing import Optional
-
 from rich.console import Console
-from rich.table import Table
-from rich import print as rprint
 
 from open_navicat.services.connection_manager import connection_manager
 from open_navicat.services.query_engine import query_engine
@@ -198,7 +194,8 @@ def import_data(
         console.print("[red]Connection lost.[/red]")
         raise typer.Exit(1)
 
-    from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+    from open_navicat.dal.connection_pool import _loop as pool_loop
+    from open_navicat.dal.connection_pool import connection_pool
 
     for i in range(0, len(data), batch_size):
         batch = data[i:i + batch_size]
@@ -246,7 +243,8 @@ def generate_data(
             console.print("[yellow]Cancelled.[/yellow]")
             raise typer.Exit()
 
-    from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+    from open_navicat.dal.connection_pool import _loop as pool_loop
+    from open_navicat.dal.connection_pool import connection_pool
     connector = connection_pool.get(cid)
     inserted = pool_loop.run_until_complete(connector.batch_insert(database, table_name, rows))
     console.print(f"[green]✓ Inserted {inserted} rows into {table}[/green]")
@@ -339,7 +337,8 @@ def data_sync(
         console.print("[yellow]Cancelled.[/yellow]")
         return
 
-    from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+    from open_navicat.dal.connection_pool import _loop as pool_loop
+    from open_navicat.dal.connection_pool import connection_pool
     tgt_connector = connection_pool.get(tgt_conn)
     if not tgt_connector:
         console.print("[red]Target connection not found.[/red]")

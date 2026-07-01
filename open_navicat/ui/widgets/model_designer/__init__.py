@@ -14,24 +14,62 @@ import math
 from typing import Optional
 
 from PySide6.QtCore import (
-    Qt, QRectF, QPointF, QLineF, Signal, Slot,
+    QLineF,
+    QPointF,
+    QRectF,
+    Qt,
+    Signal,
+    Slot,
 )
 from PySide6.QtGui import (
-    QColor, QPen, QBrush, QFont, QPainter, QPainterPath,
-    QFontMetrics, QLinearGradient, QPolygonF,
+    QBrush,
+    QColor,
+    QFont,
+    QFontMetrics,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPolygonF,
 )
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGraphicsView, QGraphicsScene,
-    QGraphicsItem, QGraphicsPathItem, QGraphicsTextItem,
-    QPushButton, QLabel, QLineEdit, QComboBox, QDialog,
-    QFormLayout, QDialogButtonBox, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView, QSplitter, QFrame, QMessageBox,
-    QGroupBox, QScrollArea, QCheckBox, QTextEdit, QTabWidget,
-    QInputDialog, QListWidget, QListWidgetItem,
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QFrame,
+    QGraphicsItem,
+    QGraphicsPathItem,
+    QGraphicsScene,
+    QGraphicsTextItem,
+    QGraphicsView,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from open_navicat.models.table_schema import (
-    TableInfo, ColumnInfo, IndexInfo, ForeignKeyInfo,
+    ColumnInfo,
+    ForeignKeyInfo,
+    IndexInfo,
+    TableInfo,
 )
 
 # ── Constants ─────────────────────────────────────────────────────────────
@@ -309,7 +347,6 @@ class RelationItem(QGraphicsPathItem):
         )
 
         dx = tgt_center.x() - src_center.x()
-        dy = tgt_center.y() - src_center.y()
 
         # Determine best connection side (minimize line length)
         src_rect = QRectF(self._source.scenePos(),
@@ -343,7 +380,6 @@ class RelationItem(QGraphicsPathItem):
                              rect: QRectF) -> QPointF:
         """Find the closest point on the rect edge to from_pt."""
         # Check all four edges
-        center = rect.center()
         candidates = []
 
         # Top edge

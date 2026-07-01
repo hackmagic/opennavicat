@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import base64
-from typing import Optional
+import os
 
 from cryptography.fernet import Fernet
 from cryptography.hazmat.primitives import hashes

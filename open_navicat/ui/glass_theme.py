@@ -10,12 +10,22 @@ changes.
 from __future__ import annotations
 
 from open_navicat.ui.themes.acrylic import (  # noqa: F401
-    # Constants
-    GLASS_LIGHT, GLASS_MEDIUM, GLASS_DARK, GLASS_ACTIVE,
-    TEXT_PRIMARY, TEXT_SECONDARY, TEXT_ACCENT, TEXT_MUTED,
-    BORDER_LIGHT, BORDER_MEDIUM,
+    BORDER_LIGHT,
+    BORDER_MEDIUM,
+    BUTTON_GHOST_QSS,
     # Snippets
-    BUTTON_PRIMARY_QSS, BUTTON_GHOST_QSS,
+    BUTTON_PRIMARY_QSS,
+    GLASS_ACTIVE,
+    GLASS_DARK,
+    # Constants
+    GLASS_LIGHT,
+    GLASS_MEDIUM,
+    TEXT_ACCENT,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
+)
+from open_navicat.ui.themes.acrylic import (
     # Engine
     DwmEngine as AcrylicEngine,
 )

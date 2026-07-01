@@ -10,7 +10,6 @@ Provides:
 from __future__ import annotations
 
 import gzip
-import json
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -19,7 +18,6 @@ from typing import Optional
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.dal.local_config import local_db
 from open_navicat.models.connection import ConnectionInfo
-
 
 # ── Data model ───────────────────────────────────────────────────────────
 
@@ -187,8 +185,8 @@ class BackupService:
             connector = connection_pool.get(conn_info.id)
             if connector is None:
                 # Connect on-demand
-                from open_navicat.dal.mysql_connector import MySQLConnector
                 from open_navicat.dal.connection_pool import _loop as pool_loop
+                from open_navicat.dal.mysql_connector import MySQLConnector
                 connector = MySQLConnector()
                 pool_loop.run_until_complete(connector.connect(
                     host=conn_info.host,
@@ -197,7 +195,6 @@ class BackupService:
                     password=conn_info.password,
                     database="mysql",
                 ))
-                from open_navicat.dal.base_connector import check_connector
                 pool_loop.run_until_complete(
                     connector.execute(f"CREATE DATABASE IF NOT EXISTS `{database}`")
                 )

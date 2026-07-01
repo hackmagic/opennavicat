@@ -2,24 +2,24 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Slot
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
-    QLineEdit,
-    QComboBox,
-    QVBoxLayout,
-    QHBoxLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
+    QVBoxLayout,
 )
 
 from open_navicat.config import config
-from open_navicat.services.ai_service import ai_service
 from open_navicat.i18n import t
+from open_navicat.services.ai_service import ai_service
 
 
 class AIConfigDialog(QDialog):

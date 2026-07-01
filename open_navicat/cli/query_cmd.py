@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 import typer
-from typing import Optional
-
 from rich.console import Console
-from rich.table import Table
 from rich.syntax import Syntax
-from rich import print as rprint
 
 from open_navicat.services.connection_manager import connection_manager
 from open_navicat.services.query_engine import query_engine

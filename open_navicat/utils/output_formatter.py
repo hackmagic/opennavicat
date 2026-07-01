@@ -9,7 +9,6 @@ from typing import Any
 
 from rich.console import Console
 from rich.table import Table as RichTable
-from rich import print as rprint
 
 _console = Console()
 

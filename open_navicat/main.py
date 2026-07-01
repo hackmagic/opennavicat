@@ -8,8 +8,8 @@ Usage:
 
 from __future__ import annotations
 
-import sys
 import os
+import sys
 
 
 def cli_main() -> None:

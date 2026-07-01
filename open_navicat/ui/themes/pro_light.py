@@ -12,7 +12,7 @@ from typing import ClassVar
 
 from PySide6.QtWidgets import QApplication, QMainWindow
 
-from open_navicat.ui.themes import register_theme, Theme
+from open_navicat.ui.themes import Theme, register_theme
 
 logger = logging.getLogger("opennavicat.theme.prolight")
 

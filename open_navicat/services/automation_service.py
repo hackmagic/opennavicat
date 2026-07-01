@@ -12,12 +12,10 @@ Supported job types:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
-from typing import Any, Optional, Callable
+from typing import Any, Callable
 
 from open_navicat.dal.local_config import local_db
 from open_navicat.services.backup_service import backup_service
-
 
 # ── Automation Service ────────────────────────────────────────────────────
 

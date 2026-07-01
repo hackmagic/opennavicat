@@ -3,32 +3,26 @@
 from __future__ import annotations
 
 import csv
-from pathlib import Path
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWizard,
-    QWizardPage,
-    QVBoxLayout,
-    QHBoxLayout,
+    QButtonGroup,
+    QCheckBox,
+    QComboBox,
+    QFileDialog,
     QFormLayout,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
-    QComboBox,
-    QCheckBox,
-    QRadioButton,
     QPushButton,
-    QFileDialog,
-    QTableWidget,
-    QTableWidgetItem,
-    QHeaderView,
-    QGroupBox,
-    QMessageBox,
-    QButtonGroup,
+    QRadioButton,
     QSpinBox,
+    QVBoxLayout,
+    QWizard,
+    QWizardPage,
 )
 
-from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.i18n import t
 
 
@@ -395,7 +389,7 @@ class ExportWizard(QWizard):
                     f"<title>{self._table}</title>",
                     "<style>table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px 8px}th{background:#f5f5f5}</style>",
                     "</head><body>",
-                    f"<table><thead><tr>",
+                    "<table><thead><tr>",
                 ]
                 if has_header:
                     lines.append("".join(f"<th>{c}</th>" for c in cols))

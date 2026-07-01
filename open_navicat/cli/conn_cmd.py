@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import typer
-from typing import Optional
-
 from rich.console import Console
-from rich.table import Table
-from rich import print as rprint
 
-from open_navicat.services.connection_manager import connection_manager
 from open_navicat.models.connection import ConnectionInfo
+from open_navicat.services.connection_manager import connection_manager
 from open_navicat.utils.output_formatter import format_output
 
 conn_app = typer.Typer(name="conn", help="Manage database connections", no_args_is_help=True)
@@ -92,12 +88,18 @@ def edit_connection(
         console.print(f"[red]Connection '{name}' not found.[/red]")
         raise typer.Exit(1)
 
-    if new_name: target.name = new_name
-    if host: target.host = host
-    if port: target.port = port
-    if user: target.user = user
-    if password: target.password = password
-    if database: target.database = database
+    if new_name:
+        target.name = new_name
+    if host:
+        target.host = host
+    if port:
+        target.port = port
+    if user:
+        target.user = user
+    if password:
+        target.password = password
+    if database:
+        target.database = database
 
     from open_navicat.dal.local_config import local_db
     local_db.save_connection(target)

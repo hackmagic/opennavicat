@@ -4,16 +4,23 @@ from __future__ import annotations
 
 import logging
 
-from datetime import datetime
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QTextEdit, QSplitter, QMessageBox,
+    QAbstractItemView,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from open_navicat.dal.local_config import local_db
-from open_navicat.i18n import t
 
 _log = logging.getLogger(__name__)
 

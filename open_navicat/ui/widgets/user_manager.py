@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QMessageBox, QInputDialog, QDialog, QFormLayout, QLineEdit,
-    QDialogButtonBox, QCheckBox,
+    QAbstractItemView,
+    QCheckBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
-from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+
+from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import connection_pool
 
 
 class UserManagerWidget(QWidget):
@@ -120,7 +131,7 @@ class UserManagerWidget(QWidget):
             return
         user = self._table.item(row, 0).text()
         host = self._table.item(row, 1).text()
-        if QMessageBox.question(self, "确认", f"删除用户 '{user}'@'{host}'？", 
+        if QMessageBox.question(self, "确认", f"删除用户 '{user}'@'{host}'？",
                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
         connector = connection_pool.get(self._connection_id)

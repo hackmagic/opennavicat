@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import socket
 import threading
-from typing import Optional
 
 import paramiko
 

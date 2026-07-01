@@ -2,29 +2,26 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Slot
 from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
-    QLineEdit,
-    QSpinBox,
-    QCheckBox,
-    QGroupBox,
-    QVBoxLayout,
     QHBoxLayout,
-    QTabWidget,
-    QWidget,
+    QLineEdit,
     QMessageBox,
     QPushButton,
-    QLabel,
-    QComboBox,
+    QSpinBox,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
-from open_navicat.models.connection import ConnectionInfo
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.i18n import t
+from open_navicat.models.connection import ConnectionInfo
 
 
 class ConnectionDialog(QDialog):

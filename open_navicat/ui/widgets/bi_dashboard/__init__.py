@@ -12,17 +12,37 @@ from __future__ import annotations
 import json
 import random
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any, Optional
 
-from PySide6.QtCore import Qt, Signal, Slot, QRectF, QTimer
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QLinearGradient
+from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, Slot
+from PySide6.QtGui import QBrush, QColor, QFont, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QTextEdit, QSplitter, QFrame, QMessageBox,
-    QDialog, QDialogButtonBox, QFormLayout, QLineEdit,
-    QGridLayout, QScrollArea, QFileDialog, QInputDialog,
-    QSizePolicy, QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView, QTabWidget, QGroupBox, QCheckBox,
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 # ── Color Palette ─────────────────────────────────────────────────────────
@@ -577,7 +597,6 @@ class BIDashboardWidget(QWidget):
     def _save_dashboard(self) -> None:
         """Save current dashboard config to local settings."""
         from open_navicat.config import config
-        import json
         data = {
             "sql": self._sql_edit.toPlainText(),
             "charts": [

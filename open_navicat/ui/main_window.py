@@ -5,24 +5,38 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtWidgets import (
-    QMainWindow, QSplitter, QTabWidget, QMenuBar, QMenu,
-    QStatusBar, QMessageBox, QWidget, QHBoxLayout, QVBoxLayout,
-    QLabel, QPushButton, QFrame, QApplication,
-)
 from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtWidgets import (
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMainWindow,
+    QMenu,
+    QMessageBox,
+    QPushButton,
+    QStatusBar,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from open_navicat import __app_name__, __version__
 from open_navicat.config import config
 from open_navicat.i18n import t
-from open_navicat.ui.widgets import (
-    ObjectBrowser, SQLEditorWidget, AICopilotSidebar,
-    TableDesignerWidget, SchemaSyncPanel, BackupPanel,
-    DataSyncPanel, SchedulerPanel,
-)
 from open_navicat.ui.dialogs.connection_dialog import ConnectionDialog
 from open_navicat.ui.dialogs.settings_dialog import SettingsDialog
 from open_navicat.ui.themes import apply_theme
+from open_navicat.ui.widgets import (
+    AICopilotSidebar,
+    BackupPanel,
+    DataSyncPanel,
+    ObjectBrowser,
+    SchedulerPanel,
+    SchemaSyncPanel,
+    SQLEditorWidget,
+    TableDesignerWidget,
+)
 
 logger = logging.getLogger("opennavicat.mainwindow")
 
@@ -479,8 +493,8 @@ class MainWindow(QMainWindow):
         if not conn_id:
             QMessageBox.warning(self, t("common.notice"), t("prompt.need_connection"))
             return
-        from open_navicat.ui.widgets.data_dictionary import DataDictionaryWidget
         from open_navicat.dal.connection_pool import connection_pool
+        from open_navicat.ui.widgets.data_dictionary import DataDictionaryWidget
         connector = connection_pool.get(conn_id)
         if not connector:
             return
@@ -590,8 +604,8 @@ class MainWindow(QMainWindow):
         self._workspace.setCurrentIndex(idx)
 
     def open_query_tab(self, connection_id: str, database: str = "", sql_text: str = "", query_id: int = 0) -> None:
-        from open_navicat.ui.widgets.sql_editor import SQLEditorWidget
         from open_navicat.dal.local_config import local_db
+        from open_navicat.ui.widgets.sql_editor import SQLEditorWidget
         editor = SQLEditorWidget(connection_id, database, parent=self._workspace)
         if sql_text:
             editor.set_sql(sql_text)
@@ -638,9 +652,10 @@ class MainWindow(QMainWindow):
         if not active:
             QMessageBox.information(self, t("menu.edit.advanced_find"), "请先连接到数据库。")
             return
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QListWidget, QLabel
+        from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QListWidget, QVBoxLayout
+
+        from open_navicat.dal.connection_pool import connection_pool
         from open_navicat.services.metadata_service import metadata_service
-        from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
         connector = connection_pool.get(active)
         if not connector:
             return
@@ -708,7 +723,6 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _toggle_focus_mode(self) -> None:
-        from open_navicat.config import config
         hidden = self._object_browser.isHidden()
         self._object_browser.setVisible(hidden)
         self._ai_copilot.setVisible(hidden)

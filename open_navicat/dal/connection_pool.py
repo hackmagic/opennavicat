@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Optional
 
 from open_navicat.dal.base_connector import BaseConnector
 from open_navicat.dal.ssh_tunnel import SSHTunnel

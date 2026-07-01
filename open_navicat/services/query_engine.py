@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
-from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.models.query_result import QueryResult
 
 
@@ -15,7 +14,6 @@ class QueryEngine:
         connector = connection_pool.get(connection_id)
         if not connector:
             return QueryResult(success=False, error_message="No active connection")
-        import asyncio
         loop = pool_loop
         return loop.run_until_complete(connector.execute(sql))
 
@@ -48,7 +46,6 @@ class QueryEngine:
         connector = connection_pool.get(connection_id)
         if not connector:
             return 0
-        import asyncio
         loop = pool_loop
         safe_db = database.replace("`", "``")
         safe_table = table.replace("`", "``")

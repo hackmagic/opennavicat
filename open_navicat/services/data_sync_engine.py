@@ -7,9 +7,9 @@ and generates INSERT / UPDATE / DELETE DML to sync target to source.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
-from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.models.table_schema import ColumnInfo
 
 

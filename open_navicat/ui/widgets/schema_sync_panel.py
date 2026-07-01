@@ -4,19 +4,25 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import Qt, Slot, QTimer
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import QTimer
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QTreeWidget, QTreeWidgetItem, QTextEdit,
-    QSplitter, QCheckBox, QFrame, QAbstractItemView, QMessageBox,
-    QDialog, QDialogButtonBox, QPlainTextEdit,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from open_navicat.services.metadata_service import metadata_service
-from open_navicat.services.connection_manager import connection_manager
-from open_navicat.services.sync_engine import sync_engine, SyncDiff
-from open_navicat.utils.sql_formatter import beautify
+from open_navicat.services.sync_engine import SyncDiff, sync_engine
 
 
 class _ScriptPreviewDialog(QDialog):

@@ -4,15 +4,29 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
-    QApplication, QColorDialog,
-    QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QVBoxLayout,
-    QLineEdit, QComboBox, QSpinBox, QCheckBox, QMessageBox,
-    QTabWidget, QWidget, QGroupBox, QLabel, QPushButton, QSlider,
-    QFrame, QGridLayout, QRadioButton,
+    QApplication,
+    QCheckBox,
+    QColorDialog,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QRadioButton,
+    QSlider,
+    QSpinBox,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from open_navicat.config import config
-from open_navicat.i18n import t, set_language
+from open_navicat.i18n import set_language, t
 from open_navicat.ui.themes import list_themes
 
 
@@ -402,7 +416,6 @@ class SettingsDialog(QDialog):
     # ---- helpers ----
 
     def _pick_color(self, key: str, btn: QPushButton) -> None:
-        current = btn.palette().color(self.backgroundRole()).name()
         color = QColorDialog.getColor(parent=self)
         if color.isValid():
             btn.setStyleSheet(f"background-color: {color.name()}; border: 1px solid #888;")

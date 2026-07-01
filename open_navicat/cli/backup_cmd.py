@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import typer
-from typing import Optional
 from pathlib import Path
 
+import typer
 from rich.console import Console
-from rich import print as rprint
 
 from open_navicat.services.connection_manager import connection_manager
 from open_navicat.utils.output_formatter import format_output
@@ -190,7 +188,6 @@ def schedule_backup(
 ) -> None:
     """Schedule periodic backups using cron expression."""
     # Store in local config
-    import json
     from open_navicat.dal.local_config import local_db
 
     job = {

@@ -4,15 +4,22 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QTabWidget,
-    QAbstractItemView, QComboBox,
+    QAbstractItemView,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
-from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
-from open_navicat.i18n import t
+from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import connection_pool
 
 _log = logging.getLogger(__name__)
 

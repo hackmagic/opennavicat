@@ -9,10 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
-from open_navicat.models.table_schema import TableInfo, ColumnInfo, IndexInfo, ForeignKeyInfo
+from open_navicat.models.table_schema import ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo
 from open_navicat.services.metadata_service import metadata_service
-from open_navicat.utils.sql_generator import generate_create_table, _column_sql
-
+from open_navicat.utils.sql_generator import _column_sql, generate_create_table
 
 # ── Diff data models ──────────────────────────────────────────────────────
 

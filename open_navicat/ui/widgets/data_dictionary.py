@@ -6,13 +6,21 @@ import logging
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QSplitter,
-    QComboBox, QTextEdit, QAbstractItemView,
+    QAbstractItemView,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QPushButton,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
-from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
-from open_navicat.i18n import t
+from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import connection_pool
 
 _log = logging.getLogger(__name__)
 
@@ -144,7 +152,7 @@ class DataDictionaryWidget(QWidget):
             return
 
         lines = [
-            f"<!DOCTYPE html><html><head><meta charset='utf-8'>",
+            "<!DOCTYPE html><html><head><meta charset='utf-8'>",
             f"<title>数据字典 - {self._database}</title>",
             "<style>body{font-family:sans-serif;margin:20px}table{border-collapse:collapse;width:100%;margin:10px 0}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}h2{color:#333}h3{color:#555}</style>",
             f"</head><body><h1>数据字典 — {self._database}</h1>",

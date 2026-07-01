@@ -2,18 +2,28 @@
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
-from PySide6.QtCore import Qt, Slot
+from PySide6.QtCore import Slot
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QTableWidget, QTableWidgetItem,
-    QFrame, QMessageBox, QProgressBar, QTabWidget,
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
 from open_navicat.services.connection_manager import connection_manager
+from open_navicat.services.data_sync_engine import DataCompareResult, data_sync_engine
 from open_navicat.services.metadata_service import metadata_service
-from open_navicat.services.data_sync_engine import data_sync_engine, DataCompareResult
 
 _log = logging.getLogger(__name__)
 
@@ -308,7 +318,8 @@ class DataSyncPanel(QWidget):
         if not tgt_conn:
             return
 
-        from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
         connector = connection_pool.get(tgt_conn)
         if not connector:
             QMessageBox.warning(self, "错误", "目标连接不可用。")

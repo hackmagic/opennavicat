@@ -22,7 +22,7 @@ from typing import ClassVar
 
 from PySide6.QtWidgets import QApplication, QMainWindow
 
-from open_navicat.ui.themes import register_theme, Theme
+from open_navicat.ui.themes import Theme, register_theme
 
 logger = logging.getLogger("opennavicat.theme.prodark")
 
@@ -210,7 +210,7 @@ QMenu {{
     margin: 2px;
 }}
 QMenu::item {{
-    padding: {S6 if False else S4} {S24} {S6 if False else S4} {S16};
+    padding: {S4} {S24} {S4} {S16};
     font-size: {FS_12};
     color: {Color.TEXT_SECONDARY};
 }}

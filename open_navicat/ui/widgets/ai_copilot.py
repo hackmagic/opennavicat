@@ -4,24 +4,35 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, Signal, Slot, QTimer, QPropertyAnimation, QEasingCurve, Property
-from PySide6.QtGui import QFont, QColor, QTextCursor, QIcon, QPixmap
+from PySide6.QtCore import Property, QEasingCurve, QPropertyAnimation, Qt, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QScrollArea, QFrame, QInputDialog, QLineEdit,
-    QSizePolicy, QProgressBar, QApplication,
+    QApplication,
+    QFrame,
+    QHBoxLayout,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QVBoxLayout,
+    QWidget,
 )
 
+from open_navicat.i18n import t
 from open_navicat.services.ai_service import ai_service
 from open_navicat.services.connection_manager import connection_manager
 from open_navicat.services.metadata_service import metadata_service
-from open_navicat.i18n import t
 
 _log = logging.getLogger(__name__)
 from open_navicat.ui.glass_theme import (
-    GLASS_LIGHT, GLASS_MEDIUM, GLASS_DARK, GLASS_ACTIVE,
-    BORDER_LIGHT, BORDER_MEDIUM,
-    TEXT_PRIMARY, TEXT_SECONDARY, TEXT_ACCENT, TEXT_MUTED,
+    BORDER_LIGHT,
+    BORDER_MEDIUM,
+    GLASS_DARK,
+    GLASS_LIGHT,
+    TEXT_ACCENT,
+    TEXT_MUTED,
+    TEXT_PRIMARY,
+    TEXT_SECONDARY,
 )
 
 
@@ -196,7 +207,7 @@ class AICopilotSidebar(QWidget):
         # Messages area — glass
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet(f"background: transparent; border: none;")
+        scroll.setStyleSheet("background: transparent; border: none;")
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self._messages_widget = QWidget(scroll)
@@ -309,8 +320,9 @@ class AICopilotSidebar(QWidget):
         """Save conversation history to local config."""
         if not self._conversation_history:
             return
+        from PySide6.QtWidgets import QLineEdit
+
         from open_navicat.config import config
-        from PySide6.QtWidgets import QInputDialog, QLineEdit
         name, ok = QInputDialog.getText(self, "保存对话", "对话名称:", QLineEdit.EchoMode.Normal,
                                         f"对话 {len(self._conversation_history)} 条")
         if ok and name:
@@ -325,7 +337,7 @@ class AICopilotSidebar(QWidget):
         saved = config.get("ai_conversations", [])
         if not saved:
             return
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QDialogButtonBox, QLabel
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QListWidget, QVBoxLayout
         dlg = QDialog(self.window())
         dlg.setWindowTitle("加载对话")
         dlg.setMinimumWidth(350)

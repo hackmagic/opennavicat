@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from open_navicat.services.connection_manager import connection_manager, ConnectionManager
-from open_navicat.services.metadata_service import metadata_service, MetadataService
-from open_navicat.services.query_engine import query_engine, QueryEngine
-from open_navicat.services.ai_service import ai_service, AIService
+from open_navicat.services.ai_service import AIService, ai_service
+from open_navicat.services.connection_manager import ConnectionManager, connection_manager
+from open_navicat.services.metadata_service import MetadataService, metadata_service
+from open_navicat.services.query_engine import QueryEngine, query_engine
 
 __all__ = [
     "connection_manager",

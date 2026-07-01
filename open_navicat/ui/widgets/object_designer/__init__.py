@@ -8,23 +8,46 @@ Supports:
 
 from __future__ import annotations
 
-from typing import Optional, Any
 from enum import Enum, auto
+from typing import Any, Optional
 
 from PySide6.QtCore import Qt, Signal, Slot
-from PySide6.QtGui import QFont, QColor, QSyntaxHighlighter, QTextCharFormat
+from PySide6.QtGui import QColor, QFont, QSyntaxHighlighter, QTextCharFormat
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView, QComboBox, QLineEdit, QTextEdit,
-    QCheckBox, QFormLayout, QGroupBox, QSplitter, QFrame,
-    QMessageBox, QDialog, QDialogButtonBox, QScrollArea,
-    QTreeWidget, QTreeWidgetItem, QListWidget, QListWidgetItem,
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QFrame,
     QGridLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from open_navicat.models.table_schema import (
-    TableInfo, ColumnInfo, IndexInfo, ForeignKeyInfo,
+    ColumnInfo,
+    ForeignKeyInfo,
+    IndexInfo,
+    TableInfo,
 )
 
 # ── Data Types ────────────────────────────────────────────────────────────
@@ -367,8 +390,8 @@ class _TableDesignerTab(QWidget):
             self._fk_table.removeRow(row)
 
     def _update_preview(self) -> None:
-        from open_navicat.utils.sql_generator import generate_create_table
         from open_navicat.utils.sql_formatter import beautify
+        from open_navicat.utils.sql_generator import generate_create_table
         info = self.get_table_info()
         if info and info.columns:
             ddl = generate_create_table(info)
@@ -596,7 +619,8 @@ class _ViewDesignerTab(QWidget):
             QMessageBox.warning(self, "错误", "请选择数据库。")
             return
 
-        from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
         connector = connection_pool.get(self._connection_id)
         if not connector:
             QMessageBox.warning(self, "错误", "数据库连接已断开。")
@@ -933,7 +957,8 @@ class ObjectDesignerWidget(QWidget):
 
     def _execute_ddl(self, ddl: str, dialog: QDialog) -> None:
         """Execute DDL against the connected database."""
-        from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
         connector = connection_pool.get(self._connection_id)
         if not connector:
             QMessageBox.warning(self, "执行失败", "数据库连接已断开。")

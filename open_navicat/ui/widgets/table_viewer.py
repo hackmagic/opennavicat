@@ -4,33 +4,29 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, Slot, QTimer
-from PySide6.QtGui import QFont, QColor, QAction
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
+    QAbstractItemView,
+    QComboBox,
+    QDialog,
     QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
-    QHeaderView,
-    QLabel,
-    QPushButton,
-    QSpinBox,
-    QLineEdit,
-    QCheckBox,
-    QGroupBox,
-    QFormLayout,
-    QToolBar,
-    QComboBox,
-    QAbstractItemView,
     QTabWidget,
-    QDialog,
-    QMessageBox,
+    QToolBar,
+    QVBoxLayout,
+    QWidget,
 )
 
-from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
-from open_navicat.models import QueryResult
+from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.i18n import t
+from open_navicat.models import QueryResult
 
 _log = logging.getLogger(__name__)
 
@@ -279,9 +275,7 @@ class TableViewerWidget(QWidget):
         from open_navicat.config import config as _cfg
         thousand_sep = _cfg.get("records.thousand_sep", False)
         null_str = _cfg.get("data_viewer.null_string", "(NULL)")
-        date_fmt = _cfg.get("records.date_fmt", "")
-        time_fmt = _cfg.get("records.time_fmt", "")
-        datetime_fmt = _cfg.get("records.datetime_fmt", "")
+
 
         if result.is_select:
             cols = [c.name for c in result.columns]
@@ -429,14 +423,14 @@ class TableViewerWidget(QWidget):
             # Reload to show the new row
             self._current_page = 0
             self._load_page()
-        except Exception as e:
+        except Exception:
             # If bare INSERT fails (e.g. NOT NULL columns), use a smarter approach:
             # get column names and insert with NULL/defaults for each
             try:
                 info_sql = (
-                    f"SELECT COLUMN_NAME FROM information_schema.COLUMNS "
-                    f"WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s "
-                    f"ORDER BY ORDINAL_POSITION"
+                    "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s "
+                    "ORDER BY ORDINAL_POSITION"
                 )
                 rows = pool_loop.run_until_complete(
                     connector._fetch_all(info_sql, (self._database, self._table))
@@ -600,8 +594,10 @@ class TableViewerWidget(QWidget):
 
     def _generate_test_data(self) -> None:
         """Generate test data using AI and insert into the table."""
-        from PySide6.QtWidgets import QInputDialog, QMessageBox
-        from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+        from PySide6.QtWidgets import QInputDialog
+
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
         from open_navicat.services.ai_service import ai_service
 
         count, ok = QInputDialog.getInt(self, "生成测试数据", "生成行数:", 10, 1, 1000)
@@ -615,9 +611,9 @@ class TableViewerWidget(QWidget):
         self._status_msg.setText("⏳ 正在生成数据...")
         try:
             # Get table info for schema
-            info_sql = f"SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION"
+            info_sql = "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION"
             rows = pool_loop.run_until_complete(connector._fetch_all(info_sql, (self._database, self._table)))
-            from open_navicat.models.table_schema import TableInfo, ColumnInfo
+            from open_navicat.models.table_schema import ColumnInfo, TableInfo
             table_info = TableInfo(name=self._table, database=self._database)
             for r in rows:
                 table_info.columns.append(ColumnInfo(

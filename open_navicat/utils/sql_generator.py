@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
-from open_navicat.models.table_schema import TableInfo, ColumnInfo, IndexInfo, ForeignKeyInfo
+from open_navicat.models.table_schema import ColumnInfo, TableInfo
 
 
 def generate_create_table(table: TableInfo, include_if_not_exists: bool = True) -> str:

@@ -6,25 +6,36 @@ AutomationService for scheduled jobs.
 
 from __future__ import annotations
 
-import uuid
 from pathlib import Path
-from datetime import datetime
 from typing import Optional
 
-from PySide6.QtCore import Qt, Slot, QTimer
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTableWidget, QTableWidgetItem, QHeaderView, QFrame,
-    QAbstractItemView, QMessageBox, QFileDialog, QDialog,
-    QFormLayout, QLineEdit, QComboBox, QCheckBox, QDialogButtonBox,
-    QGroupBox, QProgressBar, QTabWidget, QSplitter,
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFileDialog,
+    QFormLayout,
+    QFrame,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
 )
 
-from open_navicat.i18n import t
-from open_navicat.services.backup_service import backup_service, BackupRecord
-from open_navicat.services.automation_service import automation_service
 from open_navicat.dal.local_config import local_db
-
+from open_navicat.i18n import t
+from open_navicat.services.automation_service import automation_service
+from open_navicat.services.backup_service import backup_service
 
 # ── Dialogs ──────────────────────────────────────────────────────────────
 

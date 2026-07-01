@@ -4,22 +4,36 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, Signal, Slot, QPoint
+from PySide6.QtCore import QPoint, Qt, Signal, Slot
 from PySide6.QtGui import (
-    QFont, QKeySequence, QSyntaxHighlighter, QTextCharFormat,
-    QColor, QAction, QIcon, QClipboard,
+    QColor,
+    QFont,
+    QKeySequence,
+    QSyntaxHighlighter,
+    QTextCharFormat,
 )
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QPlainTextEdit, QPushButton,
-    QSplitter, QTableWidget, QTableWidgetItem, QLabel, QToolBar,
-    QHeaderView, QComboBox, QAbstractItemView, QMenu, QApplication,
-    QLineEdit, QTextEdit,
+    QAbstractItemView,
+    QApplication,
+    QComboBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMenu,
+    QPlainTextEdit,
+    QPushButton,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.dal.local_config import local_db
-from open_navicat.models import QueryResult
 from open_navicat.i18n import t
+from open_navicat.models import QueryResult
 
 _log = logging.getLogger(__name__)
 
@@ -523,7 +537,7 @@ class SQLEditorWidget(QWidget):
         ed_layout.addWidget(snippet_bar)
 
         # Ctrl+F shortcut for find
-        from PySide6.QtGui import QKeySequence, QShortcut
+        from PySide6.QtGui import QShortcut
         self._find_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
         self._find_shortcut.activated.connect(lambda: self._find_bar.setVisible(not self._find_bar.isVisible()))
 
@@ -629,7 +643,8 @@ class SQLEditorWidget(QWidget):
 
     def _load_databases(self) -> None:
         """Populate the database selector dropdown with available databases."""
-        from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
         from open_navicat.models import DatabaseInfo
 
         connector = connection_pool.get(self._connection_id)
@@ -653,8 +668,9 @@ class SQLEditorWidget(QWidget):
     def _setup_completer(self, connector, dbs) -> None:
         """Build autocomplete list: SQL keywords + table names from all databases."""
         from PySide6.QtWidgets import QCompleter
-        from PySide6.QtCore import QStringListModel
+
         from open_navicat.config import config as _cfg
+        from open_navicat.dal.connection_pool import _loop as pool_loop
 
         if not _cfg.get("code_completion.enabled", True):
             return
@@ -818,8 +834,9 @@ class SQLEditorWidget(QWidget):
         if not connector:
             self._status_label.setText(t("sql_editor.status_disconnected"))
             return
-        from open_navicat.dal.connection_pool import _loop as pool_loop
         import sqlparse
+
+        from open_navicat.dal.connection_pool import _loop as pool_loop
 
         self._cancelled = False
         self._set_running_state(True)
@@ -932,7 +949,7 @@ class SQLEditorWidget(QWidget):
 
     def _show_shortcuts(self) -> None:
         """Show keyboard shortcuts help dialog."""
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QDialogButtonBox
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
         dlg = QDialog(self.window())
         dlg.setWindowTitle(t("sql_editor.shortcuts_title"))
         dlg.setMinimumWidth(400)

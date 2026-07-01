@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, AsyncIterator
 
-from open_navicat.models import ConnectionInfo, DatabaseInfo, TableInfo, QueryResult
+from open_navicat.models import DatabaseInfo, QueryResult, TableInfo
 
 
 class BaseConnector(ABC):

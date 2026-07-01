@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal, QProcess
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QLineEdit, QComboBox, QSplitter,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
 )
 
 from open_navicat.dal.connection_pool import connection_pool
-from open_navicat.i18n import t
 
 
 class CommandLineWidget(QWidget):
@@ -71,7 +75,7 @@ class CommandLineWidget(QWidget):
         self._history: list[str] = []
         self._history_index = -1
 
-        self._append_output(f"欢迎使用 OpenNavicat 命令列界面")
+        self._append_output("欢迎使用 OpenNavicat 命令列界面")
         self._append_output(f"连接: {self._connection_id}")
         if self._database:
             self._append_output(f"数据库: {self._database}")

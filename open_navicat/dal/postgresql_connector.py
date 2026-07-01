@@ -6,14 +6,14 @@ import asyncpg
 
 from open_navicat.dal.base_connector import BaseConnector
 from open_navicat.models import (
+    ColumnInfo,
+    ColumnMeta,
     ConnectionInfo,
     DatabaseInfo,
-    TableInfo,
-    ColumnInfo,
-    IndexInfo,
     ForeignKeyInfo,
+    IndexInfo,
     QueryResult,
-    ColumnMeta,
+    TableInfo,
 )
 
 

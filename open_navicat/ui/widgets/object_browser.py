@@ -5,27 +5,26 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt, Slot
-from PySide6.QtGui import QIcon, QFont
 from PySide6.QtWidgets import (
-    QTreeWidget,
-    QTreeWidgetItem,
     QAbstractItemView,
-    QMenu,
-    QMessageBox,
-    QWidget,
-    QVBoxLayout,
     QHBoxLayout,
     QLabel,
+    QMenu,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.dal.local_config import local_db
+from open_navicat.i18n import t
 from open_navicat.models.connection import ConnectionInfo
 from open_navicat.ui.dialogs.connection_dialog import ConnectionDialog
-from open_navicat.i18n import t, set_language
 
 logger = logging.getLogger("opennavicat.browser")
 
@@ -294,8 +293,8 @@ class ObjectBrowser(QTreeWidget):
 
     def _open_table_list(self, conn_id: str, db_name: str) -> None:
         """Open a tab showing table list with metadata columns."""
-        from PySide6.QtWidgets import QTableWidget, QTableWidgetItem
-        from PySide6.QtWidgets import QHeaderView
+        from PySide6.QtWidgets import QHeaderView, QTableWidget
+
         from open_navicat.dal.connection_pool import _loop as pool_loop
         mw = self.window()
         if not hasattr(mw, '_workspace'):
@@ -399,7 +398,6 @@ class ObjectBrowser(QTreeWidget):
                                list(connection_pool._connectors.keys()) if hasattr(connection_pool, '_connectors') else 'N/A')
                 return
 
-        import asyncio
         # 复用 connection_pool 的事件循环，否则 aiomysql 报 "attached to a different loop"
         from open_navicat.dal.connection_pool import _loop as pool_loop
         try:
@@ -438,7 +436,6 @@ class ObjectBrowser(QTreeWidget):
         if not connector:
             return
 
-        import asyncio
         from open_navicat.dal.connection_pool import _loop as pool_loop
 
         for i in range(item.childCount()):
@@ -714,8 +711,8 @@ class ObjectBrowser(QTreeWidget):
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data:
             return
-        from PySide6.QtWidgets import QMessageBox, QCheckBox
         from PySide6.QtCore import Qt as QtConst
+        from PySide6.QtWidgets import QCheckBox, QMessageBox
 
         dlg = QMessageBox(self.window())
         dlg.setWindowTitle(t("browser.truncate_table"))
@@ -735,7 +732,8 @@ class ObjectBrowser(QTreeWidget):
         if dlg.clickedButton() != btn_truncate:
             return
 
-        from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
         connector = connection_pool.get(data["connection_id"])
         if connector:
             pool_loop.run_until_complete(
@@ -747,8 +745,8 @@ class ObjectBrowser(QTreeWidget):
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data:
             return
-        from PySide6.QtWidgets import QMessageBox, QComboBox, QCheckBox, QLabel
         from PySide6.QtCore import Qt as QtConst
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QMessageBox
 
         dlg = QMessageBox(self.window())
         dlg.setWindowTitle(t("browser.drop_table"))
@@ -774,7 +772,8 @@ class ObjectBrowser(QTreeWidget):
             return
 
         fk_mode = fk_combo.currentIndex()
-        from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
         connector = connection_pool.get(data["connection_id"])
         if connector:
             if fk_mode == 2:
@@ -842,6 +841,7 @@ class ObjectBrowser(QTreeWidget):
     def _wizard_import(self, item: QTreeWidgetItem) -> None:
         """Import connection config from JSON file."""
         import json
+
         from PySide6.QtWidgets import QFileDialog
         path, _ = QFileDialog.getOpenFileName(
             self, "导入连接", "", "JSON 文件 (*.json);;所有文件 (*)"
@@ -889,6 +889,7 @@ class ObjectBrowser(QTreeWidget):
     def _wizard_export(self, item: QTreeWidgetItem) -> None:
         """Export connection config to JSON file."""
         import json
+
         from PySide6.QtWidgets import QFileDialog, QMessageBox
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data or data.get("obj_type") != "connection":
@@ -1151,7 +1152,8 @@ class ObjectBrowser(QTreeWidget):
         if not ok or not target_db:
             return
 
-        from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
         connector = connection_pool.get(conn_id)
         if not connector:
             return
@@ -1173,7 +1175,8 @@ class ObjectBrowser(QTreeWidget):
             QMessageBox.warning(self.window(), "复制失败", str(e))
 
     def _get_databases(self, conn_id: str) -> list[str]:
-        from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
         connector = connection_pool.get(conn_id)
         if not connector:
             return []
@@ -1181,7 +1184,7 @@ class ObjectBrowser(QTreeWidget):
             dbs = pool_loop.run_until_complete(connector.list_databases())
             return [d.name for d in dbs]
         except Exception as e:
-            _log.warning("Failed to list databases: %s", e)
+            logger.warning("Failed to list databases: %s", e)
             return []
 
     def _show_properties(self, item: QTreeWidgetItem) -> None:

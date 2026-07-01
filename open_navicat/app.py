@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import logging
-import sys
 from pathlib import Path
-from typing import Any
 
-from PySide6.QtCore import Qt, QLocale
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import QApplication, QSplashScreen
-from PySide6.QtGui import QPixmap, QIcon
 
 from open_navicat import __app_name__, __version__
 from open_navicat.config import config
@@ -78,7 +76,6 @@ class Application:
 
     def _apply_settings(self) -> None:
         """Apply persisted preferences to QApplication."""
-        locale_str = config.language.replace("_", "-")
         self._qt_app.setProperty("appLanguage", config.language)
 
         # Theme is applied in MainWindow.__init__ via apply_theme()

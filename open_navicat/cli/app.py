@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import typer
 
+from open_navicat.cli.ai_cmd import ai_app
+from open_navicat.cli.backup_cmd import backup_app
 from open_navicat.cli.conn_cmd import conn_app
+from open_navicat.cli.data_cmd import data_app
 from open_navicat.cli.query_cmd import query_app
 from open_navicat.cli.schema_cmd import schema_app
-from open_navicat.cli.data_cmd import data_app
-from open_navicat.cli.backup_cmd import backup_app
-from open_navicat.cli.ai_cmd import ai_app
 
 app = typer.Typer(
     name="opennavicat",

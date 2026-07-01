@@ -4,18 +4,30 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, Signal, Slot, QThread
+from PySide6.QtCore import Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QComboBox, QTableWidget, QTableWidgetItem, QHeaderView,
-    QAbstractItemView, QCheckBox, QSpinBox, QProgressBar,
-    QGroupBox, QMessageBox, QSplitter,
+    QAbstractItemView,
+    QCheckBox,
+    QComboBox,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QLabel,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QSpinBox,
+    QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
-from open_navicat.dal.connection_pool import connection_pool, _loop as pool_loop
+from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.services.connection_manager import connection_manager
 from open_navicat.services.metadata_service import metadata_service
-from open_navicat.i18n import t
 
 _log = logging.getLogger(__name__)
 
