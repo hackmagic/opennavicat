@@ -46,6 +46,9 @@ def add_connection(
     ssh_user: str = typer.Option("", "--ssh-user", help="SSH tunnel user"),
     ssh_password: str = typer.Option("", "--ssh-password", help="SSH tunnel password", hide_input=True),
     ssh_key: str = typer.Option("", "--ssh-key", help="SSH private key file path"),
+    pool_min: int = typer.Option(1, "--pool-min", help="Minimum connection pool size"),
+    pool_max: int = typer.Option(10, "--pool-max", help="Maximum connection pool size"),
+    connect_timeout: int = typer.Option(10, "--connect-timeout", help="Connection timeout in seconds"),
     test: bool = typer.Option(False, "--test", "-t", help="Test connection before saving"),
 ) -> None:
     """Add and save a new database connection."""
@@ -54,6 +57,7 @@ def add_connection(
         database=database, charset=charset,
         use_ssh=bool(ssh_host), ssh_host=ssh_host, ssh_port=ssh_port,
         ssh_user=ssh_user, ssh_password=ssh_password, ssh_key_file=ssh_key,
+        pool_min=pool_min, pool_max=pool_max, connect_timeout=connect_timeout,
     )
 
     if test:
@@ -80,6 +84,9 @@ def edit_connection(
     user: str = typer.Option("", "--user", "-u", help="New user"),
     password: str = typer.Option("", "--password", "-P", help="New password", hide_input=True),
     database: str = typer.Option("", "--database", "-d", help="New default database"),
+    pool_min: int = typer.Option(0, "--pool-min", help="New minimum pool size"),
+    pool_max: int = typer.Option(0, "--pool-max", help="New maximum pool size"),
+    connect_timeout: int = typer.Option(0, "--connect-timeout", help="New connection timeout (s)"),
 ) -> None:
     """Edit an existing connection."""
     connections = connection_manager.list_saved()
@@ -100,6 +107,12 @@ def edit_connection(
         target.password = password
     if database:
         target.database = database
+    if pool_min:
+        target.pool_min = pool_min
+    if pool_max:
+        target.pool_max = pool_max
+    if connect_timeout:
+        target.connect_timeout = connect_timeout
 
     from open_navicat.dal.local_config import local_db
     local_db.save_connection(target)

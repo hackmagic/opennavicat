@@ -57,12 +57,19 @@ class ConnectionInfo:
 
 ### ConnectionDialog (ui/dialogs/connection_dialog.py)
 
-三标签页对话框:
+四标签页对话框:
 - **General**: 主机/端口/用户/密码/数据库/字符集
 - **SSH**: 隧道配置（勾选后启用字段）
 - **SSL**: 证书配置（勾选后启用字段）
+- **Pool**: 连接池配置（最小连接数/最大连接数/超时时间）
 
 按钮: [Test Connection] [OK] [Cancel]
+
+CLI 连接池参数:
+```bash
+opennavicat conn add --name Prod --host db.example.com --pool-min 2 --pool-max 20 --connect-timeout 30
+opennavicat conn edit Prod --pool-max 50
+```
 
 ### ConnectionManager (services/connection_manager.py)
 
