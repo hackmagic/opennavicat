@@ -57,9 +57,6 @@ jobs:
           - os: windows-latest
             arch: x64
             artifact: opennavicat-windows-x64.exe
-          - os: macos-13
-            arch: x64
-            artifact: opennavicat-macos-x64
           - os: macos-latest
             arch: arm64
             artifact: opennavicat-macos-arm64
@@ -164,7 +161,6 @@ jobs:
             | Platform | Architecture | File |
             |----------|-------------|------|
             | Windows | x64 | `opennavicat-windows-x64.exe` |
-            | macOS | x64 (Intel) | `opennavicat-macos-x64` |
             | macOS | ARM64 (Apple Silicon) | `opennavicat-macos-arm64` |
             | Linux | x64 | `opennavicat-linux-x64` |
           files: |
