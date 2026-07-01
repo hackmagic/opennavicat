@@ -13,6 +13,9 @@ __pycache__/
 /dist/
 /build/
 *.egg
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
 
 # Rust / Tauri
 open_navicat_rs/node_modules/
