@@ -34,7 +34,10 @@ class PostgreSQLConnector(BaseConnector):
 
     async def connect(self) -> bool:
         if asyncpg is None:
-            raise ImportError("asyncpg is required for PostgreSQL support: pip install asyncpg")
+            raise ImportError(
+                "asyncpg is required for PostgreSQL support. "
+                "Install with: pip install open-navicat[postgresql]"
+            )
         try:
             self._pool = await asyncpg.create_pool(
                 host=self._info.host,
