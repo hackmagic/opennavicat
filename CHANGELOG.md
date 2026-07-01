@@ -4,6 +4,40 @@ All notable changes to OpenNavicat will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-07-01
+
+### Added
+
+#### PostgreSQL Support
+- Full PostgreSQL connector via asyncpg (optional dependency)
+- `open-navicat[postgresql]` extras for pip install
+- Backup/restore with pg_dump/psql (PGPASSWORD auto-set)
+- Schema sync generates PostgreSQL-compatible DDL (double-quote quoting, CREATE INDEX, DROP CONSTRAINT)
+- Data sync with PostgreSQL metadata queries (pg_catalog, information_schema)
+
+#### AI Enhancements
+- ReAct Agent mode (`ai agent`) — multi-step reasoning with search_schema/generate_sql/execute_sql actions
+- Schema RAG (`nl2sql_with_rag`, `ask_with_rag`) — auto-inject table structure into prompts
+- Chat history persistence (`save_chat_history`, `load_chat_history`) via SQLite
+
+#### CLI Fixes
+- Refactored `backup_cmd` to delegate to BackupService (was reimplementing inline)
+- Added `conn close` — disconnect active connection
+- Added `schema databases` — list all databases on server
+- Added `ai config` — configure AI provider at runtime
+- Added `ai test` — test AI connection
+- Added `backup delete`, `backup history`, `backup jobs`, `backup job-remove`, `backup job-toggle`
+
+#### Testing
+- Integration tests with testcontainers (MySQL 8.0 + PostgreSQL 16)
+- 16 integration tests (8 MySQL, 8 PostgreSQL)
+- Run with: `poetry run pytest tests/integration/ -v -m integration`
+
+### Removed
+- `open_navicat_rs/` (Tauri/Rust version) — may be forked as separate project
+
+[0.2.0]: https://github.com/hackmagic/OpenNavicat/releases/tag/v0.2.0
+
 ## [0.1.0] - 2026-07-01
 
 ### Added
