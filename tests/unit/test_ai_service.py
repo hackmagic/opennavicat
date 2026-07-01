@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 
@@ -45,19 +46,19 @@ class TestAIService:
     def test_call_llm_routes_to_ollama(self, ai_service):
         ai_service._provider = "ollama"
         with patch.object(ai_service, "_call_ollama", return_value="OK") as mock:
-            result = ai_service._call_llm([{"role": "user", "content": "hi"}])
+            ai_service._call_llm([{"role": "user", "content": "hi"}])
             mock.assert_called_once()
 
     def test_call_llm_routes_to_deepseek(self, ai_service):
         ai_service._provider = "deepseek"
         with patch.object(ai_service, "_call_deepseek", return_value="OK") as mock:
-            result = ai_service._call_llm([{"role": "user", "content": "hi"}])
+            ai_service._call_llm([{"role": "user", "content": "hi"}])
             mock.assert_called_once()
 
     def test_call_llm_routes_to_custom(self, ai_service):
         ai_service._provider = "custom"
         with patch.object(ai_service, "_call_custom", return_value="OK") as mock:
-            result = ai_service._call_llm([{"role": "user", "content": "hi"}])
+            ai_service._call_llm([{"role": "user", "content": "hi"}])
             mock.assert_called_once()
 
     def test_call_openai_success(self, ai_service):
@@ -95,7 +96,7 @@ class TestAIService:
             assert result
 
     def test_generate_data_returns_list(self, ai_service):
-        from open_navicat.models.table_schema import TableInfo, ColumnInfo
+        from open_navicat.models.table_schema import ColumnInfo, TableInfo
         table_info = TableInfo(name="users", database="testdb")
         table_info.columns = [ColumnInfo(name="id", data_type="INT"), ColumnInfo(name="name", data_type="VARCHAR")]
         with patch.object(ai_service, "_call_llm", return_value='[{"id": 1, "name": "test"}]'):
@@ -104,7 +105,7 @@ class TestAIService:
             assert len(result) == 1
 
     def test_generate_data_invalid_json_returns_empty(self, ai_service):
-        from open_navicat.models.table_schema import TableInfo, ColumnInfo
+        from open_navicat.models.table_schema import ColumnInfo, TableInfo
         table_info = TableInfo(name="users", database="testdb")
         table_info.columns = [ColumnInfo(name="id", data_type="INT")]
         with patch.object(ai_service, "_call_llm", return_value="not json"):

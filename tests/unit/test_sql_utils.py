@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-from open_navicat.utils.sql_formatter import beautify, minify, is_select, is_ddl, extract_table_names
-from open_navicat.utils.sql_generator import generate_create_table, generate_select, generate_insert
-from open_navicat.models.table_schema import TableInfo, ColumnInfo
+from open_navicat.models.table_schema import ColumnInfo, TableInfo
+from open_navicat.utils.sql_formatter import (
+    beautify,
+    extract_table_names,
+    is_ddl,
+    is_select,
+    minify,
+)
+from open_navicat.utils.sql_generator import generate_create_table, generate_insert, generate_select
 
 
 class TestSQLFormatter:

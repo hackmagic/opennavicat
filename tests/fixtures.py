@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import pytest
+
 from open_navicat.models.connection import ConnectionInfo
-from open_navicat.models.table_schema import TableInfo, ColumnInfo, IndexInfo
+from open_navicat.models.table_schema import ColumnInfo, IndexInfo, TableInfo
 
 
 @pytest.fixture

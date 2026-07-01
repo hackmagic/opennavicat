@@ -1,10 +1,10 @@
 """Unit tests for DataSyncEngine."""
 from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-from open_navicat.services.data_sync_engine import DataSyncEngine, DataCompareResult, RowDiff
 from open_navicat.models.table_schema import ColumnInfo
+from open_navicat.services.data_sync_engine import DataCompareResult, DataSyncEngine, RowDiff
 
 
 def _mock_connector(rows, columns_meta, pk_cols=None):

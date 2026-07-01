@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from open_navicat.models.table_schema import TableInfo, ColumnInfo, IndexInfo, ForeignKeyInfo
-from open_navicat.services.sync_engine import SyncEngine, ColumnDiff
+from open_navicat.models.table_schema import ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo
+from open_navicat.services.sync_engine import ColumnDiff, SyncEngine
 
 
 class TestColumnChanged:
