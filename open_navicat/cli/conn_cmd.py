@@ -166,3 +166,26 @@ def open_connection(
     else:
         console.print(f"[red]✗ Failed to connect to {target.host}:{target.port}[/red]")
         raise typer.Exit(1)
+
+
+@conn_app.command("close")
+def close_connection(
+    name: str = typer.Argument("", help="Connection name to close (default: active connection)"),
+) -> None:
+    """Close an active connection."""
+    if name:
+        connections = connection_manager.list_saved()
+        target = next((c for c in connections if c.name == name), None)
+        if not target:
+            console.print(f"[red]Connection '{name}' not found.[/red]")
+            raise typer.Exit(1)
+        cid = target.id
+    else:
+        active = connection_manager.active_ids
+        if not active:
+            console.print("[yellow]No active connections.[/yellow]")
+            raise typer.Exit()
+        cid = active[0]
+
+    connection_manager.disconnect(cid)
+    console.print("[green]✓ Connection closed.[/green]")

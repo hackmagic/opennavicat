@@ -294,6 +294,70 @@ def ai_chat_history(
                 console.print(f"[bold blue]AI:[/bold blue] {content[:200]}")
 
 
+@ai_app.command("config")
+def ai_config(
+    provider: str = typer.Option("", "--provider", "-p", help="AI provider: openai|deepseek|ollama|custom"),
+    api_key: str = typer.Option("", "--api-key", "-k", help="API key"),
+    api_base: str = typer.Option("", "--api-base", "-b", help="API base URL"),
+    model: str = typer.Option("", "--model", "-m", help="Model name"),
+    show: bool = typer.Option(False, "--show", "-s", help="Show current config"),
+) -> None:
+    """Configure AI provider settings."""
+    from open_navicat.services.ai_service import ai_service
+
+    if show:
+        console.print(f"[bold]Provider:[/bold] {ai_service._provider}")
+        console.print(f"[bold]Model:[/bold] {ai_service._model}")
+        console.print(f"[bold]API Base:[/bold] {ai_service._api_base or '(default)'}")
+        console.print(f"[bold]API Key:[/bold] {'***' + ai_service._api_key[-4:] if ai_service._api_key else '(not set)'}")
+        return
+
+    cfg = {}
+    if provider:
+        cfg["provider"] = provider
+    if api_key:
+        cfg["api_key"] = api_key
+    if api_base:
+        cfg["api_base"] = api_base
+    if model:
+        cfg["model"] = model
+
+    if cfg:
+        ai_service.update_config(cfg)
+        console.print("[green]✓ AI config updated.[/green]")
+    else:
+        console.print("[yellow]No changes. Use --provider, --api-key, --api-base, --model to configure.[/yellow]")
+
+
+@ai_app.command("test")
+def ai_test(
+    provider: str = typer.Option("", "--provider", "-p", help="Provider to test"),
+    api_key: str = typer.Option("", "--api-key", "-k", help="API key"),
+    api_base: str = typer.Option("", "--api-base", "-b", help="API base URL"),
+    model: str = typer.Option("", "--model", "-m", help="Model name"),
+) -> None:
+    """Test AI connection with current or provided config."""
+    from open_navicat.services.ai_service import ai_service
+
+    cfg = {}
+    if provider:
+        cfg["provider"] = provider
+    if api_key:
+        cfg["api_key"] = api_key
+    if api_base:
+        cfg["api_base"] = api_base
+    if model:
+        cfg["model"] = model
+
+    console.print("[yellow]🤖 Testing AI connection...[/yellow]")
+    ok, msg = ai_service.test_config(cfg or None)
+    if ok:
+        console.print(f"[green]✓ AI connection OK: {msg}[/green]")
+    else:
+        console.print(f"[red]✗ AI connection failed: {msg}[/red]")
+        raise typer.Exit(1)
+
+
 # ---- helper ----
 
 def _get_schema_context(conn_id: str) -> str:

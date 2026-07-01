@@ -1,11 +1,10 @@
-"""Backup & restore CLI commands."""
+"""Backup & restore CLI commands — delegates to BackupService and AutomationService."""
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import typer
 from rich.console import Console
+from rich.panel import Panel
 
 from open_navicat.services.connection_manager import connection_manager
 from open_navicat.utils.output_formatter import format_output
@@ -34,219 +33,176 @@ def _resolve_conn(conn_name: str) -> str:
     return _get_active_conn()
 
 
-@backup_app.command("create")
-def backup_database(
-    database: str = typer.Argument(..., help="Database name"),
-    output: str = typer.Option("", "--output", "-o", help="Output file (default: {db}_{date}.sql)"),
-    conn: str = typer.Option("", "--conn", "-c", help="Connection name"),
-    compress: bool = typer.Option(False, "--compress", "-z", help="Gzip compress the backup"),
-) -> None:
-    """Backup a database to SQL file."""
-    cid = _resolve_conn(conn)
+def _get_conn_info(cid: str):
     connections = connection_manager.list_saved()
     info = next((c for c in connections if c.id == cid), None)
     if not info:
         console.print("[red]Connection info not found.[/red]")
         raise typer.Exit(1)
+    return info
 
-    # Build mysqldump command
-    from datetime import datetime
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    if not output:
-        output = f"{database}_{ts}.sql"
-    if compress and not output.endswith(".gz"):
-        output += ".gz"
+@backup_app.command("create")
+def backup_database(
+    database: str = typer.Argument(..., help="Database name"),
+    output: str = typer.Option("", "--output", "-o", help="Output file (default: {db}_{date}.sql)"),
+    conn: str = typer.Option("", "--conn", "-c", help="Connection name"),
+    compress: bool = typer.Option(True, "--compress/--no-compress", "-z/-Z", help="Gzip compress"),
+) -> None:
+    """Backup a database to SQL file."""
+    from open_navicat.services.backup_service import backup_service
 
-    console.print(f"[yellow]Backing up '{database}' → {output}...[/yellow]")
+    cid = _resolve_conn(conn)
+    info = _get_conn_info(cid)
 
-    import subprocess
-    is_pg = info.engine == "postgresql"
-
-    if is_pg:
-        cmd = [
-            "pg_dump",
-            f"--host={info.host}",
-            f"--port={info.port}",
-            f"--username={info.user}",
-            "--no-owner",
-            "--no-privileges",
-            "--clean",
-            "--if-exists",
-            database,
-        ]
-    else:
-        cmd = [
-            "mysqldump",
-            f"--host={info.host}",
-            f"--port={info.port}",
-            f"--user={info.user}",
-            f"--password={info.password}",
-            "--routines",
-            "--triggers",
-            "--events",
-            "--add-drop-table",
-            "--single-transaction",
-            "--quick",
-            database,
-        ]
-
+    console.print(f"[yellow]Backing up '{database}'...[/yellow]")
     try:
-        import os
-        env = os.environ.copy()
-        if is_pg and info.password:
-            env["PGPASSWORD"] = info.password
-
-        if compress:
-            with open(output.replace(".gz", ""), "wb") as f:
-                proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True, env=env)
-                if proc.returncode != 0:
-                    console.print(f"[red]Error: {proc.stderr}[/red]")
-                    raise typer.Exit(1)
-
-            import gzip
-            with open(output.replace(".gz", ""), "rb") as f_in:
-                with gzip.open(output, "wb") as f_out:
-                    f_out.writelines(f_in)
-            Path(output.replace(".gz", "")).unlink()
-        else:
-            with open(output, "w", encoding="utf-8") as f:
-                proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True, env=env)
-                if proc.returncode != 0:
-                    console.print(f"[red]Error: {proc.stderr}[/red]")
-                    raise typer.Exit(1)
-
-        file_size = Path(output).stat().st_size
-        console.print(f"[green]✓ Backup completed: {output} ({file_size / 1024:.1f} KB)[/green]")
-
-    except FileNotFoundError:
-        tool = "pg_dump" if is_pg else "mysqldump"
-        console.print(f"[red]{tool} not found. Ensure {'PostgreSQL' if is_pg else 'MySQL'} client tools are installed.[/red]")
+        record = backup_service.create_backup(info, database, output or None, compress)
+        console.print(f"[green]✓ Backup completed: {record.file_name} ({record.size_human})[/green]")
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    except RuntimeError as e:
+        console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
 
 @backup_app.command("restore")
 def restore_database(
     database: str = typer.Argument(..., help="Database name"),
-    input_file: str = typer.Argument(..., help="SQL backup file to restore"),
+    input_file: str = typer.Argument(..., help="Backup file to restore"),
     conn: str = typer.Option("", "--conn", "-c", help="Connection name"),
-    create_db: bool = typer.Option(False, "--create-db", help="Create database if not exists"),
+    create_db: bool = typer.Option(True, "--create-db/--no-create-db", help="Create database if not exists"),
 ) -> None:
-    """Restore a database from a SQL backup file."""
-    cid = _resolve_conn(conn)
-    connections = connection_manager.list_saved()
-    info = next((c for c in connections if c.id == cid), None)
-    if not info:
-        console.print("[red]Connection info not found.[/red]")
-        raise typer.Exit(1)
+    """Restore a database from a backup file."""
+    from open_navicat.services.backup_service import backup_service
 
-    if not Path(input_file).exists():
-        console.print(f"[red]File not found: {input_file}[/red]")
-        raise typer.Exit(1)
+    cid = _resolve_conn(conn)
+    info = _get_conn_info(cid)
 
     console.print(f"[yellow]Restoring '{database}' from {input_file}...[/yellow]")
-
-    if create_db:
-        from open_navicat.services.query_engine import query_engine
-        is_pg = info.engine == "postgresql"
-        if is_pg:
-            query_engine.execute(cid, f'CREATE DATABASE "{database}"')
-        else:
-            query_engine.execute(cid, f"CREATE DATABASE IF NOT EXISTS `{database}`")
-
-    import subprocess
-    is_pg = info.engine == "postgresql"
-
-    if is_pg:
-        cmd = [
-            "psql",
-            f"--host={info.host}",
-            f"--port={info.port}",
-            f"--username={info.user}",
-            "--no-psqlrc",
-            "--set", "ON_ERROR_STOP=1",
-            "--dbname", database,
-        ]
-    else:
-        cmd = [
-            "mysql",
-            f"--host={info.host}",
-            f"--port={info.port}",
-            f"--user={info.user}",
-            f"--password={info.password}",
-            database,
-        ]
-
     try:
-        import os
-        env = os.environ.copy()
-        if is_pg and info.password:
-            env["PGPASSWORD"] = info.password
-
-        with open(input_file, "r", encoding="utf-8") as f:
-            proc = subprocess.run(cmd, stdin=f, capture_output=True, text=True, env=env)
-            if proc.returncode != 0:
-                console.print(f"[red]Error: {proc.stderr}[/red]")
-                raise typer.Exit(1)
-
+        backup_service.restore_backup(info, database, input_file, create_db)
         console.print(f"[green]✓ Database '{database}' restored from {input_file}[/green]")
-
-    except FileNotFoundError:
-        tool = "psql" if is_pg else "mysql"
-        console.print(f"[red]{tool} client not found. Ensure {'PostgreSQL' if is_pg else 'MySQL'} client tools are installed.[/red]")
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    except RuntimeError as e:
+        console.print(f"[red]{e}[/red]")
         raise typer.Exit(1)
 
 
 @backup_app.command("list")
 def list_backups(
-    path: str = typer.Option(".", "--path", "-p", help="Directory to scan for backup files"),
+    path: str = typer.Option("", "--path", "-p", help="Directory to scan (default: ./backups)"),
 ) -> None:
-    """List backup files in a directory."""
-    backup_dir = Path(path)
-    if not backup_dir.exists():
-        console.print(f"[red]Directory not found: {path}[/red]")
-        raise typer.Exit(1)
+    """List backup files."""
+    from open_navicat.services.backup_service import backup_service
 
-    files = []
-    for f in sorted(backup_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
-        if f.suffix in (".sql", ".gz") and f.stem:
-            size_kb = f.stat().st_size / 1024
-            from datetime import datetime
-            mtime = datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-            files.append({"name": f.name, "size": f"{size_kb:.1f} KB", "modified": mtime})
-
-    if not files:
-        console.print(f"[yellow]No backup files found in '{path}'.[/yellow]")
+    records = backup_service.list_backups(path or None)
+    if not records:
+        console.print("[yellow]No backup files found.[/yellow]")
         raise typer.Exit()
 
-    format_output(files[:30], "table", title=f"Backup Files in '{path}'")
+    rows = [r.to_dict() for r in records[:30]]
+    format_output(rows, "table", title="Backup Files")
+
+
+@backup_app.command("delete")
+def delete_backup(
+    file_path: str = typer.Argument(..., help="Backup file path to delete"),
+) -> None:
+    """Delete a backup file."""
+    from open_navicat.services.backup_service import backup_service
+
+    if backup_service.delete_backup(file_path):
+        console.print(f"[green]✓ Deleted: {file_path}[/green]")
+    else:
+        console.print(f"[red]File not found: {file_path}[/red]")
+        raise typer.Exit(1)
+
+
+@backup_app.command("history")
+def backup_history(
+    limit: int = typer.Option(20, "--limit", "-n", help="Number of records"),
+) -> None:
+    """Show backup history."""
+    from open_navicat.services.backup_service import backup_service
+
+    history = backup_service.get_history(limit)
+    if not history:
+        console.print("[yellow]No backup history.[/yellow]")
+        raise typer.Exit()
+
+    format_output(history, "table", title="Backup History")
 
 
 @backup_app.command("schedule")
 def schedule_backup(
     database: str = typer.Argument(..., help="Database name"),
-    cron: str = typer.Option("0 2 * * *", "--cron", "-c", help="Cron expression (default: daily at 2am)"),
-    conn: str = typer.Option("", "--conn", help="Connection name"),
+    cron: str = typer.Option("0 2 * * *", "--cron", help="Cron expression (default: daily at 2am)"),
+    conn: str = typer.Option("", "--conn", "-c", help="Connection name"),
     output_dir: str = typer.Option("./backups", "--output-dir", "-o", help="Backup output directory"),
-    compress: bool = typer.Option(True, "--compress", "-z", help="Compress backup"),
+    compress: bool = typer.Option(True, "--compress/--no-compress", "-z/-Z", help="Compress backup"),
 ) -> None:
     """Schedule periodic backups using cron expression."""
-    # Store in local config
-    from open_navicat.dal.local_config import local_db
+    from open_navicat.services.automation_service import automation_service
 
-    job = {
-        "type": "backup",
-        "database": database,
-        "conn_name": conn,
-        "cron": cron,
-        "output_dir": output_dir,
-        "compress": compress,
-        "enabled": True,
-    }
+    cid = _resolve_conn(conn)
+    job = automation_service.add_backup_job(
+        name=f"backup-{database}",
+        connection_id=cid,
+        database=database,
+        cron_expr=cron,
+        compress=compress,
+        output_dir=output_dir,
+    )
+    console.print(f"[green]✓ Backup scheduled: {database} @ '{cron}' (job: {job['id']})[/green]")
 
-    jobs = local_db.get_setting("scheduled_jobs", [])
-    jobs.append(job)
-    local_db.set_setting("scheduled_jobs", jobs)
 
-    console.print(f"[green]✓ Backup scheduled: {database} @ '{cron}' → {output_dir}[/green]")
-    console.print("[yellow]Scheduled jobs run when the GUI is open or via 'opennavicat scheduler run'.[/yellow]")
+@backup_app.command("jobs")
+def list_jobs() -> None:
+    """List all scheduled backup jobs."""
+    from open_navicat.services.automation_service import automation_service
+
+    jobs = automation_service.list_jobs()
+    if not jobs:
+        console.print("[yellow]No scheduled jobs.[/yellow]")
+        raise typer.Exit()
+
+    rows = []
+    for j in jobs:
+        cfg = j.get("config", {})
+        rows.append({
+            "id": j.get("id", ""),
+            "name": j.get("name", ""),
+            "database": cfg.get("database", ""),
+            "cron": j.get("cron_expr", ""),
+            "enabled": "✓" if j.get("enabled") else "✗",
+            "status": j.get("status", ""),
+        })
+    format_output(rows, "table", title="Scheduled Jobs")
+
+
+@backup_app.command("job-remove")
+def remove_job(
+    job_id: str = typer.Argument(..., help="Job ID to remove"),
+) -> None:
+    """Remove a scheduled job."""
+    from open_navicat.services.automation_service import automation_service
+
+    automation_service.remove_job(job_id)
+    console.print(f"[green]✓ Job {job_id} removed[/green]")
+
+
+@backup_app.command("job-toggle")
+def toggle_job(
+    job_id: str = typer.Argument(..., help="Job ID to enable/disable"),
+    enable: bool = typer.Option(True, "--enable/--disable", help="Enable or disable"),
+) -> None:
+    """Enable or disable a scheduled job."""
+    from open_navicat.services.automation_service import automation_service
+
+    automation_service.enable_job(job_id, enable)
+    state = "enabled" if enable else "disabled"
+    console.print(f"[green]✓ Job {job_id} {state}[/green]")

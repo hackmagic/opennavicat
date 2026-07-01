@@ -36,6 +36,29 @@ def _resolve_conn(conn_name: str) -> str:
     return _get_active_conn()
 
 
+@schema_app.command("databases")
+def list_databases(
+    conn: str = typer.Option("", "--conn", "-c", help="Connection name"),
+    format: str = typer.Option("table", "--format", "-f", help="Output format: table|json|csv"),
+) -> None:
+    """List all databases on the server."""
+    cid = _resolve_conn(conn)
+
+    from open_navicat.dal.connection_pool import _loop, connection_pool
+    connector = connection_pool.get(cid)
+    if not connector:
+        console.print("[red]No active connection.[/red]")
+        raise typer.Exit(1)
+
+    dbs = _loop.run_until_complete(connector.list_databases())
+    rows = [{"name": db.name, "charset": db.charset, "collation": db.collation} for db in dbs]
+    if not rows:
+        console.print("[yellow]No databases found.[/yellow]")
+        raise typer.Exit()
+
+    format_output(rows, format, title="Databases")
+
+
 @schema_app.command("list")
 def list_objects(
     database: str = typer.Argument(..., help="Database name"),
