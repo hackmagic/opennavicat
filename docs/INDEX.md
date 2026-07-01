@@ -1,6 +1,6 @@
 # OpenNavicat Documentation
 
-> Version: 0.11 | Updated: 2026-07-01 | GitHub: https://github.com/hackmagic/OpenNavicat
+> Version: 0.2.0 | Updated: 2026-07-01 | GitHub: https://github.com/hackmagic/OpenNavicat
 
 ## User Guide
 
@@ -37,14 +37,14 @@
 
 # OpenNavicat 文档目录
 
-> 版本: 0.11 | 更新: 2026-07-01 | 开源地址: https://github.com/hackmagic/OpenNavicat
+> 版本: 0.2.0 | 更新: 2026-07-01 | 开源地址: https://github.com/hackmagic/OpenNavicat
 
 ## 用户文档
 
 | 文档 | 适合 | 内容 |
 |------|------|------|
 | [README](../README.md) | 所有人 | 项目介绍、快速上手 ([EN](../README.md#english) / [中文](../README.md#简体中文)) |
-| [CLI 参考手册](CLI_REFERENCE.md) | 所有用户 | 全部 31 条 CLI 命令完整参考 |
+| [CLI 参考手册](CLI_REFERENCE.md) | 所有用户 | 全部 40+ 条 CLI 命令完整参考 |
 | [安全设计](SECURITY.md) | 运维/安全 | 加密方案、传输安全 |
 | [部署指南](DEPLOYMENT.md) | 运维 | 安装、打包、CI/CD、Docker |
 | [贡献指南](../CONTRIBUTING.md) | 贡献者 | 如何参与贡献 |
@@ -76,5 +76,5 @@
 |------|------|
 | 总文档数 | **18 篇** |
 | 总行数 | **~3,000 行** |
-| CLI 命令覆盖 | **31 条** |
+| CLI 命令覆盖 | **40+ 条** |
 | 语言支持 | **中文 / English** |

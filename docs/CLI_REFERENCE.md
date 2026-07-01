@@ -1,6 +1,6 @@
 # OpenNavicat CLI 参考手册
 
-> 版本: 0.1.0 | 命令总数: 30+
+> 版本: 0.2.0 | 命令总数: 40+
 
 `opennavicat` 是 CLI-First 设计，所有功能通过命令行暴露。GUI 只是可选的可视化包装。
 
@@ -32,6 +32,7 @@ opennavicat conn edit       # 编辑连接
 opennavicat conn remove     # 删除连接
 opennavicat conn test       # 测试连接
 opennavicat conn open       # 激活连接 (供后续命令使用)
+opennavicat conn close      # 关闭连接
 ```
 
 ### 1.1 conn list
@@ -124,6 +125,15 @@ opennavicat conn open "Production DB"
 
 激活连接。激活后后续的 query/schema/data 命令不需要再指定 `--conn`。
 
+### 1.7 conn close
+
+```bash
+opennavicat conn close          # 关闭当前激活连接
+opennavicat conn close "Prod"   # 关闭指定连接
+```
+
+关闭活跃连接。省略名称时关闭第一个激活的连接。
+
 ---
 
 ## 2. query — SQL 查询
@@ -215,6 +225,7 @@ opennavicat query history --limit 20
 ## 3. schema — 结构管理
 
 ```bash
+opennavicat schema databases    # 列出所有数据库
 opennavicat schema list         # 列出数据库对象
 opennavicat schema show         # 查看表结构
 opennavicat schema create       # 创建表
@@ -222,6 +233,19 @@ opennavicat schema diff         # 结构比较
 opennavicat schema sync         # 结构同步
 opennavicat schema design       # AI 设计表结构
 ```
+
+### 3.0 schema databases
+
+```bash
+opennavicat schema databases --conn "Production DB" --format json
+```
+
+列出服务器上所有数据库。
+
+| 选项 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--conn`, `-c` | str | '' | 连接名 |
+| `--format`, `-f` | str | table | 输出格式 |
 
 ### 3.1 schema list
 
@@ -402,7 +426,12 @@ opennavicat data generate mydb.users --count 1000 \
 opennavicat backup create        # 备份数据库
 opennavicat backup restore       # 恢复数据库
 opennavicat backup list          # 列出备份文件
+opennavicat backup delete        # 删除备份文件
+opennavicat backup history       # 查看备份历史
 opennavicat backup schedule      # 设置定时备份
+opennavicat backup jobs          # 列出定时任务
+opennavicat backup job-remove    # 删除定时任务
+opennavicat backup job-toggle    # 启用/禁用定时任务
 ```
 
 ### 5.1 backup create
@@ -455,6 +484,56 @@ opennavicat backup schedule mydb --cron "0 2 * * *" --output-dir /data/backups -
 | `--output-dir`, `-o` | str | ./backups | 输出目录 |
 | `--compress`, `-z` | bool | True | 压缩 |
 
+### 5.5 backup delete
+
+```bash
+opennavicat backup delete ./backups/mydb_20260621.sql.gz
+```
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `file_path` | str | **必填** 备份文件路径 |
+
+### 5.6 backup history
+
+```bash
+opennavicat backup history --limit 20
+```
+
+| 选项 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--limit`, `-n` | int | 20 | 显示最近 N 条 |
+
+### 5.7 backup jobs
+
+```bash
+opennavicat backup jobs
+```
+
+列出所有定时备份任务。
+
+### 5.8 backup job-remove
+
+```bash
+opennavicat backup job-remove backup_mydb_abc12345
+```
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `job_id` | str | **必填** 任务 ID |
+
+### 5.9 backup job-toggle
+
+```bash
+opennavicat backup job-toggle backup_mydb_abc12345 --enable
+opennavicat backup job-toggle backup_mydb_abc12345 --disable
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `job_id` | str | **必填** | 任务 ID |
+| `--enable/--disable` | bool | True | 启用或禁用 |
+
 ---
 
 ## 6. ai — AI 智能助手
@@ -466,6 +545,10 @@ opennavicat ai explain          # SQL 解释
 opennavicat ai fix              # 修复 SQL
 opennavicat ai chat             # 交互式对话
 opennavicat ai tables           # AI 设计表结构
+opennavicat ai agent            # ReAct 智能代理
+opennavicat ai config           # 配置 AI 提供商
+opennavicat ai test             # 测试 AI 连接
+opennavicat ai chat-history     # 查看/清除聊天历史
 ```
 
 ### 6.1 ai ask
@@ -546,6 +629,58 @@ opennavicat ai tables "电商系统: 用户、商品、订单、支付、物流"
 | `description` | str | **必填** | 业务描述 |
 | `--conn`, `-c` | str | '' | 连接名 |
 | `--deploy`, `-d` | bool | False | 部署到数据库 |
+
+### 6.7 ai agent — ReAct 智能代理
+
+```bash
+opennavicat ai agent "查询所有活跃用户的最近订单" --conn "Production DB" --db mydb
+```
+
+多步推理代理：分析问题 → 搜索 Schema → 生成 SQL → 执行 → 根据结果迭代。
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `request` | str | **必填** | 自然语言请求 |
+| `--conn`, `-c` | str | '' | 连接名 |
+| `--db`, `-d` | str | '' | 数据库名 |
+| `--steps` | int | 5 | 最大推理步数 |
+
+### 6.8 ai config
+
+```bash
+opennavicat ai config --show                              # 查看当前配置
+opennavicat ai config --provider deepseek --api-key sk-xxx  # 修改配置
+```
+
+| 选项 | 类型 | 说明 |
+|------|------|------|
+| `--show`, `-s` | bool | 显示当前配置 |
+| `--provider`, `-p` | str | 提供商: openai/deepseek/ollama/custom |
+| `--api-key`, `-k` | str | API 密钥 |
+| `--api-base`, `-b` | str | API 基础 URL |
+| `--model`, `-m` | str | 模型名 |
+
+### 6.9 ai test
+
+```bash
+opennavicat ai test                                    # 测试当前配置
+opennavicat ai test --provider openai --api-key sk-xxx  # 测试指定配置
+```
+
+测试 AI 连接是否正常。
+
+### 6.10 ai chat-history
+
+```bash
+opennavicat ai chat-history show                     # 查看聊天历史
+opennavicat ai chat-history clear                    # 清除聊天历史
+opennavicat ai chat-history show --session "prod"    # 查看指定会话
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `action` | str | show | 操作: show/clear |
+| `--session`, `-s` | str | default | 会话 ID |
 
 ---
 

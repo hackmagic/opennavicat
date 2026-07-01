@@ -227,13 +227,21 @@ export OPENNAVICAT_AI_API_BASE=http://localhost:11434
 export OPENNAVICAT_AI_MODEL=llama3
 ```
 
-## 6. 未来扩展
+## 6. 已实现功能
+
+| 功能 | 说明 | 状态 |
+|------|------|------|
+| **Schema RAG** | 自动获取表结构、列名、索引、外键作为上下文 | ✅ v0.2.0 |
+| **AI Agent (ReAct)** | LLM 自主规划多步操作: 搜索 Schema → 生成 SQL → 执行 → 分析 | ✅ v0.2.0 |
+| **聊天历史持久化** | SQLite 存储多轮对话历史，支持按 session 管理 | ✅ v0.2.0 |
+| **AI 配置 CLI** | `ai config` 命令行配置提供商、API Key、模型 | ✅ v0.2.0 |
+
+## 7. 未来扩展
 
 | 功能 | 说明 |
 |------|------|
-| **RAG 增强** | 将表结构预编码为向量嵌入，提升 NL→SQL 准确性 |
 | **Function Calling** | LLM 直接调用数据库操作函数，而非先生成 SQL |
 | **多轮 Schema 设计** | "加个索引" "这张表要分区" 等连续设计对话 |
 | **数据质量分析** | "检查 email 列的格式是否正确" |
 | **异常检测** | "检测 orders 表中是否存在异常数据" |
-| **AI Agent (ReAct)** | LLM 自主规划多步操作: 查 Schema → 写 SQL → 执行 → 分析结果 |
+| **向量嵌入** | 将表结构预编码为向量嵌入，提升检索精度 |

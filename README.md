@@ -28,7 +28,7 @@ OpenNavicat is a full-featured database management tool inspired by [Navicat Pre
 - **CLI-First** — Every operation has a CLI command. AI (LLM) can call CLI directly.
 - **AI-Native** — Natural language to SQL, query optimization, auto-fix broken SQL, intelligent data generation.
 - **Full GUI** — Navicat-like graphical interface with object browser, SQL editor, table designer, data viewer, BI dashboard, and more.
-- **Multi-Database** — MySQL/MariaDB (PostgreSQL support planned).
+- **Multi-Database** — MySQL/MariaDB + PostgreSQL.
 - **7 Export Formats** — CSV, JSON, XML, HTML, SQL, TXT, Excel.
 - **Open Source** — MIT License. Free for personal and commercial use.
 
@@ -63,6 +63,10 @@ opennavicat gui
 | `ai explain` | Plain language SQL explanation | `ai explain "SELECT ... LEFT JOIN ..."` |
 | `ai fix` | Fix broken SQL queries | `ai fix "SELCT * FORM users"` |
 | `ai chat` | Interactive data analysis | `ai chat --conn prod` |
+| `ai agent` | ReAct multi-step reasoning | `ai agent "query all active users" --db mydb` |
+| `ai config` | Configure AI provider | `ai config --provider deepseek --api-key sk-xxx` |
+| `ai test` | Test AI connection | `ai test` |
+| `ai chat-history` | View/clear chat history | `ai chat-history show` |
 | `schema design` | AI schema design | `schema design "blog: users, posts, comments" --deploy` |
 | `data generate` | Intelligent test data | `data generate mydb.users --count 1000` |
 
@@ -71,22 +75,24 @@ opennavicat gui
 ```
 opennavicat
 ├── conn             Connection management
-│   ├── list / add / edit / remove / test / open
+│   ├── list / add / edit / remove / test / open / close
 │
 ├── query            SQL queries
 │   ├── run / file / explain / nl / history
 │
 ├── schema           Schema management
-│   ├── list / show / create / diff / sync / design
+│   ├── databases / list / show / create / diff / sync / design
 │
 ├── data             Data operations
 │   ├── browse / export / import / generate
 │
 ├── backup           Backup & restore
-│   ├── create / restore / list / schedule
+│   ├── create / restore / list / delete / history / schedule
+│   ├── jobs / job-remove / job-toggle
 │
 ├── ai               AI assistant
 │   ├── ask / optimize / explain / fix / chat / tables
+│   ├── agent / config / test / chat-history
 │
 └── gui              Launch GUI (optional)
 ```
@@ -97,8 +103,8 @@ opennavicat
 |-----------|-----------|
 | CLI Framework | Typer + Rich |
 | GUI Framework | PySide6 (Qt 6) |
-| Database Driver | aiomysql (async) |
-| SSH Tunnel | paramiko |
+| Database Driver | aiomysql + asyncpg (async) |
+| SSH Tunnel | asyncssh |
 | SQL Parser | sqlparse |
 | Password Encryption | cryptography (AES-GCM) |
 | AI Engine | OpenAI / DeepSeek / Ollama |
@@ -138,7 +144,7 @@ OpenNavicat 是一款功能齐全的数据库管理工具，灵感来源于 [Nav
 - **CLI 优先** — 每个操作都有对应的 CLI 命令，AI (LLM) 可直接调用。
 - **AI 原生** — 自然语言转 SQL、查询优化、自动修复错误 SQL、智能数据生成。
 - **完整 GUI** — 类 Navicat 图形界面，包含对象浏览器、SQL 编辑器、表设计器、数据查看器、BI 看板等。
-- **多数据库** — MySQL/MariaDB（PostgreSQL 支持计划中）。
+- **多数据库** — MySQL/MariaDB + PostgreSQL。
 - **7 种导出格式** — CSV、JSON、XML、HTML、SQL、TXT、Excel。
 - **开源免费** — MIT 许可证，个人和商业用途均可免费使用。
 
@@ -173,6 +179,10 @@ opennavicat gui
 | `ai explain` | SQL 作用解释 | `ai explain "SELECT ... LEFT JOIN ..."` |
 | `ai fix` | 修复报错 SQL | `ai fix "SELCT * FORM users"` |
 | `ai chat` | 交互式数据分析 | `ai chat --conn prod` |
+| `ai agent` | ReAct 多步推理代理 | `ai agent "查询所有活跃用户" --db mydb` |
+| `ai config` | 配置 AI 提供商 | `ai config --provider deepseek --api-key sk-xxx` |
+| `ai test` | 测试 AI 连接 | `ai test` |
+| `ai chat-history` | 查看/清除聊天历史 | `ai chat-history show` |
 | `schema design` | AI 设计表结构 | `schema design "博客系统: 用户、文章、评论" --deploy` |
 | `data generate` | 智能生成测试数据 | `data generate mydb.users --count 1000` |
 
@@ -182,8 +192,8 @@ opennavicat gui
 |------|------|
 | CLI 框架 | Typer + Rich |
 | GUI 框架 | PySide6 (Qt 6) |
-| 数据库驱动 | aiomysql（异步） |
-| SSH 隧道 | paramiko |
+| 数据库驱动 | aiomysql + asyncpg（异步） |
+| SSH 隧道 | asyncssh |
 | SQL 解析 | sqlparse |
 | 密码加密 | cryptography (AES-GCM) |
 | AI 引擎 | OpenAI / DeepSeek / Ollama |
