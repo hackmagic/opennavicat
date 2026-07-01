@@ -16,6 +16,7 @@
 | `data export` | 导出到文件 | `data export db.table --format json --output data.json` |
 | `data import` | 从文件导入 | `data import db.table data.csv --batch-size 500` |
 | `data generate` | AI 生成测试数据 | `data generate db.table --count 1000` |
+| `data profile` | 列统计分析 | `data profile db.table --sample 5000` |
 
 ### 2.1 data browse
 
