@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import time
 
-import asyncpg
+try:
+    import asyncpg
+except ImportError:
+    asyncpg = None  # type: ignore[assignment]
 
 from open_navicat.dal.base_connector import BaseConnector
 from open_navicat.models import (
@@ -30,6 +33,8 @@ class PostgreSQLConnector(BaseConnector):
     # ---- connection lifecycle ----
 
     async def connect(self) -> bool:
+        if asyncpg is None:
+            raise ImportError("asyncpg is required for PostgreSQL support: pip install asyncpg")
         try:
             self._pool = await asyncpg.create_pool(
                 host=self._info.host,
