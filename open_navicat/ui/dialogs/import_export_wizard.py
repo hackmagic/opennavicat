@@ -206,8 +206,8 @@ class ImportWizard(QWizard):
                     rows = data if isinstance(data, list) else [data]
 
             elif fmt == "xml":
-                import xml.etree.ElementTree as ET
-                tree = ET.parse(path)
+                import xml.etree.ElementTree as ElementTree
+                tree = ElementTree.parse(path)
                 root = tree.getroot()
                 for row_elem in root.findall("row"):
                     row = {}
