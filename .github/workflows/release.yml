@@ -48,9 +48,24 @@ jobs:
         run: poetry run pytest tests/unit/ -v
 
   build:
-    name: Build Distribution
+    name: Build ${{ matrix.os }} ${{ matrix.arch }}
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            arch: x64
+            artifact: opennavicat-windows-x64.exe
+          - os: macos-13
+            arch: x64
+            artifact: opennavicat-macos-x64
+          - os: macos-latest
+            arch: arm64
+            artifact: opennavicat-macos-arm64
+          - os: ubuntu-latest
+            arch: x64
+            artifact: opennavicat-linux-x64
     steps:
       - uses: actions/checkout@v4
 
@@ -59,17 +74,37 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libxrender1 libxext6
+
       - name: Install Poetry
         run: pip install poetry
 
-      - name: Build package
-        run: poetry build
+      - name: Install dependencies
+        run: poetry install
 
-      - name: Upload dist artifacts
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build executable
+        run: pyinstaller --onefile --name opennavicat open_navicat/main.py
+
+      - name: Rename artifact (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: mv dist/opennavicat dist/${{ matrix.artifact }}
+
+      - name: Rename artifact (Windows)
+        if: runner.os == 'Windows'
+        run: Rename-Item -Path dist/opennavicat.exe -NewName ${{ matrix.artifact }}
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
 
   release:
     name: Create GitHub Release
@@ -80,11 +115,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download dist artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: dist
-          path: dist/
+          path: artifacts/
 
       - name: Determine tag
         id: tag
@@ -125,11 +159,18 @@ jobs:
             pip install open-navicat==${{ steps.tag.outputs.tag }}
             ```
 
-            ## Assets
+            ## Executables
 
-            - `open_navicat-${{ steps.tag.outputs.tag }}.tar.gz` — Source distribution
-            - `open_navicat-${{ steps.tag.outputs.tag }}-py3-none-any.whl` — Wheel
-          files: dist/*
+            | Platform | Architecture | File |
+            |----------|-------------|------|
+            | Windows | x64 | `opennavicat-windows-x64.exe` |
+            | macOS | x64 (Intel) | `opennavicat-macos-x64` |
+            | macOS | ARM64 (Apple Silicon) | `opennavicat-macos-arm64` |
+            | Linux | x64 | `opennavicat-linux-x64` |
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.dmg
+            artifacts/**/opennavicat-linux-*
           draft: false
           prerelease: false
         env:
