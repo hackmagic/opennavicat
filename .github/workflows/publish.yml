@@ -5,9 +5,6 @@ on:
     types: [published]
   workflow_dispatch:
 
-permissions:
-  id-token: write
-
 jobs:
   build:
     name: Build Distribution
@@ -36,9 +33,6 @@ jobs:
     name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/open-navicat
     steps:
       - name: Download dist artifacts
         uses: actions/download-artifact@v4
@@ -48,14 +42,13 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
 
   publish-testpypi:
     name: Publish to TestPyPI
     needs: build
     runs-on: ubuntu-latest
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/open-navicat
     steps:
       - name: Download dist artifacts
         uses: actions/download-artifact@v4
@@ -67,3 +60,4 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          password: ${{ secrets.TESTPYPI_API_TOKEN }}
