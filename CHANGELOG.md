@@ -4,6 +4,17 @@ All notable changes to OpenNavicat will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-07-01
+
+### Added
+
+#### SQLite Support
+- Full SQLite connector via aiosqlite (WAL mode, foreign keys)
+- Complete metadata: tables, views, columns, indexes, foreign keys
+- Full CRUD: execute, fetch_page, batch_insert, update_row, delete_row
+- Connection dialog: SQLite option with file path input
+- `aiosqlite` added as default dependency
+
 ## [0.2.0] - 2026-07-01
 
 ### Added

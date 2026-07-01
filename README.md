@@ -28,7 +28,7 @@ OpenNavicat is a full-featured database management tool inspired by [Navicat Pre
 - **CLI-First** — Every operation has a CLI command. AI (LLM) can call CLI directly.
 - **AI-Native** — Natural language to SQL, query optimization, auto-fix broken SQL, intelligent data generation.
 - **Full GUI** — Navicat-like graphical interface with object browser, SQL editor, table designer, data viewer, BI dashboard, and more.
-- **Multi-Database** — MySQL/MariaDB + PostgreSQL.
+- **Multi-Database** — MySQL/MariaDB + PostgreSQL + SQLite.
 - **7 Export Formats** — CSV, JSON, XML, HTML, SQL, TXT, Excel.
 - **Open Source** — MIT License. Free for personal and commercial use.
 
@@ -103,7 +103,7 @@ opennavicat
 |-----------|-----------|
 | CLI Framework | Typer + Rich |
 | GUI Framework | PySide6 (Qt 6) |
-| Database Driver | aiomysql + asyncpg (async) |
+| Database Driver | aiomysql + asyncpg + aiosqlite (async) |
 | SSH Tunnel | asyncssh |
 | SQL Parser | sqlparse |
 | Password Encryption | cryptography (AES-GCM) |
@@ -144,7 +144,7 @@ OpenNavicat 是一款功能齐全的数据库管理工具，灵感来源于 [Nav
 - **CLI 优先** — 每个操作都有对应的 CLI 命令，AI (LLM) 可直接调用。
 - **AI 原生** — 自然语言转 SQL、查询优化、自动修复错误 SQL、智能数据生成。
 - **完整 GUI** — 类 Navicat 图形界面，包含对象浏览器、SQL 编辑器、表设计器、数据查看器、BI 看板等。
-- **多数据库** — MySQL/MariaDB + PostgreSQL。
+- **多数据库** — MySQL/MariaDB + PostgreSQL + SQLite。
 - **7 种导出格式** — CSV、JSON、XML、HTML、SQL、TXT、Excel。
 - **开源免费** — MIT 许可证，个人和商业用途均可免费使用。
 
@@ -192,7 +192,7 @@ opennavicat gui
 |------|------|
 | CLI 框架 | Typer + Rich |
 | GUI 框架 | PySide6 (Qt 6) |
-| 数据库驱动 | aiomysql + asyncpg（异步） |
+| 数据库驱动 | aiomysql + asyncpg + aiosqlite（异步） |
 | SSH 隧道 | asyncssh |
 | SQL 解析 | sqlparse |
 | 密码加密 | cryptography (AES-GCM) |
