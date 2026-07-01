@@ -1,10 +1,11 @@
-"""AI service — natural-language to SQL, optimization, query explanation, schema design, chat."""
+"""AI service — natural-language to SQL, optimization, query explanation, schema design, chat, agent."""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
+from dataclasses import dataclass, field
 
 logger = logging.getLogger("opennavicat.ai")
 
@@ -279,6 +280,259 @@ class AIService:
             self._chat_history = self._chat_history[-20:]
 
         return response
+
+    # ---- Schema RAG ----
+
+    def build_schema_context(
+        self,
+        connection_id: str,
+        database: str,
+        tables: list[str] | None = None,
+        max_tables: int = 10,
+    ) -> str:
+        """Build schema context string for RAG-enhanced prompts.
+
+        Fetches column/index/FK info for the specified tables (or all tables
+        in the database if not specified) and formats it as concise text.
+        """
+        from open_navicat.services.metadata_service import metadata_service
+
+        if tables is None:
+            from open_navicat.dal.connection_pool import connection_pool
+            conn = connection_pool.get(connection_id)
+            if not conn:
+                return ""
+            from open_navicat.dal.connection_pool import _loop
+            # Use the target database
+            table_names = _loop.run_until_complete(conn.list_tables(database))
+            tables = [t.name for t in table_names][:max_tables]
+
+        parts: list[str] = []
+        for tbl in tables[:max_tables]:
+            info = metadata_service.get_table_info(connection_id, database, tbl)
+            if not info:
+                continue
+            lines = [f"CREATE TABLE {tbl} ("]
+            for col in info.columns:
+                parts_col = [f"  {col.name} {col.data_type}"]
+                if not col.nullable:
+                    parts_col.append("NOT NULL")
+                if col.is_primary_key:
+                    parts_col.append("PRIMARY KEY")
+                if col.default:
+                    parts_col.append(f"DEFAULT {col.default}")
+                lines.append(" ".join(parts_col) + ",")
+            # Indexes
+            for idx in info.indexes:
+                cols = ", ".join(idx.columns)
+                if idx.is_primary:
+                    lines.append(f"  PRIMARY KEY ({cols}),")
+                elif idx.is_unique:
+                    lines.append(f"  UNIQUE KEY {idx.name} ({cols}),")
+                else:
+                    lines.append(f"  INDEX {idx.name} ({cols}),")
+            # FKs
+            for fk in info.foreign_keys:
+                lines.append(
+                    f"  FOREIGN KEY ({fk.column}) REFERENCES "
+                    f"{fk.ref_table}({fk.ref_column}),"
+                )
+            # Remove trailing comma from last line
+            if lines[-1].endswith(","):
+                lines[-1] = lines[-1][:-1]
+            lines.append(");")
+            parts.append("\n".join(lines))
+
+        return "\n\n".join(parts)
+
+    def nl2sql_with_rag(self, description: str, connection_id: str, database: str) -> str:
+        """Natural language to SQL with schema RAG context."""
+        schema = self.build_schema_context(connection_id, database)
+        return self.nl2sql(description, schema_context=schema)
+
+    def ask_with_rag(self, question: str, connection_id: str, database: str) -> str:
+        """Answer a database question with schema RAG context."""
+        schema = self.build_schema_context(connection_id, database)
+        return self.ask(question, schema_context=schema)
+
+    # ---- ReAct Agent ----
+
+    @dataclass
+    class AgentStep:
+        """One step in the agent's reasoning loop."""
+        thought: str = ""
+        action: str = ""
+        action_input: str = ""
+        observation: str = ""
+
+    @dataclass
+    class AgentResult:
+        """Final result from the agent."""
+        answer: str = ""
+        steps: list["AIService.AgentStep"] = field(default_factory=list)
+        sql: str = ""
+
+    def agent(
+        self,
+        request: str,
+        connection_id: str = "",
+        database: str = "",
+        max_steps: int = 5,
+    ) -> AgentResult:
+        """ReAct-style agent that reasons, acts, and observes.
+
+        Actions:
+          - search_schema: look up table structures
+          - generate_sql: create a SQL query
+          - execute_sql: run SQL and return results
+          - answer: return a final answer
+        """
+        from open_navicat.services.metadata_service import metadata_service
+        from open_navicat.services.query_engine import query_engine
+
+        result = self.AgentResult()
+        context_parts: list[str] = []
+
+        # Build initial schema summary if connection provided
+        if connection_id and database:
+            schema_ctx = self.build_schema_context(connection_id, database)
+            if schema_ctx:
+                context_parts.append(f"Available schema:\n{schema_ctx}")
+
+        system = (
+            "You are a database agent. Think step by step.\n"
+            "For each step, output EXACTLY one JSON object:\n"
+            '{"thought": "...", "action": "search_schema|generate_sql|execute_sql|answer", '
+            '"action_input": "..."}\n'
+            "When done, use action=answer with the final result.\n"
+            "Available actions:\n"
+            '- search_schema: {"table": "table_name"} — get table structure\n'
+            '- generate_sql: {"description": "what to query"} — create SQL\n'
+            '- execute_sql: {"sql": "SELECT ..."} — run SQL (requires connection)\n'
+            '- answer: {"text": "final answer"} — return result\n'
+        )
+
+        history: list[dict[str, str]] = [
+            {"role": "system", "content": system},
+        ]
+
+        user_msg = f"Request: {request}"
+        if context_parts:
+            user_msg += "\n\n" + "\n\n".join(context_parts)
+        history.append({"role": "user", "content": user_msg})
+
+        for step_i in range(max_steps):
+            response = self._call_llm(history, temperature=0.1)
+            if not response:
+                break
+
+            history.append({"role": "assistant", "content": response})
+
+            # Parse JSON from response
+            step = self.AgentStep()
+            try:
+                # Find JSON object in response
+                start = response.find("{")
+                end = response.rfind("}") + 1
+                if start >= 0 and end > start:
+                    data = json.loads(response[start:end])
+                    step.thought = data.get("thought", "")
+                    step.action = data.get("action", "")
+                    step.action_input = json.dumps(data.get("action_input", ""), ensure_ascii=False)
+                else:
+                    step.action = "answer"
+                    step.action_input = json.dumps({"text": response})
+            except (json.JSONDecodeError, ValueError):
+                step.action = "answer"
+                step.action_input = json.dumps({"text": response})
+
+            result.steps.append(step)
+
+            if step.action == "answer":
+                try:
+                    inp = json.loads(step.action_input)
+                    result.answer = inp.get("text", "")
+                except (json.JSONDecodeError, ValueError):
+                    result.answer = step.action_input
+                break
+
+            elif step.action == "search_schema":
+                try:
+                    inp = json.loads(step.action_input)
+                    tbl = inp.get("table", "")
+                except (json.JSONDecodeError, ValueError):
+                    tbl = step.action_input.strip().strip('"')
+                if connection_id and database and tbl:
+                    info = metadata_service.get_table_info(connection_id, database, tbl)
+                    if info:
+                        cols = ", ".join(
+                            f"{c.name} ({c.data_type})" for c in info.columns
+                        )
+                        step.observation = f"Table {tbl}: columns=[{cols}]"
+                    else:
+                        step.observation = f"Table '{tbl}' not found"
+                else:
+                    step.observation = "No connection or table name provided"
+
+            elif step.action == "generate_sql":
+                try:
+                    inp = json.loads(step.action_input)
+                    desc = inp.get("description", step.action_input)
+                except (json.JSONDecodeError, ValueError):
+                    desc = step.action_input
+                schema = "\n".join(context_parts) if context_parts else ""
+                sql = self.nl2sql(desc, schema_context=schema)
+                result.sql = sql
+                step.observation = f"Generated SQL:\n{sql}"
+
+            elif step.action == "execute_sql":
+                if not connection_id:
+                    step.observation = "No active connection to execute SQL"
+                else:
+                    try:
+                        inp = json.loads(step.action_input)
+                        sql = inp.get("sql", "")
+                    except (json.JSONDecodeError, ValueError):
+                        sql = step.action_input
+                    try:
+                        qr = query_engine.execute(connection_id, sql)
+                        if qr.rows:
+                            rows_str = json.dumps(qr.rows[:10], default=str, ensure_ascii=False)
+                            step.observation = f"Result ({len(qr.rows)} rows): {rows_str}"
+                        else:
+                            step.observation = f"Query OK, {qr.row_count} rows affected"
+                        result.sql = sql
+                    except Exception as e:
+                        step.observation = f"Error: {e}"
+            else:
+                step.observation = f"Unknown action: {step.action}"
+
+            history.append({"role": "user", "content": f"Observation: {step.observation}"})
+
+        if not result.answer and result.steps:
+            result.answer = result.steps[-1].observation
+
+        return result
+
+    # ---- Chat history persistence ----
+
+    def save_chat_history(self, session_id: str = "default") -> None:
+        """Persist chat history to local SQLite config."""
+        from open_navicat.dal.local_config import local_db
+        local_db.set_setting(f"ai_chat_history_{session_id}", self._chat_history)
+
+    def load_chat_history(self, session_id: str = "default") -> None:
+        """Load chat history from local SQLite config."""
+        from open_navicat.dal.local_config import local_db
+        history = local_db.get_setting(f"ai_chat_history_{session_id}", [])
+        if history:
+            self._chat_history = history
+
+    def clear_chat_history(self, session_id: str = "default") -> None:
+        """Clear persisted chat history."""
+        from open_navicat.dal.local_config import local_db
+        self._chat_history = []
+        local_db.set_setting(f"ai_chat_history_{session_id}", [])
 
 
 # Module-level singleton

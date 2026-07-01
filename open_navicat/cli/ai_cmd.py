@@ -229,6 +229,71 @@ def ai_tables(
             raise typer.Exit(1)
 
 
+@ai_app.command("agent")
+def ai_agent(
+    request: str = typer.Argument(..., help="Natural language request for the agent to execute"),
+    conn: str = typer.Option("", "--conn", "-c", help="Connection name"),
+    db: str = typer.Option("", "--db", "-d", help="Database name"),
+    max_steps: int = typer.Option(5, "--steps", help="Max reasoning steps"),
+) -> None:
+    """ReAct agent — reasons, generates SQL, executes, and iterates."""
+    from open_navicat.services.ai_service import ai_service
+
+    cid = _resolve_conn(conn) if conn else ""
+    database = db
+
+    # If no db specified, try to get from active connection
+    if cid and not database:
+        connections = connection_manager.list_saved()
+        info = next((c for c in connections if c.id == cid), None)
+        if info:
+            database = info.database
+
+    console.print(f"[yellow]🤖 Agent thinking (max {max_steps} steps)...[/yellow]")
+    result = ai_service.agent(request, connection_id=cid, database=database, max_steps=max_steps)
+
+    # Show steps
+    for i, step in enumerate(result.steps):
+        if step.thought:
+            console.print(f"[dim]  Thought: {step.thought}[/dim]")
+        if step.action and step.action != "answer":
+            console.print(f"[dim]  Action: {step.action}({step.action_input})[/dim]")
+        if step.observation:
+            console.print(f"[dim]  → {step.observation[:200]}[/dim]")
+
+    if result.sql:
+        console.print("\n[bold]Generated SQL:[/bold]")
+        console.print(Syntax(result.sql, "sql", theme="monokai", word_wrap=True))
+
+    if result.answer:
+        console.print(Panel(Markdown(result.answer), title="🤖 Agent Answer", border_style="green"))
+
+
+@ai_app.command("chat-history")
+def ai_chat_history(
+    action: str = typer.Argument("show", help="Action: show, clear"),
+    session: str = typer.Option("default", "--session", "-s", help="Session ID"),
+) -> None:
+    """View or clear persisted chat history."""
+    from open_navicat.services.ai_service import ai_service
+
+    if action == "clear":
+        ai_service.clear_chat_history(session)
+        console.print(f"[green]✓ Chat history cleared for session '{session}'[/green]")
+    else:
+        ai_service.load_chat_history(session)
+        if not ai_service._chat_history:
+            console.print(f"[yellow]No chat history for session '{session}'[/yellow]")
+            return
+        for msg in ai_service._chat_history[-20:]:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role == "user":
+                console.print(f"\n[bold]You:[/bold] {content[:200]}")
+            else:
+                console.print(f"[bold blue]AI:[/bold blue] {content[:200]}")
+
+
 # ---- helper ----
 
 def _get_schema_context(conn_id: str) -> str:
