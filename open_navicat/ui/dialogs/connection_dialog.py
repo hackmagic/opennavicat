@@ -52,6 +52,7 @@ class ConnectionDialog(QDialog):
         self._combo_engine = QComboBox(self)
         self._combo_engine.addItem("MySQL", "mysql")
         self._combo_engine.addItem("PostgreSQL", "postgresql")
+        self._combo_engine.addItem("SQLite", "sqlite")
         self._combo_engine.currentIndexChanged.connect(self._on_engine_changed)
         general_layout.addRow(t("connection.engine"), self._combo_engine)
 
@@ -241,8 +242,20 @@ class ConnectionDialog(QDialog):
 
     @Slot(int)
     def _on_engine_changed(self, _index: int) -> None:
-        is_pg = self._combo_engine.currentData() == "postgresql"
-        self._spin_port.setValue(5432 if is_pg else 3306)
+        engine = self._combo_engine.currentData()
+        is_sqlite = engine == "sqlite"
+        is_pg = engine == "postgresql"
+
+        # SQLite: host = file path, disable port/user/password
+        self._edit_host.setPlaceholderText("Path to .db file" if is_sqlite else "")
+        self._spin_port.setEnabled(not is_sqlite)
+        self._edit_user.setEnabled(not is_sqlite)
+        self._edit_password.setEnabled(not is_sqlite)
+        self._edit_database.setEnabled(not is_sqlite)
+        self._edit_charset.setEnabled(not is_sqlite)
+
+        if not is_sqlite:
+            self._spin_port.setValue(5432 if is_pg else 3306)
 
     @Slot()
     def _test_connection(self) -> None:

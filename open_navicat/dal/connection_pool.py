@@ -62,6 +62,9 @@ class ConnectionPool:
         if info.engine == "postgresql":
             from open_navicat.dal.postgresql_connector import PostgreSQLConnector
             connector_cls = PostgreSQLConnector
+        elif info.engine == "sqlite":
+            from open_navicat.dal.sqlite_connector import SQLiteConnector
+            connector_cls = SQLiteConnector
         else:
             from open_navicat.dal.mysql_connector import MySQLConnector
             connector_cls = MySQLConnector
