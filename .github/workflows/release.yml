@@ -31,8 +31,12 @@ jobs:
       - name: Install Poetry
         run: pip install poetry
 
-      - name: Enable Qt offscreen rendering
-        run: echo "QT_QPA_PLATFORM=offscreen" >> $GITHUB_ENV
+      - name: Install Qt system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libxrender1 libxext6 xvfb
+          echo "QT_QPA_PLATFORM=offscreen" >> $GITHUB_ENV
 
       - name: Install dependencies
         run: poetry install
