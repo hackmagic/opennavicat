@@ -22,7 +22,6 @@ open_navicat_rs/src-tauri/gen/
 
 # Project
 /screenshots/
-/.github/
 
 # Internal / Temp
 _files.txt
