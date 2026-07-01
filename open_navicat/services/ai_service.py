@@ -6,6 +6,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, field
+from typing import Any
 
 logger = logging.getLogger("opennavicat.ai")
 
@@ -40,7 +41,7 @@ class AIService:
             saved = None
 
         try:
-            msg = self._call_llm([
+            msg = self._call_llm_text([
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": "Reply with exactly: OK"},
             ], temperature=0.0)
@@ -57,54 +58,150 @@ class AIService:
     def set_system_prompt(self, prompt: str) -> None:
         self._system_prompt = prompt
 
+    # ── Function definition templates ──────────────────────────────────
+
+    def _agent_tools(self) -> list[dict]:
+        """Return tool definitions for the AI agent."""
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_schema",
+                    "description": "Get the schema (columns, types, indexes) of a table",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "table": {"type": "string", "description": "Table name"}
+                        },
+                        "required": ["table"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "list_tables",
+                    "description": "List all tables in the current database",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {},
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "execute_sql",
+                    "description": "Execute a SQL query and return results",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "sql": {"type": "string", "description": "SQL query to execute"},
+                        },
+                        "required": ["sql"],
+                    },
+                },
+            },
+        ]
+
     # ---- core LLM call ----
 
-    def _call_llm(self, messages: list[dict[str, str]], temperature: float = 0.1) -> str:
-        """Send messages to the configured LLM backend and return the text response."""
-        if self._provider == "openai":
-            return self._call_openai(messages, temperature)
-        elif self._provider == "deepseek":
-            return self._call_deepseek(messages, temperature)
-        elif self._provider == "ollama":
-            return self._call_ollama(messages, temperature)
-        elif self._provider == "custom":
-            return self._call_custom(messages, temperature)
-        else:
-            # Default to OpenAI-compatible
-            return self._call_openai(messages, temperature)
+    def _call_llm_text(self, messages: list[dict[str, str]], temperature: float = 0.1) -> str:
+        """Convenience: call LLM and return only text content."""
+        text, _ = self._call_llm(messages, temperature)
+        return text
 
-    def _call_openai(self, messages: list[dict[str, str]], temperature: float) -> str:
+    def _call_llm(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float = 0.1,
+        tools: list[dict] | None = None,
+    ) -> tuple[str, list[dict] | None]:
+        """Send messages to the configured LLM backend.
+
+        Returns (text_content, tool_calls) where tool_calls is a list of
+        {"name": ..., "arguments": {...}} dicts, or None if no tools were used.
+        """
+        if self._provider == "openai":
+            return self._call_openai(messages, temperature, tools)
+        elif self._provider == "deepseek":
+            return self._call_deepseek(messages, temperature, tools)
+        elif self._provider == "ollama":
+            return self._call_ollama(messages, temperature, tools)
+        elif self._provider == "custom":
+            return self._call_custom(messages, temperature, tools)
+        else:
+            return self._call_openai(messages, temperature, tools)
+
+    def _call_openai(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        tools: list[dict] | None = None,
+    ) -> tuple[str, list[dict] | None]:
         try:
             from openai import OpenAI
             client = OpenAI(api_key=self._api_key, base_url=self._api_base or None)
-            response = client.chat.completions.create(
-                model=self._model,
-                messages=messages,
-                temperature=temperature,
-            )
-            return response.choices[0].message.content or ""
+            kwargs: dict[str, Any] = {
+                "model": self._model,
+                "messages": messages,
+                "temperature": temperature,
+            }
+            if tools:
+                kwargs["tools"] = tools
+            response = client.chat.completions.create(**kwargs)
+            msg = response.choices[0].message
+            text = msg.content or ""
+            tool_calls = None
+            if msg.tool_calls:
+                tool_calls = [
+                    {"name": tc.function.name, "arguments": json.loads(tc.function.arguments)}
+                    for tc in msg.tool_calls
+                ]
+            return text, tool_calls
         except Exception as e:
             logger.warning("OpenAI API error: %s", e)
-            return ""
+            return "", None
 
-    def _call_deepseek(self, messages: list[dict[str, str]], temperature: float) -> str:
+    def _call_deepseek(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        tools: list[dict] | None = None,
+    ) -> tuple[str, list[dict] | None]:
         try:
             from openai import OpenAI
             client = OpenAI(
                 api_key=self._api_key or os.environ.get("DEEPSEEK_API_KEY", ""),
                 base_url=self._api_base or "https://api.deepseek.com/v1",
             )
-            response = client.chat.completions.create(
-                model=self._model or "deepseek-chat",
-                messages=messages,
-                temperature=temperature,
-            )
-            return response.choices[0].message.content or ""
+            kwargs: dict[str, Any] = {
+                "model": self._model or "deepseek-chat",
+                "messages": messages,
+                "temperature": temperature,
+            }
+            if tools:
+                kwargs["tools"] = tools
+            response = client.chat.completions.create(**kwargs)
+            msg = response.choices[0].message
+            text = msg.content or ""
+            tool_calls = None
+            if msg.tool_calls:
+                tool_calls = [
+                    {"name": tc.function.name, "arguments": json.loads(tc.function.arguments)}
+                    for tc in msg.tool_calls
+                ]
+            return text, tool_calls
         except Exception as e:
             logger.warning("DeepSeek API error: %s", e)
-            return ""
+            return "", None
 
-    def _call_ollama(self, messages: list[dict[str, str]], temperature: float) -> str:
+    def _call_ollama(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        tools: list[dict] | None = None,
+    ) -> tuple[str, list[dict] | None]:
         try:
             import httpx
             base = self._api_base or "http://localhost:11434"
@@ -115,29 +212,53 @@ class AIService:
                 "stream": False,
                 "options": {"temperature": temperature},
             }
+            if tools:
+                payload["tools"] = tools
             response = httpx.post(
                 f"{base}/api/chat",
                 json=payload,
                 timeout=120,
             )
             data = response.json()
-            return data.get("message", {}).get("content", "")
+            msg = data.get("message", {})
+            text = msg.get("content", "")
+            tool_calls = None
+            raw_tools = msg.get("tool_calls")
+            if raw_tools:
+                tool_calls = []
+                for tc in raw_tools:
+                    fn = tc.get("function", {})
+                    args = fn.get("arguments", {})
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            args = {}
+                    tool_calls.append({"name": fn.get("name", ""), "arguments": args})
+            return text, tool_calls
         except Exception as e:
             logger.warning("Ollama error: %s", e)
-            return ""
+            return "", None
 
-    def _call_custom(self, messages: list[dict[str, str]], temperature: float) -> str:
+    def _call_custom(
+        self,
+        messages: list[dict[str, str]],
+        temperature: float,
+        tools: list[dict] | None = None,
+    ) -> tuple[str, list[dict] | None]:
         """Custom OpenAI-compatible API."""
         try:
             import httpx
             headers = {"Content-Type": "application/json"}
             if self._api_key:
                 headers["Authorization"] = f"Bearer {self._api_key}"
-            payload = {
+            payload: dict[str, Any] = {
                 "model": self._model,
                 "messages": messages,
                 "temperature": temperature,
             }
+            if tools:
+                payload["tools"] = tools
             response = httpx.post(
                 self._api_base or "http://localhost:8000/v1/chat/completions",
                 json=payload,
@@ -145,10 +266,25 @@ class AIService:
                 timeout=120,
             )
             data = response.json()
-            return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            msg = data.get("choices", [{}])[0].get("message", {})
+            text = msg.get("content", "")
+            tool_calls = None
+            raw_tools = msg.get("tool_calls")
+            if raw_tools:
+                tool_calls = []
+                for tc in raw_tools:
+                    fn = tc.get("function", {})
+                    args = fn.get("arguments", {})
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args)
+                        except json.JSONDecodeError:
+                            args = {}
+                    tool_calls.append({"name": fn.get("name", ""), "arguments": args})
+            return text, tool_calls
         except Exception as e:
             logger.warning("Custom API error: %s", e)
-            return ""
+            return "", None
 
     # ---- AI features ----
 
@@ -163,7 +299,7 @@ class AIService:
             {"role": "system", "content": "You are a SQL expert. Generate clean, correct SQL queries."},
             {"role": "user", "content": prompt},
         ]
-        return self._call_llm(messages).strip()
+        return self._call_llm_text(messages).strip()
 
     def optimize(self, sql: str, explain_data: str = "") -> str:
         """Suggest optimizations for a SQL query."""
@@ -177,7 +313,7 @@ class AIService:
             {"role": "system", "content": "You are a SQL performance expert."},
             {"role": "user", "content": prompt},
         ]
-        return self._call_llm(messages).strip()
+        return self._call_llm_text(messages).strip()
 
     def explain_query(self, sql: str) -> str:
         """Explain what a SQL query does in plain language."""
@@ -190,7 +326,7 @@ class AIService:
             {"role": "system", "content": "You are a SQL teacher explaining concepts clearly."},
             {"role": "user", "content": prompt},
         ]
-        return self._call_llm(messages).strip()
+        return self._call_llm_text(messages).strip()
 
     def fix_sql(self, sql: str, error: str = "") -> str:
         """Fix a broken SQL query."""
@@ -203,7 +339,7 @@ class AIService:
             {"role": "system", "content": "You are a SQL debugging expert. Fix queries efficiently."},
             {"role": "user", "content": prompt},
         ]
-        return self._call_llm(messages).strip()
+        return self._call_llm_text(messages).strip()
 
     def design_schema(self, description: str) -> str:
         """Design a database schema from a natural language description."""
@@ -221,7 +357,30 @@ class AIService:
             {"role": "system", "content": "You are a database architect. Design clean, normalized schemas."},
             {"role": "user", "content": prompt},
         ]
-        return self._call_llm(messages).strip()
+        return self._call_llm_text(messages).strip()
+
+    def design_schema_iterative(self, current_ddl: str, request: str) -> str:
+        """Iteratively modify an existing schema based on a natural language request.
+
+        Args:
+            current_ddl: The current CREATE TABLE statement(s).
+            request: A natural language modification request (e.g. "add an index on email").
+
+        Returns:
+            Updated DDL with the requested modifications applied.
+        """
+        prompt = (
+            f"Current schema:\n{current_ddl}\n\n"
+            f"Modification request: {request}\n\n"
+            f"Apply the requested change and return the COMPLETE updated CREATE TABLE statement(s). "
+            f"Also include ALTER TABLE statements needed to migrate from the old schema. "
+            f"Return ONLY the SQL, no explanations."
+        )
+        messages = [
+            {"role": "system", "content": "You are a database migration expert."},
+            {"role": "user", "content": prompt},
+        ]
+        return self._call_llm_text(messages).strip()
 
     def generate_data(self, table_info: TableInfo, count: int, prompt: str = "") -> list[dict]:
         """Generate realistic test data based on table schema."""
@@ -241,7 +400,7 @@ class AIService:
             {"role": "user", "content": json_prompt},
         ]
 
-        response = self._call_llm(messages, temperature=0.8)
+        response = self._call_llm_text(messages, temperature=0.8)
         try:
             # Try to parse JSON from the response
             # Find JSON array in the response
@@ -262,7 +421,7 @@ class AIService:
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": prompt},
         ]
-        return self._call_llm(messages, temperature=0.3)
+        return self._call_llm_text(messages, temperature=0.3)
 
     def chat(self, message: str) -> str:
         """Interactive chat with history."""
@@ -271,7 +430,7 @@ class AIService:
             {"role": "system", "content": self._system_prompt},
             *self._chat_history[-20:],  # Keep last 20 turns
         ]
-        response = self._call_llm(messages, temperature=0.3)
+        response = self._call_llm_text(messages, temperature=0.3)
 
         self._chat_history.append({"role": "assistant", "content": response})
 
@@ -379,13 +538,10 @@ class AIService:
         database: str = "",
         max_steps: int = 5,
     ) -> AgentResult:
-        """ReAct-style agent that reasons, acts, and observes.
+        """Function Calling agent that reasons, calls tools, and answers.
 
-        Actions:
-          - search_schema: look up table structures
-          - generate_sql: create a SQL query
-          - execute_sql: run SQL and return results
-          - answer: return a final answer
+        Uses native tool/function calling via the LLM API (OpenAI-compatible).
+        Falls back to text-based ReAct if the response doesn't contain tool_calls.
         """
         from open_navicat.services.metadata_service import metadata_service
         from open_navicat.services.query_engine import query_engine
@@ -393,23 +549,15 @@ class AIService:
         result = self.AgentResult()
         context_parts: list[str] = []
 
-        # Build initial schema summary if connection provided
         if connection_id and database:
             schema_ctx = self.build_schema_context(connection_id, database)
             if schema_ctx:
                 context_parts.append(f"Available schema:\n{schema_ctx}")
 
         system = (
-            "You are a database agent. Think step by step.\n"
-            "For each step, output EXACTLY one JSON object:\n"
-            '{"thought": "...", "action": "search_schema|generate_sql|execute_sql|answer", '
-            '"action_input": "..."}\n'
-            "When done, use action=answer with the final result.\n"
-            "Available actions:\n"
-            '- search_schema: {"table": "table_name"} — get table structure\n'
-            '- generate_sql: {"description": "what to query"} — create SQL\n'
-            '- execute_sql: {"sql": "SELECT ..."} — run SQL (requires connection)\n'
-            '- answer: {"text": "final answer"} — return result\n'
+            "You are a database assistant. You have access to tools to explore "
+            "the database schema and execute SQL queries. Use them step by step. "
+            "When you have the answer, respond directly to the user."
         )
 
         history: list[dict[str, str]] = [
@@ -421,93 +569,88 @@ class AIService:
             user_msg += "\n\n" + "\n\n".join(context_parts)
         history.append({"role": "user", "content": user_msg})
 
+        tools = self._agent_tools()
+
         for step_i in range(max_steps):
-            response = self._call_llm(history, temperature=0.1)
-            if not response:
-                break
-
-            history.append({"role": "assistant", "content": response})
-
-            # Parse JSON from response
+            text, tool_calls = self._call_llm(history, temperature=0.1, tools=tools)
             step = self.AgentStep()
-            try:
-                # Find JSON object in response
-                start = response.find("{")
-                end = response.rfind("}") + 1
-                if start >= 0 and end > start:
-                    data = json.loads(response[start:end])
-                    step.thought = data.get("thought", "")
-                    step.action = data.get("action", "")
-                    step.action_input = json.dumps(data.get("action_input", ""), ensure_ascii=False)
-                else:
-                    step.action = "answer"
-                    step.action_input = json.dumps({"text": response})
-            except (json.JSONDecodeError, ValueError):
-                step.action = "answer"
-                step.action_input = json.dumps({"text": response})
 
-            result.steps.append(step)
-
-            if step.action == "answer":
-                try:
-                    inp = json.loads(step.action_input)
-                    result.answer = inp.get("text", "")
-                except (json.JSONDecodeError, ValueError):
-                    result.answer = step.action_input
+            if not text and not tool_calls:
                 break
 
-            elif step.action == "search_schema":
-                try:
-                    inp = json.loads(step.action_input)
-                    tbl = inp.get("table", "")
-                except (json.JSONDecodeError, ValueError):
-                    tbl = step.action_input.strip().strip('"')
-                if connection_id and database and tbl:
-                    info = metadata_service.get_table_info(connection_id, database, tbl)
-                    if info:
-                        cols = ", ".join(
-                            f"{c.name} ({c.data_type})" for c in info.columns
-                        )
-                        step.observation = f"Table {tbl}: columns=[{cols}]"
-                    else:
-                        step.observation = f"Table '{tbl}' not found"
-                else:
-                    step.observation = "No connection or table name provided"
+            # Handle text response (could be final answer or text-based ReAct fallback)
+            if text:
+                history.append({"role": "assistant", "content": text})
+                # Check if it looks like a final answer (no action JSON)
+                if not tool_calls and not text.strip().startswith("{"):
+                    result.answer = text
+                    step.action = "answer"
+                    step.observation = text
+                    result.steps.append(step)
+                    break
 
-            elif step.action == "generate_sql":
-                try:
-                    inp = json.loads(step.action_input)
-                    desc = inp.get("description", step.action_input)
-                except (json.JSONDecodeError, ValueError):
-                    desc = step.action_input
-                schema = "\n".join(context_parts) if context_parts else ""
-                sql = self.nl2sql(desc, schema_context=schema)
-                result.sql = sql
-                step.observation = f"Generated SQL:\n{sql}"
+            # Handle tool calls
+            if tool_calls:
+                for tc in tool_calls:
+                    fn_name = tc.get("name", "")
+                    fn_args = tc.get("arguments", {})
+                    step = self.AgentStep()
+                    step.action = fn_name
+                    step.action_input = json.dumps(fn_args, ensure_ascii=False)
 
-            elif step.action == "execute_sql":
-                if not connection_id:
-                    step.observation = "No active connection to execute SQL"
-                else:
-                    try:
-                        inp = json.loads(step.action_input)
-                        sql = inp.get("sql", "")
-                    except (json.JSONDecodeError, ValueError):
-                        sql = step.action_input
-                    try:
-                        qr = query_engine.execute(connection_id, sql)
-                        if qr.rows:
-                            rows_str = json.dumps(qr.rows[:10], default=str, ensure_ascii=False)
-                            step.observation = f"Result ({len(qr.rows)} rows): {rows_str}"
+                    if fn_name == "search_schema":
+                        tbl = fn_args.get("table", "")
+                        if connection_id and database and tbl:
+                            info = metadata_service.get_table_info(connection_id, database, tbl)
+                            if info:
+                                cols = ", ".join(f"{c.name} ({c.data_type})" for c in info.columns)
+                                step.observation = f"Table {tbl}: columns=[{cols}]"
+                            else:
+                                step.observation = f"Table '{tbl}' not found"
                         else:
-                            step.observation = f"Query OK, {qr.row_count} rows affected"
-                        result.sql = sql
-                    except Exception as e:
-                        step.observation = f"Error: {e}"
-            else:
-                step.observation = f"Unknown action: {step.action}"
+                            step.observation = "No connection or table name provided"
 
-            history.append({"role": "user", "content": f"Observation: {step.observation}"})
+                    elif fn_name == "list_tables":
+                        if connection_id and database:
+                            from open_navicat.dal.connection_pool import _loop, connection_pool
+                            conn = connection_pool.get(connection_id)
+                            if conn:
+                                tables = _loop.run_until_complete(conn.list_tables(database))
+                                names = [t.name for t in tables]
+                                step.observation = f"Tables: {', '.join(names)}"
+                            else:
+                                step.observation = "No connection available"
+                        else:
+                            step.observation = "No connection or database specified"
+
+                    elif fn_name == "execute_sql":
+                        sql = fn_args.get("sql", "")
+                        if connection_id:
+                            try:
+                                qr = query_engine.execute(connection_id, sql)
+                                if qr.rows:
+                                    rows_str = json.dumps(qr.rows[:10], default=str, ensure_ascii=False)
+                                    step.observation = f"Result ({len(qr.rows)} rows): {rows_str}"
+                                else:
+                                    step.observation = f"Query OK, {qr.row_count} rows affected"
+                                result.sql = sql
+                            except Exception as e:
+                                step.observation = f"Error: {e}"
+                        else:
+                            step.observation = "No active connection"
+
+                    else:
+                        step.observation = f"Unknown function: {fn_name}"
+
+                    result.steps.append(step)
+                    history.append({
+                        "role": "tool",
+                        "content": step.observation,
+                    })
+
+            # No tool_calls and no text → done
+            if not tool_calls and text:
+                break
 
         if not result.answer and result.steps:
             result.answer = result.steps[-1].observation

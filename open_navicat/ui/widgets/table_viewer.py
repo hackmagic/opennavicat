@@ -5,16 +5,21 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
     QDialog,
+    QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -65,6 +70,8 @@ class TableViewerWidget(QWidget):
         self._order_by: str | None = None
         self._order_dir: str = "ASC"
         self._loaded_column_names: list[str] = []
+        self._loaded_rows: list[list] = []
+        self._form_current_row: int = 0
 
         self._setup_ui()
         self._load_page()
@@ -109,6 +116,12 @@ class TableViewerWidget(QWidget):
         self._btn_cell_editor.setChecked(True)
         self._btn_cell_editor.clicked.connect(self._toggle_cell_editor)
         toolbar.addWidget(self._btn_cell_editor)
+
+        # View mode toggle
+        self._btn_form_view = QPushButton("📋 Form View", self)
+        self._btn_form_view.setCheckable(True)
+        self._btn_form_view.clicked.connect(self._toggle_view_mode)
+        toolbar.addWidget(self._btn_form_view)
 
         toolbar.addSeparator()
 
@@ -171,7 +184,10 @@ class TableViewerWidget(QWidget):
 
         layout.addWidget(toolbar)
 
-        # -- Table grid --
+        # -- Stacked widget: table grid (0) + form view (1) --
+        self._view_stack = QStackedWidget(self)
+
+        # Page 0: Table grid
         self._table_widget = QTableWidget(self)
         self._table_widget.setAlternatingRowColors(True)
         self._table_widget.setSelectionBehavior(
@@ -185,7 +201,40 @@ class TableViewerWidget(QWidget):
         self._table_widget.setSortingEnabled(True)
         self._table_widget.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
         self._table_widget.cellChanged.connect(self._on_cell_changed)
-        layout.addWidget(self._table_widget)
+        self._table_widget.cellDoubleClicked.connect(self._on_cell_double_click)
+        self._view_stack.addWidget(self._table_widget)
+
+        # Page 1: Form view
+        self._form_scroll = QScrollArea(self)
+        self._form_scroll.setWidgetResizable(True)
+        self._form_panel = QWidget()
+        self._form_layout = QVBoxLayout(self._form_panel)
+        self._form_fields = QWidget()
+        self._form_fields_layout = QFormLayout(self._form_fields)
+        self._form_fields_layout.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        self._form_layout.addWidget(self._form_fields)
+        # Form nav bar
+        form_nav = QHBoxLayout()
+        self._form_prev = QPushButton("◀ Prev", self)
+        self._form_prev.clicked.connect(self._form_prev_row)
+        self._form_next = QPushButton("Next ▶", self)
+        self._form_next.clicked.connect(self._form_next_row)
+        self._form_row_label = QLabel("Row 0 of 0", self)
+        self._form_row_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        form_nav.addWidget(self._form_prev)
+        form_nav.addWidget(self._form_row_label)
+        form_nav.addWidget(self._form_next)
+        form_nav.addStretch()
+        self._form_close = QPushButton("Back to Table", self)
+        self._form_close.clicked.connect(lambda: self._toggle_view_mode(False))
+        form_nav.addWidget(self._form_close)
+        self._form_layout.addLayout(form_nav)
+        self._form_layout.addStretch()
+
+        self._form_scroll.setWidget(self._form_panel)
+        self._view_stack.addWidget(self._form_scroll)
+
+        layout.addWidget(self._view_stack, 1)
 
         # -- Pagination bar --
         pagination = QHBoxLayout()
@@ -276,6 +325,7 @@ class TableViewerWidget(QWidget):
         thousand_sep = _cfg.get("records.thousand_sep", False)
         null_str = _cfg.get("data_viewer.null_string", "(NULL)")
 
+        self._loaded_rows = result.rows or []
 
         if result.is_select:
             cols = [c.name for c in result.columns]
@@ -288,6 +338,8 @@ class TableViewerWidget(QWidget):
                 for col_idx, val in enumerate(row):
                     if val is None:
                         display = null_str or "(NULL)"
+                    elif isinstance(val, bytes):
+                        display = self._fmt_blob(val)
                     elif isinstance(val, (int, float)) and thousand_sep:
                         display = f"{val:,}"
                     else:
@@ -295,6 +347,9 @@ class TableViewerWidget(QWidget):
                     item = QTableWidgetItem(display)
                     if val is None:
                         item.setForeground(QColor("#808080"))
+                    elif isinstance(val, bytes):
+                        item.setData(Qt.ItemDataRole.UserRole, val)
+                        item.setToolTip("Double-click to view BLOB")
                     self._table_widget.setItem(row_idx, col_idx, item)
 
             self._table_widget.horizontalHeader().resizeSections()
@@ -303,6 +358,107 @@ class TableViewerWidget(QWidget):
             self._table_widget.setColumnCount(0)
 
         self._table_widget.blockSignals(False)
+
+    def _fmt_blob(self, data: bytes) -> str:
+        """Format bytes for display in table cell."""
+        size = len(data)
+        if size < 256:
+            try:
+                text = data.decode("utf-8")
+                return text[:48] + "..." if len(text) > 48 else text
+            except UnicodeDecodeError:
+                pass
+        return f"[BLOB {_fmt_bytes(size)}]"
+
+    def _on_cell_double_click(self, row: int, col: int) -> None:
+        """Open BLOB viewer on double-click of a BLOB cell."""
+        item = self._table_widget.item(row, col)
+        if item and item.data(Qt.ItemDataRole.UserRole) is not None:
+            blob_data = item.data(Qt.ItemDataRole.UserRole)
+            if isinstance(blob_data, bytes):
+                col_name = self._loaded_column_names[col] if col < len(self._loaded_column_names) else ""
+                from open_navicat.ui.dialogs.blob_viewer import BlobViewerDialog
+                dlg = BlobViewerDialog(blob_data, col_name, self.window())
+                dlg.exec()
+
+    def _toggle_view_mode(self, form_mode: bool | None = None) -> None:
+        """Switch between table grid (0) and form view (1)."""
+        if form_mode is None:
+            form_mode = not self._btn_form_view.isChecked()
+        self._btn_form_view.setChecked(form_mode)
+        self._view_stack.setCurrentIndex(1 if form_mode else 0)
+        if form_mode:
+            # Get selected row or use first row
+            selected = self._table_widget.selectedItems()
+            if selected:
+                self._form_current_row = selected[0].row()
+            else:
+                self._form_current_row = 0
+            self._render_form()
+
+    def _render_form(self) -> None:
+        """Render the current row in form view."""
+        # Clear existing fields
+        while self._form_fields_layout.count():
+            child = self._form_fields_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        rows = self._loaded_rows
+        if not rows or self._form_current_row >= len(rows):
+            self._form_row_label.setText("No data")
+            return
+
+        row = rows[self._form_current_row]
+        cols = self._loaded_column_names
+        self._form_row_label.setText(f"Row {self._form_current_row + 1} of {len(rows)}")
+        self._form_prev.setEnabled(self._form_current_row > 0)
+        self._form_next.setEnabled(self._form_current_row < len(rows) - 1)
+
+        for col_idx, col_name in enumerate(cols):
+            val = row[col_idx] if col_idx < len(row) else None
+            if val is None:
+                widget = QLabel("(NULL)", self._form_fields)
+                widget.setStyleSheet("color: #808080;")
+            elif isinstance(val, bytes):
+                widget = self._blob_form_widget(val, col_name)
+            elif isinstance(val, bool):
+                widget = QLabel("✓" if val else "✗", self._form_fields)
+            else:
+                widget = QLabel(str(val), self._form_fields)
+                widget.setWordWrap(True)
+                widget.setTextInteractionFlags(
+                    Qt.TextInteractionFlag.TextSelectableByMouse
+                )
+            self._form_fields_layout.addRow(f"{col_name}:", widget)
+
+    def _blob_form_widget(self, data: bytes, col_name: str) -> QWidget:
+        """Create a widget for BLOB display in form view with a view button."""
+        container = QWidget(self._form_fields)
+        hl = QHBoxLayout(container)
+        hl.setContentsMargins(0, 0, 0, 0)
+        size_str = _fmt_bytes(len(data))
+        hl.addWidget(QLabel(f"[{size_str}]", container))
+        btn = QPushButton("View BLOB", container)
+        btn.clicked.connect(lambda: self._open_blob_viewer(data, col_name))
+        hl.addWidget(btn)
+        hl.addStretch()
+        return container
+
+    def _open_blob_viewer(self, data: bytes, col_name: str) -> None:
+        from open_navicat.ui.dialogs.blob_viewer import BlobViewerDialog
+        dlg = BlobViewerDialog(data, col_name, self.window())
+        dlg.exec()
+
+    def _form_prev_row(self) -> None:
+        if self._form_current_row > 0:
+            self._form_current_row -= 1
+            self._render_form()
+
+    def _form_next_row(self) -> None:
+        if self._form_current_row < len(self._loaded_rows) - 1:
+            self._form_current_row += 1
+            self._render_form()
 
     def _update_pagination(self) -> None:
         total_pages = max(1, (self._total_rows + self._page_size - 1) // self._page_size)

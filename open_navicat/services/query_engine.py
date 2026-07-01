@@ -5,17 +5,27 @@ from __future__ import annotations
 from open_navicat.dal.connection_pool import _loop as pool_loop
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.models.query_result import QueryResult
+from open_navicat.utils.query_cache import query_cache
 
 
 class QueryEngine:
     """Service layer for SQL query execution and result management."""
 
     def execute(self, connection_id: str, sql: str) -> QueryResult:
+        sql_stripped = sql.strip().upper()
+        # Only cache SELECT queries
+        if sql_stripped.startswith("SELECT") or sql_stripped.startswith("WITH"):
+            cached = query_cache.get(connection_id, "", sql)
+            if cached is not None:
+                return cached
         connector = connection_pool.get(connection_id)
         if not connector:
             return QueryResult(success=False, error_message="No active connection")
         loop = pool_loop
-        return loop.run_until_complete(connector.execute(sql))
+        result = loop.run_until_complete(connector.execute(sql))
+        if result.success and (sql_stripped.startswith("SELECT") or sql_stripped.startswith("WITH")):
+            query_cache.set(connection_id, "", sql, result)
+        return result
 
     def execute_file(self, connection_id: str, file_path: str) -> list[QueryResult]:
         """Execute multiple statements from a .sql file, return results per statement."""

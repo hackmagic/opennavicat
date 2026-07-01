@@ -45,6 +45,7 @@ class ConnectionInfo:
 
     # ---- UI state ----
     is_favorite: bool = False
+    group: str = ""
 
     @property
     def display_name(self) -> str:

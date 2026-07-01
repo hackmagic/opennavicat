@@ -4,6 +4,54 @@ All notable changes to OpenNavicat will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-07-01
+
+### Added
+
+#### Connection Groups & Search
+- `ConnectionInfo.group` field + `conn_group` DB column
+- ObjectBrowser search bar with real-time filtering
+- Connection folder groups in tree view with drag-drop support
+- Connection display colors
+- CLI: `conn group list|rename|delete`
+- CLI: `conn export <name>`, `conn import <file>`
+- i18n: `browser.search_connections`
+
+#### AI Function Calling
+- Native LLM tool calls (`search_schema`, `list_tables`, `execute_sql`)
+- All 4 backends support tools parameter (OpenAI/DeepSeek/Ollama/Custom)
+- Backward-compatible `_call_llm_text()` wrapper
+- Agent rewritten to use native `tool_calls` instead of fragile text JSON parsing
+
+#### Data Viewer Enhancements
+- Form view mode (single record, vertical layout, Prev/Next navigation)
+- BLOB viewer dialog (image/text/hex dump)
+- BLOB auto-detection and truncated display in table grid
+- BLOB double-click to open viewer
+
+#### Query Result Cache
+- LRU cache with TTL (default 60s, max 256 entries)
+- Auto-caches SELECT/WITH queries
+- Pluggable: injects into QueryEngine
+
+## [0.4.0] - 2026-07-01
+
+### Added
+
+#### SQL Autocomplete Enhancement
+- Intelligent column name autocomplete from `information_schema`
+- Support `table.column`, `` `table`.`column` ``, and bare column names
+- Column names refresh when switching databases
+
+#### Automation Service Extension
+- Scheduled query execution (`add_query_job`)
+- Scheduled schema/data sync (`add_sync_job`)
+- Scheduler panel: run now for query/sync/backup jobs
+
+#### Backup History Persistence
+- Backup records stored in SQLite (survives restarts)
+- Last 100 backup records retained
+
 ## [0.3.0] - 2026-07-01
 
 ### Added

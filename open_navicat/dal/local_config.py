@@ -49,6 +49,7 @@ class LocalConfigDB:
                 ssl_cert    TEXT DEFAULT '',
                 ssl_key     TEXT DEFAULT '',
                 color       TEXT DEFAULT '#4A90D9',
+                conn_group  TEXT DEFAULT '',
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -121,15 +122,15 @@ class LocalConfigDB:
             """INSERT OR REPLACE INTO connections
                (id, name, host, port, user, password, database, charset,
                 use_ssh, ssh_host, ssh_port, ssh_user, ssh_password, ssh_key_file,
-                use_ssl, ssl_ca, ssl_cert, ssl_key, color)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                use_ssl, ssl_ca, ssl_cert, ssl_key, color, conn_group)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 info.id, info.name, info.host, info.port,
                 info.user, info.password, info.database, info.charset,
                 1 if info.use_ssh else 0, info.ssh_host, info.ssh_port,
                 info.ssh_user, info.ssh_password, info.ssh_key_file,
                 1 if info.use_ssl else 0, info.ssl_ca, info.ssl_cert, info.ssl_key,
-                info.color,
+                info.color, info.group,
             ),
         )
         conn.commit()
@@ -138,10 +139,15 @@ class LocalConfigDB:
         self._connect().execute("DELETE FROM connections WHERE id = ?", (connection_id,))
         self._conn.commit()
 
-    def list_connections(self) -> list[ConnectionInfo]:
-        rows = self._connect().execute(
-            "SELECT * FROM connections ORDER BY name"
-        ).fetchall()
+    def list_connections(self, group: str = "") -> list[ConnectionInfo]:
+        if group:
+            rows = self._connect().execute(
+                "SELECT * FROM connections WHERE conn_group = ? ORDER BY name", (group,)
+            ).fetchall()
+        else:
+            rows = self._connect().execute(
+                "SELECT * FROM connections ORDER BY conn_group, name"
+            ).fetchall()
         return [self._row_to_connection(r) for r in rows]
 
     def get_connection(self, connection_id: str) -> ConnectionInfo | None:
@@ -172,7 +178,31 @@ class LocalConfigDB:
             ssl_cert=row["ssl_cert"] or "",
             ssl_key=row["ssl_key"] or "",
             color=row["color"] or "#4A90D9",
+            group=row["conn_group"] or "",
         )
+
+    def list_groups(self) -> list[str]:
+        """Return sorted list of all non-empty connection group names."""
+        rows = self._connect().execute(
+            "SELECT DISTINCT conn_group FROM connections WHERE conn_group != '' ORDER BY conn_group"
+        ).fetchall()
+        return [r["conn_group"] for r in rows]
+
+    def rename_group(self, old_name: str, new_name: str) -> None:
+        """Rename a connection group."""
+        self._connect().execute(
+            "UPDATE connections SET conn_group = ? WHERE conn_group = ?",
+            (new_name, old_name),
+        )
+        self._conn.commit()
+
+    def delete_group(self, name: str) -> None:
+        """Delete a connection group (set group to empty for all connections in it)."""
+        self._connect().execute(
+            "UPDATE connections SET conn_group = '' WHERE conn_group = ?",
+            (name,),
+        )
+        self._conn.commit()
 
     # ---- settings ----
 
@@ -209,6 +239,17 @@ class LocalConfigDB:
             "SELECT id, name, sql_text, description FROM snippets ORDER BY name"
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def update_snippet(self, snippet_id: int, name: str, sql_text: str, description: str = "") -> None:
+        self._connect().execute(
+            "UPDATE snippets SET name = ?, sql_text = ?, description = ? WHERE id = ?",
+            (name, sql_text, description, snippet_id),
+        )
+        self._conn.commit()
+
+    def delete_snippet(self, snippet_id: int) -> None:
+        self._connect().execute("DELETE FROM snippets WHERE id = ?", (snippet_id,))
+        self._conn.commit()
 
     # ---- saved queries ----
 

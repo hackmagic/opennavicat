@@ -5,10 +5,12 @@ from __future__ import annotations
 import logging
 
 from PySide6.QtCore import Qt, Slot
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMenu,
     QMessageBox,
     QPushButton,
@@ -43,6 +45,7 @@ class ObjectBrowser(QTreeWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
+        self._search_bar = QLineEdit(self)
         self._setup_ui()
         self._load_saved_connections()
 
@@ -57,12 +60,28 @@ class ObjectBrowser(QTreeWidget):
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.itemDoubleClicked.connect(self._on_item_double_click)
 
+        self._search_bar.setPlaceholderText(t("browser.search_connections"))
+        self._search_bar.textChanged.connect(self._filter_connections)
+        # Reserve space at top for the search bar
+        self.setContentsMargins(0, 26, 0, 0)
+        self._search_bar.setGeometry(2, 2, self.width() - 4, 22)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._search_bar.setGeometry(2, 2, self.width() - 4, 22)
+
     # ---- public API ----
 
     def add_connection(self, info: ConnectionInfo) -> None:
         """Add a connected server to the tree and expand."""
         logger.info("ObjectBrowser.add_connection: name=%s id=%s", info.name, info.id)
-        item = QTreeWidgetItem(self)
+
+        # Find or create group parent
+        parent: QTreeWidget | QTreeWidgetItem = self
+        if info.group:
+            parent = self._find_or_create_group(info.group)
+
+        item = QTreeWidgetItem(parent)
         item.setText(0, info.display_name)
         item.setData(0, Qt.ItemDataRole.UserRole, {
             "type": "connection",
@@ -71,6 +90,8 @@ class ObjectBrowser(QTreeWidget):
         })
         item.setToolTip(0, info.dsn)
         item.setExpanded(True)
+        if info.color:
+            item.setForeground(0, QBrush(QColor(info.color)))
 
         # Add loading placeholder
         loading = QTreeWidgetItem(item)
@@ -83,19 +104,91 @@ class ObjectBrowser(QTreeWidget):
         # Auto-expand to load databases
         self._expand_connection(item)
 
+    def _find_or_create_group(self, group_name: str) -> QTreeWidgetItem:
+        """Find existing group item or create one."""
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if data and data.get("type") == "group" and data.get("name") == group_name:
+                return item
+        # Create new group item
+        group_item = QTreeWidgetItem(self)
+        group_item.setText(0, f"📁 {group_name}")
+        group_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "group", "name": group_name})
+        group_item.setFlags(group_item.flags() | Qt.ItemFlag.ItemIsDropEnabled)
+        group_item.setExpanded(True)
+        return group_item
+
     # ---- internal ----
 
     def _load_saved_connections(self) -> None:
         connections = local_db.list_connections()
+        # Group connections by group field, preserve order within groups
+        groups: dict[str, list[ConnectionInfo]] = {}
+        ungrouped: list[ConnectionInfo] = []
         for conn in connections:
-            item = QTreeWidgetItem(self)
-            item.setText(0, conn.display_name)
-            item.setData(0, Qt.ItemDataRole.UserRole, {
-                "type": "connection",
-                "id": conn.id,
-                "info": conn,
-            })
-            item.setToolTip(0, conn.dsn)
+            if conn.group:
+                groups.setdefault(conn.group, []).append(conn)
+            else:
+                ungrouped.append(conn)
+
+        # Add group folder items
+        for group_name in sorted(groups):
+            group_item = QTreeWidgetItem(self)
+            group_item.setText(0, f"📁 {group_name}")
+            group_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "group", "name": group_name})
+            group_item.setFlags(group_item.flags() | Qt.ItemFlag.ItemIsDropEnabled)
+            group_item.setExpanded(True)
+            for conn in groups[group_name]:
+                self._create_connection_item(conn, group_item)
+
+        # Ungrouped connections at root
+        for conn in ungrouped:
+            self._create_connection_item(conn, self)
+
+    def _create_connection_item(self, conn: ConnectionInfo, parent: QTreeWidget | QTreeWidgetItem) -> QTreeWidgetItem:
+        item = QTreeWidgetItem(parent)
+        item.setText(0, conn.display_name)
+        item.setData(0, Qt.ItemDataRole.UserRole, {
+            "type": "connection",
+            "id": conn.id,
+            "info": conn,
+        })
+        item.setToolTip(0, conn.dsn)
+        # Apply connection color
+        if conn.color:
+            item.setForeground(0, QBrush(QColor(conn.color)))
+        return item
+
+    # ---- search / filter ----
+
+    def _filter_connections(self, text: str) -> None:
+        """Filter tree items by search text."""
+        text = text.strip().lower()
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            self._apply_filter(item, text)
+
+    def _apply_filter(self, item: QTreeWidgetItem, text: str) -> bool:
+        """Recursively apply filter, return True if item or any child matches."""
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        item_type = data.get("type") if data else ""
+
+        if item_type == "group":
+            any_child_visible = False
+            for j in range(item.childCount()):
+                if self._apply_filter(item.child(j), text):
+                    any_child_visible = True
+            item.setHidden(not any_child_visible)
+            return any_child_visible
+
+        if item_type == "connection":
+            name = item.text(0).lower()
+            matches = not text or text in name
+            item.setHidden(not matches)
+            return matches
+
+        return True
 
     @Slot(object)
     def _show_context_menu(self, pos) -> None:
@@ -141,6 +234,24 @@ class ObjectBrowser(QTreeWidget):
             act_refresh.triggered.connect(lambda: self._refresh_connection(item))
             act_disconnect = menu.addAction(t("browser.disconnect"))
             act_disconnect.triggered.connect(lambda: self._disconnect_connection(item))
+            menu.addSeparator()
+            # Group assignment
+            act_group = menu.addMenu("分配到组")
+            no_group = act_group.addAction("(无分组)")
+            no_group.triggered.connect(lambda: self._set_connection_group(item, ""))
+            act_group.addSeparator()
+            for g in local_db.list_groups():
+                ga = act_group.addAction(g)
+                ga.triggered.connect(lambda checked, gn=g: self._set_connection_group(item, gn))
+
+        elif obj_type == "group":
+            act_new_conn = menu.addAction("在此组新建连接...")
+            act_new_conn.triggered.connect(lambda: self._new_connection_in_group(item))
+            menu.addSeparator()
+            act_rename = menu.addAction("重命名组...")
+            act_rename.triggered.connect(lambda: self._rename_group(item))
+            act_delete_group = menu.addAction("删除组")
+            act_delete_group.triggered.connect(lambda: self._delete_group(item))
 
         elif obj_type in ("database",):
             act_query = menu.addAction(t("browser.new_query"))
@@ -534,6 +645,63 @@ class ObjectBrowser(QTreeWidget):
                 QMessageBox.warning(self.window(), "连接失败",
                                     f"无法连接到 {info.host}:{info.port}")
 
+    # ---- group management ----
+
+    def _new_connection_in_group(self, group_item: QTreeWidgetItem) -> None:
+        """Open the new connection dialog, auto-assign to group."""
+        dialog = ConnectionDialog(self.window())
+        if dialog.exec() == ConnectionDialog.DialogCode.Accepted:
+            info = dialog.connection_info()
+            group_data = group_item.data(0, Qt.ItemDataRole.UserRole)
+            info.group = group_data.get("name", "")
+            ok = connection_pool.open(info)
+            if ok:
+                local_db.save_connection(info)
+                self._load_saved_connections()
+            else:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.warning(self.window(), "连接失败",
+                                    f"无法连接到 {info.host}:{info.port}")
+
+    def _set_connection_group(self, item: QTreeWidgetItem, group_name: str) -> None:
+        """Assign connection to a group."""
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        conn_id = data.get("id", "")
+        info = data.get("info") or local_db.get_connection(conn_id)
+        if not info:
+            return
+        info.group = group_name
+        local_db.save_connection(info)
+        self._load_saved_connections()
+
+    def _rename_group(self, group_item: QTreeWidgetItem) -> None:
+        """Rename a connection group."""
+        from PySide6.QtWidgets import QInputDialog
+        data = group_item.data(0, Qt.ItemDataRole.UserRole)
+        old_name = data.get("name", "")
+        new_name, ok = QInputDialog.getText(
+            self.window(), "重命名组", "新组名称:", text=old_name,
+        )
+        if ok and new_name and new_name != old_name:
+            local_db.rename_group(old_name, new_name)
+            self._load_saved_connections()
+
+    def _delete_group(self, group_item: QTreeWidgetItem) -> None:
+        """Delete a group (connections become ungrouped)."""
+        from PySide6.QtWidgets import QMessageBox
+        data = group_item.data(0, Qt.ItemDataRole.UserRole)
+        name = data.get("name", "")
+        reply = QMessageBox.question(
+            self.window(), "删除组",
+            f"确定要删除组 '{name}' 吗？\n组内的连接不会丢失，只是不再分组。",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            local_db.delete_group(name)
+            self._load_saved_connections()
+
     def _copy_connection(self, item: QTreeWidgetItem) -> None:
         """Duplicate an existing connection with a new name."""
         data = item.data(0, Qt.ItemDataRole.UserRole)
@@ -854,7 +1022,7 @@ class ObjectBrowser(QTreeWidget):
             if not isinstance(configs, list):
                 configs = [configs]
             from open_navicat.dal.local_config import local_db
-            from open_navicat.models.connection_info import ConnectionInfo
+            from open_navicat.models.connection import ConnectionInfo
             count = 0
             for cfg in configs:
                 info = ConnectionInfo(
@@ -875,11 +1043,12 @@ class ObjectBrowser(QTreeWidget):
                     ssl_ca=cfg.get("ssl_ca", ""),
                     ssl_cert=cfg.get("ssl_cert", ""),
                     ssl_key=cfg.get("ssl_key", ""),
-                    color=cfg.get("color", ""),
+                    color=cfg.get("color", "#4A90D9"),
+                    group=cfg.get("group", ""),
                 )
                 local_db.save_connection(info)
                 count += 1
-            self._refresh_all()
+            self._load_saved_connections()
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(self, "导入成功", f"已导入 {count} 个连接配置。")
         except Exception as e:
@@ -892,10 +1061,10 @@ class ObjectBrowser(QTreeWidget):
 
         from PySide6.QtWidgets import QFileDialog, QMessageBox
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        if not data or data.get("obj_type") != "connection":
+        if not data or data.get("type") != "connection":
             return
         from open_navicat.dal.local_config import local_db
-        info = local_db.get_connection(data["connection_id"])
+        info = local_db.get_connection(data["id"])
         if not info:
             return
         path, _ = QFileDialog.getSaveFileName(
@@ -923,6 +1092,7 @@ class ObjectBrowser(QTreeWidget):
                 "ssl_cert": info.ssl_cert,
                 "ssl_key": info.ssl_key,
                 "color": info.color,
+                "group": info.group,
             }
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=2, ensure_ascii=False)

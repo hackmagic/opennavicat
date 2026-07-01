@@ -77,16 +77,17 @@ main.py
 | 组件 | 职责 | 调用服务 |
 |------|------|----------|
 | `MainWindow` | 主窗口框架、菜单、Tab 工作区 | — |
-| `ObjectBrowser` | 连接树、数据库对象浏览 | `MetadataService` |
+| `ObjectBrowser` | 连接树（分组/搜索/拖放）、数据库对象浏览 | `MetadataService`, `local_db` |
 | `SQLEditorWidget` | SQL 编辑、执行、结果查看 | `QueryEngine` |
-| `TableViewerWidget` | 数据网格分页、编辑、筛选 | `QueryEngine` |
+| `TableViewerWidget` | 数据网格/表单视图、分页、编辑、筛选、BLOB 查看 | `QueryEngine` |
 | `ConnectionDialog` | 连接编辑表单 | `ConnectionManager` |
+| `BlobViewerDialog` | BLOB 图片/文本/十六进制查看 | — |
 
 ### 4.2 CLI 层 (open_navicat/cli/)
 
 | 命令组 | 入口文件 | 子命令数 | 说明 |
 |--------|----------|----------|------|
-| `conn` | `conn_cmd.py` | 7 | list/add/edit/remove/test/open/close |
+| `conn` | `conn_cmd.py` | 12 | list/add/edit/remove/test/open/close/export/import + group list/rename/delete |
 | `query` | `query_cmd.py` | 5 | run/file/explain/nl/history |
 | `schema` | `schema_cmd.py` | 6 | list/show/create/diff/sync/design + databases |
 | `data` | `data_cmd.py` | 4 | browse/export/import/generate |
@@ -98,13 +99,14 @@ main.py
 | 服务 | 职责 | 关键类/方法 |
 |------|------|-------------|
 | `ConnectionManager` | 连接生命周期 | `connect()`, `disconnect()`, `list_saved()` |
-| `QueryEngine` | SQL 执行与解释 | `execute()`, `explain()`, `explain_format_json()` |
+| `QueryEngine` | SQL 执行与解释 + 查询结果缓存 | `execute()`, `explain()`, `explain_format_json()` |
+| `QueryCache` | LRU 查询结果缓存 (TTL 60s, max 256) | `get()`, `set()`, `invalidate()` |
 | `MetadataService` | Schema 信息 | `list_databases()`, `get_table_info()`, `list_tables()` |
-| `AIService` | LLM 集成 | `nl2sql()`, `optimize()`, `explain_query()`, `design_schema()`, `chat()`, `agent()` |
+| `AIService` | LLM 集成 (含 Function Calling Agent) | `nl2sql()`, `optimize()`, `agent()`, `chat()` |
 | `BackupService` | 备份/恢复 | `backup()`, `restore()`, `schedule_backup()` (mysqldump + pg_dump) |
 | `SyncEngine` | 结构对比与同步 | `compare_schemas()`, `sync_schema()`, `generate_sync_sql()` (MySQL/PostgreSQL) |
 | `DataSyncEngine` | 数据对比与同步 | `compare_data()`, `sync_data()`, `generate_sync_sql()` (MySQL/PostgreSQL) |
-| `AutomationService` | 定时调度 | `add_job()`, `remove_job()`, `list_jobs()` (APScheduler) |
+| `AutomationService` | 定时调度 | `add_job()`, `remove_job()`, `list_jobs()` (APScheduler, backup/query/sync) |
 
 ### 4.4 数据访问层 (open_navicat/dal/)
 

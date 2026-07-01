@@ -233,14 +233,24 @@ export OPENNAVICAT_AI_MODEL=llama3
 |------|------|------|
 | **Schema RAG** | 自动获取表结构、列名、索引、外键作为上下文 | ✅ v0.2.0 |
 | **AI Agent (ReAct)** | LLM 自主规划多步操作: 搜索 Schema → 生成 SQL → 执行 → 分析 | ✅ v0.2.0 |
+| **AI Agent (Function Calling)** | 原生函数调用: search_schema / list_tables / execute_sql，无需文本 JSON 解析 | ✅ v0.5.0 |
 | **聊天历史持久化** | SQLite 存储多轮对话历史，支持按 session 管理 | ✅ v0.2.0 |
 | **AI 配置 CLI** | `ai config` 命令行配置提供商、API Key、模型 | ✅ v0.2.0 |
+
+### 6.1 Function Calling Agent
+
+v0.5.0 将 ReAct Agent 升级为原生 LLM Function Calling：
+
+1. **工具定义**: 注册 `search_schema`、`list_tables`、`execute_sql` 三个数据库工具
+2. **原生调用**: LLM 通过 `tool_calls` 参数直接请求函数执行，无需文本 JSON 解析
+3. **多工具支持**: 单次响应可调用多个工具（OpenAI/DeepSeek 原生支持）
+4. **兼容后备**: 不支持 tools 的提供者（Ollama 旧版等）自动降级为纯文本对话
+5. **支持所有后端**: OpenAI、DeepSeek、Ollama（≥0.3.0）、自定义 OpenAI-compatible API
 
 ## 7. 未来扩展
 
 | 功能 | 说明 |
 |------|------|
-| **Function Calling** | LLM 直接调用数据库操作函数，而非先生成 SQL |
 | **多轮 Schema 设计** | "加个索引" "这张表要分区" 等连续设计对话 |
 | **数据质量分析** | "检查 email 列的格式是否正确" |
 | **异常检测** | "检测 orders 表中是否存在异常数据" |

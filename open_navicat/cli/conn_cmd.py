@@ -189,3 +189,148 @@ def close_connection(
 
     connection_manager.disconnect(cid)
     console.print("[green]✓ Connection closed.[/green]")
+
+
+# ── Import / Export ─────────────────────────────────────────────────────────
+
+@conn_app.command("export")
+def export_connection(
+    name: str = typer.Argument(..., help="Connection name to export"),
+    output: str = typer.Option("", "--output", "-o", help="Output file path (default: {name}.json)"),
+) -> None:
+    """Export a connection to JSON."""
+    import json
+
+    from open_navicat.dal.local_config import local_db
+    connections = connection_manager.list_saved()
+    target = next((c for c in connections if c.name == name), None)
+    if not target:
+        console.print(f"[red]Connection '{name}' not found.[/red]")
+        raise typer.Exit(1)
+
+    path = output or f"{name}.json"
+    cfg = {
+        "name": target.name,
+        "host": target.host,
+        "port": target.port,
+        "user": target.user,
+        "password": target.password,
+        "database": target.database,
+        "charset": target.charset,
+        "use_ssh": target.use_ssh,
+        "ssh_host": target.ssh_host,
+        "ssh_port": target.ssh_port,
+        "ssh_user": target.ssh_user,
+        "ssh_password": target.ssh_password,
+        "ssh_key_file": target.ssh_key_file,
+        "use_ssl": target.use_ssl,
+        "ssl_ca": target.ssl_ca,
+        "ssl_cert": target.ssl_cert,
+        "ssl_key": target.ssl_key,
+        "color": target.color,
+        "group": target.group,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(cfg, f, indent=2, ensure_ascii=False)
+    console.print(f"[green]✓ Connection '{name}' exported to {path}.[/green]")
+
+
+@conn_app.command("import")
+def import_connection(
+    file: str = typer.Argument(..., help="JSON file path to import"),
+    test: bool = typer.Option(False, "--test", "-t", help="Test connection before saving"),
+) -> None:
+    """Import a connection from JSON."""
+    import json
+
+    from open_navicat.dal.local_config import local_db
+    from open_navicat.models.connection import ConnectionInfo
+
+    with open(file, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+
+    info = ConnectionInfo(
+        name=cfg.get("name", "Imported"),
+        host=cfg.get("host", "localhost"),
+        port=int(cfg.get("port", 3306)),
+        user=cfg.get("user", "root"),
+        password=cfg.get("password", ""),
+        database=cfg.get("database", ""),
+        charset=cfg.get("charset", "utf8mb4"),
+        use_ssh=cfg.get("use_ssh", False),
+        ssh_host=cfg.get("ssh_host", ""),
+        ssh_port=int(cfg.get("ssh_port", 22)),
+        ssh_user=cfg.get("ssh_user", ""),
+        ssh_password=cfg.get("ssh_password", ""),
+        ssh_key_file=cfg.get("ssh_key_file", ""),
+        use_ssl=cfg.get("use_ssl", False),
+        ssl_ca=cfg.get("ssl_ca", ""),
+        ssl_cert=cfg.get("ssl_cert", ""),
+        ssl_key=cfg.get("ssl_key", ""),
+        color=cfg.get("color", "#4A90D9"),
+        group=cfg.get("group", ""),
+    )
+
+    if test:
+        console.print("[yellow]Testing connection...[/yellow]")
+        success = connection_manager.connect(info)
+        if success:
+            connection_manager.disconnect(info.id)
+            console.print("[green]✓ Connection test successful![/green]")
+        else:
+            console.print("[red]✗ Connection failed![/red]")
+            raise typer.Exit(1)
+
+    local_db.save_connection(info)
+    console.print(f"[green]✓ Connection '{info.name}' imported from {file}.[/green]")
+
+
+# ── Connection groups ──────────────────────────────────────────────────────
+
+group_app = typer.Typer(name="group", help="Manage connection groups", no_args_is_help=True)
+conn_app.add_typer(group_app)
+
+
+@group_app.command("list")
+def list_groups(
+    format: str = typer.Option("table", "--format", "-f", help="Output format: table|json|csv"),
+) -> None:
+    """List all connection groups."""
+    from open_navicat.dal.local_config import local_db
+    groups = local_db.list_groups()
+    if not groups:
+        console.print("[yellow]No connection groups found.[/yellow]")
+        raise typer.Exit()
+
+    rows = []
+    for g in groups:
+        count = len(local_db.list_connections(group=g))
+        rows.append({"name": g, "connections": count})
+    format_output(rows, format, title="Connection Groups")
+
+
+@group_app.command("rename")
+def rename_group(
+    name: str = typer.Argument(..., help="Current group name"),
+    new_name: str = typer.Argument(..., help="New group name"),
+) -> None:
+    """Rename a connection group."""
+    from open_navicat.dal.local_config import local_db
+    local_db.rename_group(name, new_name)
+    console.print(f"[green]✓ Group '{name}' renamed to '{new_name}'.[/green]")
+
+
+@group_app.command("delete")
+def delete_group(
+    name: str = typer.Argument(..., help="Group name to delete"),
+    force: bool = typer.Option(False, "--force", "-f", help="Delete without confirmation"),
+) -> None:
+    """Delete a connection group (connections become ungrouped)."""
+    from open_navicat.dal.local_config import local_db
+    if not force:
+        confirm = typer.confirm(f"Delete group '{name}'? Connections will be ungrouped.")
+        if not confirm:
+            console.print("[yellow]Cancelled.[/yellow]")
+            raise typer.Exit()
+    local_db.delete_group(name)
+    console.print(f"[green]✓ Group '{name}' deleted.[/green]")

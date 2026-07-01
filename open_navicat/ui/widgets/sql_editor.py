@@ -426,25 +426,18 @@ class SQLEditorWidget(QWidget):
         btn_explain.clicked.connect(self._execute_explain)
         m_layout.addWidget(btn_explain)
 
-        # Code Block dropdown
-        self._btn_code_block = QPushButton("📋 " + t("sql_editor.code_block"), mini_bar)
-        self._btn_code_block.setToolTip(t("sql_editor.code_block_tip"))
-        code_menu = QMenu(self)
-        for label, sql in [
-            ("SELECT", "SELECT * FROM `table` WHERE 1\nLIMIT 100;"),
-            ("INSERT", "INSERT INTO `table` (`col1`, `col2`) VALUES ('val1', 'val2');"),
-            ("UPDATE", "UPDATE `table` SET `col1` = 'val1' WHERE `id` = 1;"),
-            ("DELETE", "DELETE FROM `table` WHERE `id` = 1;"),
-            ("CREATE TABLE", "CREATE TABLE `table` (\n  `id` INT AUTO_INCREMENT PRIMARY KEY\n);"),
-            ("ALTER TABLE", "ALTER TABLE `table`\n  ADD COLUMN `new_col` INT;"),
-            ("DROP TABLE", "DROP TABLE IF EXISTS `table`;"),
-            ("JOIN", "SELECT *\nFROM `table1` t1\nJOIN `table2` t2 ON t1.id = t2.fk_id\nWHERE 1;"),
-            ("GROUP BY", "SELECT `col`, COUNT(*)\nFROM `table`\nWHERE 1\nGROUP BY `col`\nORDER BY COUNT(*) DESC;"),
-        ]:
-            act = code_menu.addAction(label)
-            act.triggered.connect(lambda checked, s=sql: self._editor.insertPlainText(s))
-        self._btn_code_block.setMenu(code_menu)
-        m_layout.addWidget(self._btn_code_block)
+        # Snippets button
+        self._btn_snippets = QPushButton("📋 " + t("sql_editor.snippets"), mini_bar)
+        self._btn_snippets.setToolTip(t("sql_editor.snippets_tip"))
+        self._snippet_menu = QMenu(self)
+        self._btn_snippets.setMenu(self._snippet_menu)
+        self._refresh_snippet_menu()
+        m_layout.addWidget(self._btn_snippets)
+
+        # Manage snippets
+        btn_manage_snippets = QPushButton(t("sql_editor.manage_snippets"), mini_bar)
+        btn_manage_snippets.clicked.connect(self._open_snippet_manager)
+        m_layout.addWidget(btn_manage_snippets)
 
         m_layout.addStretch()
 
@@ -666,7 +659,7 @@ class SQLEditorWidget(QWidget):
             _log.warning("Failed to load databases: %s", e)
 
     def _setup_completer(self, connector, dbs) -> None:
-        """Build autocomplete list: SQL keywords + table names from all databases."""
+        """Build autocomplete list: SQL keywords + table names + column names."""
         from PySide6.QtWidgets import QCompleter
 
         from open_navicat.config import config as _cfg
@@ -690,13 +683,24 @@ class SQLEditorWidget(QWidget):
             "IF", "ELSE", "WHILE", "LOOP", "THEN", "BEGIN", "END",
         ]
 
-        # Add table names from connected databases
+        # Add table names and column names from connected databases
         for db in dbs:
             try:
                 tables = pool_loop.run_until_complete(connector.list_tables(db.name))
                 for t in tables:
                     words.append(f"`{db.name}`.`{t}`")
                     words.append(t)
+                    # Fetch column names for this table
+                    try:
+                        info = pool_loop.run_until_complete(
+                            connector.get_table_info(db.name, t)
+                        )
+                        for col in info.columns:
+                            words.append(col.name)
+                            words.append(f"`{t}`.`{col.name}`")
+                            words.append(f"{t}.{col.name}")
+                    except Exception:
+                        pass
             except Exception as e:
                 _log.debug("Failed to list tables for %s: %s", db.name, e)
 
@@ -996,9 +1000,9 @@ class SQLEditorWidget(QWidget):
         act_run = menu.addAction(t("context.run_selected"))
         act_run.triggered.connect(self._execute)
 
-        # Save as query
+        # Save as snippet
         act_save = menu.addAction(t("context.create_snippet"))
-        act_save.triggered.connect(self._save_query)
+        act_save.triggered.connect(self._save_as_snippet)
 
         menu.addSeparator()
 
@@ -1053,6 +1057,72 @@ class SQLEditorWidget(QWidget):
         raw = self._editor.toPlainText()
         simplified = sqlparse.format(raw, reindent=False, keyword_case="upper")
         self._editor.setPlainText(simplified)
+
+    # ---- snippets ----
+
+    def _refresh_snippet_menu(self) -> None:
+        self._snippet_menu.clear()
+        snippets = local_db.list_snippets()
+        for snip in snippets:
+            act = self._snippet_menu.addAction(snip["name"])
+            act.setToolTip(snip.get("description", "") or snip["sql_text"][:80])
+            act.triggered.connect(
+                lambda checked, s=snip["sql_text"]: self._insert_snippet_with_vars(s)
+            )
+        if snippets:
+            self._snippet_menu.addSeparator()
+        # Built-in templates as fallback
+        for label, sql in [
+            ("SELECT", "SELECT * FROM `table` WHERE 1\nLIMIT 100;"),
+            ("INSERT", "INSERT INTO `table` (`col1`, `col2`) VALUES ('val1', 'val2');"),
+            ("UPDATE", "UPDATE `table` SET `col1` = 'val1' WHERE `id` = 1;"),
+            ("DELETE", "DELETE FROM `table` WHERE `id` = 1;"),
+            ("CREATE TABLE", "CREATE TABLE `table` (\n  `id` INT AUTO_INCREMENT PRIMARY KEY\n);"),
+        ]:
+            act = self._snippet_menu.addAction(f"📦 {label}")
+            act.triggered.connect(lambda checked, s=sql: self._editor.insertPlainText(s))
+
+    def _insert_snippet_with_vars(self, sql: str) -> None:
+        """Insert snippet, prompting for {{variable}} placeholders."""
+        import re
+        vars_found = re.findall(r"\{\{(\w+)\}\}", sql)
+        if vars_found:
+            from PySide6.QtWidgets import QInputDialog
+            values = {}
+            for var_name in vars_found:
+                val, ok = QInputDialog.getText(
+                    self, t("snippet.variable_prompt"), f"{var_name}:",
+                )
+                if ok:
+                    values[var_name] = val
+                else:
+                    return
+            for var_name, val in values.items():
+                sql = sql.replace(f"{{{{{var_name}}}}}", val)
+        self._editor.insertPlainText(sql)
+
+    def _open_snippet_manager(self) -> None:
+        from open_navicat.ui.dialogs.snippet_manager import SnippetManagerDialog
+        dlg = SnippetManagerDialog(self.window())
+        dlg.exec()
+        self._refresh_snippet_menu()
+
+    def _save_as_snippet(self) -> None:
+        """Save selected text (or entire editor) as a reusable snippet."""
+        cursor = self._editor.textCursor()
+        text = cursor.selectedText() if cursor.hasSelection() else self._editor.toPlainText()
+        text = text.strip()
+        if not text:
+            return
+        from PySide6.QtWidgets import QInputDialog, QLineEdit
+        name, ok = QInputDialog.getText(
+            self, t("context.create_snippet"), t("snippet.name"),
+            QLineEdit.EchoMode.Normal, "my_snippet",
+        )
+        if ok and name:
+            from open_navicat.dal.local_config import local_db
+            local_db.save_snippet(name.strip(), text)
+            self._refresh_snippet_menu()
 
     # ---- find/replace ----
 

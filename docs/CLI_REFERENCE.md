@@ -1,6 +1,6 @@
 # OpenNavicat CLI 参考手册
 
-> 版本: 0.2.0 | 命令总数: 40+
+> 版本: 0.5.0 | 命令总数: 47+
 
 `opennavicat` 是 CLI-First 设计，所有功能通过命令行暴露。GUI 只是可选的可视化包装。
 
@@ -26,13 +26,18 @@ opennavicat query run "SELECT * FROM users"
 ## 1. conn — 连接管理
 
 ```bash
-opennavicat conn list       # 列出所有保存的连接
-opennavicat conn add        # 新增连接
-opennavicat conn edit       # 编辑连接
-opennavicat conn remove     # 删除连接
-opennavicat conn test       # 测试连接
-opennavicat conn open       # 激活连接 (供后续命令使用)
-opennavicat conn close      # 关闭连接
+opennavicat conn list            # 列出所有保存的连接
+opennavicat conn add             # 新增连接
+opennavicat conn edit            # 编辑连接
+opennavicat conn remove          # 删除连接
+opennavicat conn test            # 测试连接
+opennavicat conn open            # 激活连接 (供后续命令使用)
+opennavicat conn close           # 关闭连接
+opennavicat conn export          # 导出连接到 JSON
+opennavicat conn import          # 从 JSON 导入连接
+opennavicat conn group list      # 列出连接组
+opennavicat conn group rename    # 重命名连接组
+opennavicat conn group delete    # 删除连接组
 ```
 
 ### 1.1 conn list
@@ -133,6 +138,34 @@ opennavicat conn close "Prod"   # 关闭指定连接
 ```
 
 关闭活跃连接。省略名称时关闭第一个激活的连接。
+
+### 1.8 conn export
+
+```bash
+opennavicat conn export "MyDB"              # 导出到 MyDB.json
+opennavicat conn export "MyDB" --output /path/to/config.json
+```
+
+将连接配置导出为 JSON 文件。导出的文件包含所有连接字段（含分组信息），可通过 `conn import` 恢复。
+
+### 1.9 conn import
+
+```bash
+opennavicat conn import /path/to/config.json           # 导入连接
+opennavicat conn import /path/to/config.json --test     # 导入前测试连接
+```
+
+从 JSON 文件导入连接配置。使用 `--test` 可以在保存前测试连接是否可用。
+
+### 1.10 conn group — 连接组管理
+
+```bash
+opennavicat conn group list                # 列出所有连接组及连接数
+opennavicat conn group rename "Old" "New"  # 重命名连接组
+opennavicat conn group delete "GroupName"  # 删除连接组（连接不丢失）
+```
+
+连接组用于在 GUI 对象浏览器中对连接进行分类管理。删除组时，组内的连接不会丢失，只是回到"未分组"状态。
 
 ---
 

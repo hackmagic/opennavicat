@@ -48,6 +48,12 @@ jobs:
       - name: Run tests
         run: poetry run pytest tests/unit/ -v --tb=short
 
+      - name: Security audit
+        run: |
+          pip install pip-audit
+          poetry export -f requirements.txt --without-hashes -o /tmp/requirements.txt
+          pip-audit -r /tmp/requirements.txt
+
   build:
     name: Build
     needs: test

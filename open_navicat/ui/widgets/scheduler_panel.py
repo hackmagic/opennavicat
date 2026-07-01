@@ -183,11 +183,17 @@ class SchedulerPanel(QWidget):
     def _run_now(self, job: dict) -> None:
         self._status.setText(f"正在执行: {job.get('name', '')}...")
         try:
-            automation_service._run_backup_job(job)
-            automation_service.update_job_status(job["id"], "manual: success")
+            job_type = job.get("job_type", "backup")
+            if job_type == "backup":
+                automation_service._run_backup_job(job)
+            elif job_type == "query":
+                automation_service._run_query_job(job)
+            elif job_type == "sync":
+                automation_service._run_sync_job(job)
+            else:
+                automation_service._run_backup_job(job)
             self._status.setText(f"✅ {job.get('name', '')} 执行完成")
         except Exception as e:
-            automation_service.update_job_status(job["id"], f"manual failed: {e}")
             self._status.setText(f"❌ {job.get('name', '')} 执行失败: {e}")
         self._refresh()
 

@@ -4,7 +4,7 @@ Uses APScheduler for cron-based job scheduling.
 Persistence via local_config (SQLite).
 
 Supported job types:
-- backup:  Periodic database backup via mysqldump
+- backup:  Periodic database backup via mysqldump/pg_dump
 - query:   Periodic SQL query execution
 - sync:    Periodic schema/data synchronization
 """
@@ -15,7 +15,6 @@ import uuid
 from typing import Any, Callable
 
 from open_navicat.dal.local_config import local_db
-from open_navicat.services.backup_service import backup_service
 
 # ── Automation Service ────────────────────────────────────────────────────
 
@@ -26,6 +25,8 @@ class AutomationService:
     Usage:
         automation = AutomationService()
         automation.add_backup_job("daily-backup", conn_id, "prod_db", "0 2 * * *")
+        automation.add_query_job("hourly-report", conn_id, "SELECT COUNT(*) FROM orders", "0 * * * *")
+        automation.add_sync_job("schema-sync", conn_id, "source_db", "target_db", "0 3 * * *")
         automation.start()
     """
 
@@ -33,6 +34,8 @@ class AutomationService:
         self._scheduler: Any = None
         self._job_fns: dict[str, Callable] = {
             "backup": self._run_backup_job,
+            "query": self._run_query_job,
+            "sync": self._run_sync_job,
         }
 
     # ── Scheduler lifecycle ───────────────────────────────────────────
@@ -89,6 +92,68 @@ class AutomationService:
                 "database": database,
                 "compress": compress,
                 "output_dir": output_dir,
+            },
+        }
+        local_db.save_job(job)
+
+        if enabled:
+            self._schedule_job(job)
+
+        return job
+
+    def add_query_job(
+        self,
+        name: str,
+        connection_id: str,
+        sql: str,
+        cron_expr: str = "0 * * * *",
+        database: str = "",
+        enabled: bool = True,
+    ) -> dict:
+        """Create and persist a scheduled query execution job."""
+        job_id = f"query_{uuid.uuid4().hex[:8]}"
+        job = {
+            "id": job_id,
+            "name": name,
+            "job_type": "query",
+            "connection_id": connection_id,
+            "cron_expr": cron_expr,
+            "enabled": enabled,
+            "config": {
+                "sql": sql,
+                "database": database,
+            },
+        }
+        local_db.save_job(job)
+
+        if enabled:
+            self._schedule_job(job)
+
+        return job
+
+    def add_sync_job(
+        self,
+        name: str,
+        connection_id: str,
+        source_db: str,
+        target_db: str,
+        cron_expr: str = "0 3 * * *",
+        sync_type: str = "schema",
+        enabled: bool = True,
+    ) -> dict:
+        """Create and persist a scheduled sync job."""
+        job_id = f"sync_{uuid.uuid4().hex[:8]}"
+        job = {
+            "id": job_id,
+            "name": name,
+            "job_type": "sync",
+            "connection_id": connection_id,
+            "cron_expr": cron_expr,
+            "enabled": enabled,
+            "config": {
+                "source_db": source_db,
+                "target_db": target_db,
+                "sync_type": sync_type,
             },
         }
         local_db.save_job(job)
@@ -182,9 +247,103 @@ class AutomationService:
                 local_db.update_job_status(job["id"], "failed: no connection")
                 return
 
+            from open_navicat.services.backup_service import backup_service
             backup_service.backup_dir = output_dir
             backup_service.create_backup(conn_info, database, compress=compress)
             local_db.update_job_status(job["id"], "success")
+        except Exception as exc:
+            local_db.update_job_status(job["id"], f"failed: {exc}")
+
+    def _run_query_job(self, job: dict) -> None:
+        """Execute a scheduled query job."""
+        conn_id = job.get("connection_id", "")
+        config = job.get("config", {})
+        sql = config.get("sql", "")
+        database = config.get("database", "")
+
+        if not sql:
+            local_db.update_job_status(job["id"], "failed: no SQL")
+            return
+
+        try:
+            from open_navicat.dal.connection_pool import connection_pool
+            from open_navicat.dal.local_config import local_db as _db
+
+            conn_info = _db.get_connection(conn_id)
+            if not conn_info:
+                local_db.update_job_status(job["id"], "failed: no connection")
+                return
+
+            # Open connection if not already open
+            connector = connection_pool.get(conn_id)
+            if not connector:
+                success = connection_pool.open(conn_info)
+                if not success:
+                    local_db.update_job_status(job["id"], "failed: connection failed")
+                    return
+                connector = connection_pool.get(conn_id)
+
+            # Switch database if specified
+            if database:
+                from open_navicat.dal.connection_pool import _loop
+                _loop.run_until_complete(connector.execute(f"USE `{database}`"))
+
+            # Execute query
+            from open_navicat.dal.connection_pool import _loop
+            result = _loop.run_until_complete(connector.execute(sql))
+
+            if result.success:
+                local_db.update_job_status(job["id"], f"success: {result.row_count} rows")
+            else:
+                local_db.update_job_status(job["id"], f"failed: {result.error_message}")
+        except Exception as exc:
+            local_db.update_job_status(job["id"], f"failed: {exc}")
+
+    def _run_sync_job(self, job: dict) -> None:
+        """Execute a scheduled sync job."""
+        conn_id = job.get("connection_id", "")
+        config = job.get("config", {})
+        source_db = config.get("source_db", "")
+        target_db = config.get("target_db", "")
+        sync_type = config.get("sync_type", "schema")
+
+        if not source_db or not target_db:
+            local_db.update_job_status(job["id"], "failed: missing source/target database")
+            return
+
+        try:
+            from open_navicat.dal.connection_pool import connection_pool
+            from open_navicat.dal.local_config import local_db as _db
+
+            conn_info = _db.get_connection(conn_id)
+            if not conn_info:
+                local_db.update_job_status(job["id"], "failed: no connection")
+                return
+
+            # Open connection if not already open
+            connector = connection_pool.get(conn_id)
+            if not connector:
+                success = connection_pool.open(conn_info)
+                if not success:
+                    local_db.update_job_status(job["id"], "failed: connection failed")
+                    return
+
+            if sync_type == "schema":
+                from open_navicat.services.sync_engine import sync_engine
+                diff = sync_engine.compare_databases(connector, source_db, target_db)
+                if diff.has_changes:
+                    sync_engine.generate_sync_script(diff, execute=True)
+                    local_db.update_job_status(job["id"], f"success: {len(diff.table_diffs)} tables synced")
+                else:
+                    local_db.update_job_status(job["id"], "success: no changes")
+            else:
+                from open_navicat.services.data_sync_engine import data_sync_engine
+                diff = data_sync_engine.compare_tables(connector, source_db, target_db)
+                if diff.has_changes:
+                    data_sync_engine.generate_sync_script(diff, execute=True)
+                    local_db.update_job_status(job["id"], "success: data synced")
+                else:
+                    local_db.update_job_status(job["id"], "success: no changes")
         except Exception as exc:
             local_db.update_job_status(job["id"], f"failed: {exc}")
 

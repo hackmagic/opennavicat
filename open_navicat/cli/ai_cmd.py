@@ -329,7 +329,150 @@ def ai_config(
         console.print("[yellow]No changes. Use --provider, --api-key, --api-base, --model to configure.[/yellow]")
 
 
-@ai_app.command("test")
+@ai_app.command("schema")
+def ai_schema(
+    description: str = typer.Argument("", help="Initial description to design schema (or use --ddl)"),
+    ddl: str = typer.Option("", "--ddl", help="Start from existing DDL"),
+    deploy: bool = typer.Option(False, "--deploy", "-d", help="Deploy final DDL to database"),
+    conn: str = typer.Option("", "--conn", "-c", help="Connection name for deploy"),
+) -> None:
+    """Interactive multi-round schema design — iteratively refine your database schema."""
+    from open_navicat.services.ai_service import ai_service
+
+    # Start with initial schema
+    current_ddl = ddl
+    if not current_ddl and description:
+        console.print("[yellow]🤖 Designing initial schema...[/yellow]")
+        current_ddl = ai_service.design_schema(description)
+        if not current_ddl:
+            console.print("[red]Failed to generate initial schema.[/red]")
+            raise typer.Exit(1)
+    elif not current_ddl:
+        console.print("[red]Provide either --ddl or a description argument.[/red]")
+        raise typer.Exit(1)
+
+    console.print(Panel(Syntax(current_ddl, "sql", theme="monokai", word_wrap=True),
+                        title="📐 Current Schema", border_style="magenta"))
+
+    while True:
+        try:
+            user_input = typer.prompt("\n[bold]Modification[/bold] (or /done, /deploy, /show)").strip()
+        except EOFError:
+            break
+
+        if not user_input:
+            continue
+        if user_input.lower() in ("/done", "/exit", "/quit"):
+            break
+        if user_input.lower() == "/show":
+            console.print(Panel(Syntax(current_ddl, "sql", theme="monokai", word_wrap=True),
+                                title="📐 Current Schema", border_style="magenta"))
+            continue
+        if user_input.lower() == "/deploy":
+            if not conn and not connection_manager.active_ids:
+                console.print("[red]No active connection. Use --conn to specify one.[/red]")
+                continue
+            cid = _resolve_conn(conn)
+            from open_navicat.services.query_engine import query_engine
+            result = query_engine.execute(cid, current_ddl)
+            if result.success:
+                console.print("[green]✓ Schema deployed![/green]")
+            else:
+                console.print(f"[red]✗ Error: {result.error_message}[/red]")
+            break
+
+        console.print("[yellow]🤖 Applying modification...[/yellow]")
+        updated = ai_service.design_schema_iterative(current_ddl, user_input)
+        if not updated:
+            console.print("[red]Failed to apply modification.[/red]")
+            continue
+
+        current_ddl = updated
+        console.print(Panel(Syntax(current_ddl, "sql", theme="monokai", word_wrap=True),
+                            title="📐 Updated Schema", border_style="green"))
+
+
+@ai_app.command("build")
+def ai_build(
+    description: str = typer.Argument("", help="Describe the query you want to build"),
+    conn: str = typer.Option("", "--conn", "-c", help="Connection name (for schema context)"),
+    show_schema: bool = typer.Option(False, "--show-schema", "-s", help="Show loaded schema context"),
+) -> None:
+    """Conversational query builder — describe what you need, iteratively refine the SQL."""
+    from open_navicat.services.ai_service import ai_service
+    from open_navicat.services.query_engine import query_engine
+
+    cid = ""
+    schema_context = ""
+    if conn or connection_manager.active_ids:
+        cid = _resolve_conn(conn)
+        schema_context = _get_schema_context(cid)
+
+    ai_service.set_system_prompt(
+        "You are a SQL query builder. Help the user build a SQL query step by step. "
+        "When the user describes what they want, generate the SQL and explain it. "
+        "When they ask for changes, update the SQL accordingly. "
+        "Always show the complete SQL query in your response." +
+        (f"\n\nDatabase schema context:\n{schema_context}" if schema_context else "")
+    )
+
+    if show_schema and schema_context:
+        console.print(Panel(schema_context, title="Schema Context", border_style="yellow"))
+
+    console.print(Panel(
+        "[bold]🤖 AI Query Builder[/bold]\n"
+        "Describe what you want to query, and I'll build the SQL for you.\n"
+        "You can then refine: [italic]'add a filter on status', 'join with orders table'[/italic]\n"
+        "Commands: [bold]/run[/bold] to execute the SQL, [bold]/show[/bold] to see current SQL, [bold]/exit[/bold] to quit.",
+        title="AI Query Builder",
+        border_style="cyan",
+    ))
+
+    if description:
+        console.print("[yellow]🤖 Building query...[/yellow]")
+        answer = ai_service.chat(description)
+        console.print(Panel(Markdown(answer), title="🤖 SQL Query", border_style="green"))
+
+    while True:
+        try:
+            user_input = typer.prompt("\n[bold]Refine[/bold] (or /run, /show, /exit)").strip()
+        except EOFError:
+            break
+
+        if not user_input:
+            continue
+        if user_input.lower() in ("/exit", "/quit"):
+            break
+        if user_input.lower() == "/show":
+            console.print(Panel(
+                ai_service._chat_history[-1]["content"] if ai_service._chat_history else "(no SQL yet)",
+                title="Current Query", border_style="yellow",
+            ))
+            continue
+        if user_input.lower() == "/run":
+            if not cid:
+                console.print("[red]No active connection. Use --conn to specify one.[/red]")
+                continue
+            last_msg = ai_service._chat_history[-1]["content"] if ai_service._chat_history else ""
+            console.print("[yellow]Executing...[/yellow]")
+            result = query_engine.execute(cid, last_msg)
+            if result.success:
+                if result.is_select:
+                    from open_navicat.utils.output_formatter import format_output
+                    rows = [{c.name: str(v) if v is not None else None
+                             for c, v in zip(result.columns, row)} for row in result.rows[:50]]
+                    format_output(rows, "table", title=f"Result ({result.row_count} rows)")
+                else:
+                    console.print(f"[green]OK, {result.affected_rows} rows affected[/green]")
+            else:
+                console.print(f"[red]Error: {result.error_message}[/red]")
+            continue
+
+        console.print("[yellow]🤖 Refining...[/yellow]")
+        answer = ai_service.chat(user_input)
+        console.print(Panel(Markdown(answer), title="🤖 SQL Query", border_style="green"))
+
+
 def ai_test(
     provider: str = typer.Option("", "--provider", "-p", help="Provider to test"),
     api_key: str = typer.Option("", "--api-key", "-k", help="API key"),
