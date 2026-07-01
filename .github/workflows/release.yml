@@ -164,9 +164,7 @@ jobs:
             | macOS | ARM64 (Apple Silicon) | `opennavicat-macos-arm64` |
             | Linux | x64 | `opennavicat-linux-x64` |
           files: |
-            artifacts/**/*.exe
-            artifacts/**/*.dmg
-            artifacts/**/opennavicat-linux-*
+            artifacts/**/*
           draft: false
           prerelease: false
         env:
