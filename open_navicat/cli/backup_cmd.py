@@ -61,25 +61,45 @@ def backup_database(
     console.print(f"[yellow]Backing up '{database}' → {output}...[/yellow]")
 
     import subprocess
-    cmd = [
-        "mysqldump",
-        f"--host={info.host}",
-        f"--port={info.port}",
-        f"--user={info.user}",
-        f"--password={info.password}",
-        "--routines",
-        "--triggers",
-        "--events",
-        "--add-drop-table",
-        "--single-transaction",
-        "--quick",
-        database,
-    ]
+    is_pg = info.engine == "postgresql"
+
+    if is_pg:
+        cmd = [
+            "pg_dump",
+            f"--host={info.host}",
+            f"--port={info.port}",
+            f"--username={info.user}",
+            "--no-owner",
+            "--no-privileges",
+            "--clean",
+            "--if-exists",
+            database,
+        ]
+    else:
+        cmd = [
+            "mysqldump",
+            f"--host={info.host}",
+            f"--port={info.port}",
+            f"--user={info.user}",
+            f"--password={info.password}",
+            "--routines",
+            "--triggers",
+            "--events",
+            "--add-drop-table",
+            "--single-transaction",
+            "--quick",
+            database,
+        ]
 
     try:
+        import os
+        env = os.environ.copy()
+        if is_pg and info.password:
+            env["PGPASSWORD"] = info.password
+
         if compress:
             with open(output.replace(".gz", ""), "wb") as f:
-                proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True)
+                proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True, env=env)
                 if proc.returncode != 0:
                     console.print(f"[red]Error: {proc.stderr}[/red]")
                     raise typer.Exit(1)
@@ -91,7 +111,7 @@ def backup_database(
             Path(output.replace(".gz", "")).unlink()
         else:
             with open(output, "w", encoding="utf-8") as f:
-                proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True)
+                proc = subprocess.run(cmd, stdout=f, stderr=subprocess.PIPE, text=True, env=env)
                 if proc.returncode != 0:
                     console.print(f"[red]Error: {proc.stderr}[/red]")
                     raise typer.Exit(1)
@@ -100,7 +120,8 @@ def backup_database(
         console.print(f"[green]✓ Backup completed: {output} ({file_size / 1024:.1f} KB)[/green]")
 
     except FileNotFoundError:
-        console.print("[red]mysqldump not found. Ensure MySQL client tools are installed.[/red]")
+        tool = "pg_dump" if is_pg else "mysqldump"
+        console.print(f"[red]{tool} not found. Ensure {'PostgreSQL' if is_pg else 'MySQL'} client tools are installed.[/red]")
         raise typer.Exit(1)
 
 
@@ -127,21 +148,43 @@ def restore_database(
 
     if create_db:
         from open_navicat.services.query_engine import query_engine
-        query_engine.execute(cid, f"CREATE DATABASE IF NOT EXISTS `{database}`")
+        is_pg = info.engine == "postgresql"
+        if is_pg:
+            query_engine.execute(cid, f'CREATE DATABASE "{database}"')
+        else:
+            query_engine.execute(cid, f"CREATE DATABASE IF NOT EXISTS `{database}`")
 
     import subprocess
-    cmd = [
-        "mysql",
-        f"--host={info.host}",
-        f"--port={info.port}",
-        f"--user={info.user}",
-        f"--password={info.password}",
-        database,
-    ]
+    is_pg = info.engine == "postgresql"
+
+    if is_pg:
+        cmd = [
+            "psql",
+            f"--host={info.host}",
+            f"--port={info.port}",
+            f"--username={info.user}",
+            "--no-psqlrc",
+            "--set", "ON_ERROR_STOP=1",
+            "--dbname", database,
+        ]
+    else:
+        cmd = [
+            "mysql",
+            f"--host={info.host}",
+            f"--port={info.port}",
+            f"--user={info.user}",
+            f"--password={info.password}",
+            database,
+        ]
 
     try:
+        import os
+        env = os.environ.copy()
+        if is_pg and info.password:
+            env["PGPASSWORD"] = info.password
+
         with open(input_file, "r", encoding="utf-8") as f:
-            proc = subprocess.run(cmd, stdin=f, capture_output=True, text=True)
+            proc = subprocess.run(cmd, stdin=f, capture_output=True, text=True, env=env)
             if proc.returncode != 0:
                 console.print(f"[red]Error: {proc.stderr}[/red]")
                 raise typer.Exit(1)
@@ -149,7 +192,8 @@ def restore_database(
         console.print(f"[green]✓ Database '{database}' restored from {input_file}[/green]")
 
     except FileNotFoundError:
-        console.print("[red]mysql client not found. Ensure MySQL client tools are installed.[/red]")
+        tool = "psql" if is_pg else "mysql"
+        console.print(f"[red]{tool} client not found. Ensure {'PostgreSQL' if is_pg else 'MySQL'} client tools are installed.[/red]")
         raise typer.Exit(1)
 
 

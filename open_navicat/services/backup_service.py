@@ -1,7 +1,7 @@
-"""Backup Service — database backup and restore via mysqldump/mysql CLI.
+"""Backup Service — database backup and restore via mysqldump/mysql or pg_dump/psql.
 
 Provides:
-- Full database backup using mysqldump
+- Full database backup using mysqldump (MySQL) or pg_dump (PostgreSQL)
 - Restore from SQL backup files
 - List/manage backup files on disk
 - Gzip compression support
@@ -94,9 +94,9 @@ class BackupService:
         output_file: Optional[str] = None,
         compress: bool = True,
     ) -> BackupRecord:
-        """Execute mysqldump and return a BackupRecord.
+        """Execute mysqldump (MySQL) or pg_dump (PostgreSQL) and return a BackupRecord.
 
-        Raises FileNotFoundError if mysqldump is not installed.
+        Raises FileNotFoundError if the dump tool is not installed.
         Raises RuntimeError if the dump fails.
         """
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -105,22 +105,34 @@ class BackupService:
             ext = ".sql.gz" if compress else ".sql"
             output_file = str(self._backup_dir / f"{database}_{ts}{ext}")
 
-        # Build mysqldump command
-        cmd = self._build_mysqldump_cmd(conn_info, database)
+        is_pg = conn_info.engine == "postgresql"
+        tool_name = "pg_dump" if is_pg else "mysqldump"
+
+        # Build command
+        if is_pg:
+            cmd = self._build_pg_dump_cmd(conn_info, database)
+        else:
+            cmd = self._build_mysqldump_cmd(conn_info, database)
 
         dump_path = output_file.replace(".gz", "") if compress else output_file
         try:
+            import os
+            env = os.environ.copy()
+            if is_pg and conn_info.password:
+                env["PGPASSWORD"] = conn_info.password
+
             with open(dump_path, "w", encoding="utf-8") as f:
                 proc = subprocess.run(
-                    cmd, stdout=f, stderr=subprocess.PIPE, text=True, timeout=3600,
+                    cmd, stdout=f, stderr=subprocess.PIPE, text=True,
+                    timeout=3600, env=env,
                 )
                 if proc.returncode != 0:
                     stderr = proc.stderr or "unknown error"
-                    raise RuntimeError(f"mysqldump failed: {stderr.strip()}")
+                    raise RuntimeError(f"{tool_name} failed: {stderr.strip()}")
         except FileNotFoundError:
             raise FileNotFoundError(
-                "mysqldump not found. Ensure MySQL client tools are installed "
-                "and available in PATH."
+                f"{tool_name} not found. Ensure {'PostgreSQL' if is_pg else 'MySQL'} "
+                "client tools are installed and available in PATH."
             )
 
         # Compress if requested
@@ -166,6 +178,55 @@ class BackupService:
         ])
         return cmd
 
+    @staticmethod
+    def _build_pg_dump_cmd(info: ConnectionInfo, database: str) -> list[str]:
+        """Build the pg_dump argument list from connection info."""
+        cmd = [
+            "pg_dump",
+            f"--host={info.host}",
+            f"--port={info.port}",
+            f"--username={info.user}",
+            "--no-owner",
+            "--no-privileges",
+            "--clean",
+            "--if-exists",
+            database,
+        ]
+        return cmd
+
+    @staticmethod
+    def _build_pg_restore_cmd(info: ConnectionInfo, database: str) -> list[str]:
+        """Build the pg_restore argument list from connection info."""
+        cmd = [
+            "pg_restore",
+            f"--host={info.host}",
+            f"--port={info.port}",
+            f"--username={info.user}",
+            "--no-owner",
+            "--no-privileges",
+            "--clean",
+            "--if-exists",
+            "--dbname",
+            database,
+        ]
+        return cmd
+
+    @staticmethod
+    def _build_psql_cmd(info: ConnectionInfo, database: str) -> list[str]:
+        """Build the psql argument list for SQL text restore."""
+        cmd = [
+            "psql",
+            f"--host={info.host}",
+            f"--port={info.port}",
+            f"--username={info.user}",
+            "--no-psqlrc",
+            "--set",
+            "ON_ERROR_STOP=1",
+            "--dbname",
+            database,
+        ]
+        return cmd
+
     # ── Restore ──────────────────────────────────────────────────────
 
     def restore_backup(
@@ -175,40 +236,44 @@ class BackupService:
         backup_file: str,
         create_db: bool = True,
     ) -> None:
-        """Restore a database from a backup file using the mysql CLI."""
+        """Restore a database from a backup file using mysql/psql CLI."""
         backup_path = Path(backup_file)
         if not backup_path.exists():
             raise FileNotFoundError(f"Backup file not found: {backup_file}")
+
+        is_pg = conn_info.engine == "postgresql"
 
         # Create database if needed
         if create_db:
             connector = connection_pool.get(conn_info.id)
             if connector is None:
-                # Connect on-demand
                 from open_navicat.dal.connection_pool import _loop as pool_loop
-                from open_navicat.dal.mysql_connector import MySQLConnector
-                connector = MySQLConnector()
-                pool_loop.run_until_complete(connector.connect(
-                    host=conn_info.host,
-                    port=conn_info.port,
-                    user=conn_info.user,
-                    password=conn_info.password,
-                    database="mysql",
-                ))
-                pool_loop.run_until_complete(
-                    connector.execute(f"CREATE DATABASE IF NOT EXISTS `{database}`")
-                )
-
-        # Build mysql command
-        cmd = [
-            "mysql",
-            f"--host={conn_info.host}",
-            f"--port={conn_info.port}",
-            f"--user={conn_info.user}",
-        ]
-        if conn_info.password:
-            cmd.append(f"--password={conn_info.password}")
-        cmd.append(database)
+                if is_pg:
+                    from open_navicat.dal.postgresql_connector import PostgreSQLConnector
+                    connector = PostgreSQLConnector()
+                    pool_loop.run_until_complete(connector.connect(
+                        host=conn_info.host,
+                        port=conn_info.port,
+                        user=conn_info.user,
+                        password=conn_info.password,
+                        database="postgres",
+                    ))
+                    pool_loop.run_until_complete(
+                        connector.execute(f'CREATE DATABASE "{database}"')
+                    )
+                else:
+                    from open_navicat.dal.mysql_connector import MySQLConnector
+                    connector = MySQLConnector()
+                    pool_loop.run_until_complete(connector.connect(
+                        host=conn_info.host,
+                        port=conn_info.port,
+                        user=conn_info.user,
+                        password=conn_info.password,
+                        database="mysql",
+                    ))
+                    pool_loop.run_until_complete(
+                        connector.execute(f"CREATE DATABASE IF NOT EXISTS `{database}`")
+                    )
 
         # Decompress if needed
         input_path = str(backup_path)
@@ -219,20 +284,47 @@ class BackupService:
                     f_out.write(f_in.read())
             input_path = decompressed
 
+        import os
+        env = os.environ.copy()
+        if is_pg and conn_info.password:
+            env["PGPASSWORD"] = conn_info.password
+
         try:
+            if is_pg:
+                # pg_restore for .dump/.backup files, psql for .sql
+                is_binary = backup_path.suffix in (".dump", ".backup", ".custom")
+                if is_binary:
+                    cmd = self._build_pg_restore_cmd(conn_info, database)
+                    cmd.append(input_path)
+                else:
+                    cmd = self._build_psql_cmd(conn_info, database)
+            else:
+                cmd = [
+                    "mysql",
+                    f"--host={conn_info.host}",
+                    f"--port={conn_info.port}",
+                    f"--user={conn_info.user}",
+                ]
+                if conn_info.password:
+                    cmd.append(f"--password={conn_info.password}")
+                cmd.append(database)
+
             with open(input_path, "r", encoding="utf-8") as f:
                 proc = subprocess.run(
-                    cmd, stdin=f, capture_output=True, text=True, timeout=7200,
+                    cmd, stdin=f, capture_output=True, text=True,
+                    timeout=7200, env=env,
                 )
                 if proc.returncode != 0:
                     stderr = proc.stderr or "unknown error"
-                    raise RuntimeError(f"mysql restore failed: {stderr.strip()}")
+                    tool = "pg_restore/psql" if is_pg else "mysql"
+                    raise RuntimeError(f"{tool} restore failed: {stderr.strip()}")
         except FileNotFoundError:
+            tool = "psql/pg_restore" if is_pg else "mysql"
             raise FileNotFoundError(
-                "mysql client not found. Ensure MySQL client tools are installed."
+                f"{tool} client not found. Ensure {'PostgreSQL' if is_pg else 'MySQL'} "
+                "client tools are installed."
             )
         finally:
-            # Clean up decompressed temp file
             if input_path != backup_file and Path(input_path).exists():
                 Path(input_path).unlink()
 
