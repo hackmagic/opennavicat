@@ -22,7 +22,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install Poetry
-        run: pip install poetry
+        run: |
+          pip install poetry
+          pip install poetry-plugin-export
 
       - name: Install Qt system dependencies
         if: runner.os == 'Linux'
