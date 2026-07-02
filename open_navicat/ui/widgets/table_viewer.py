@@ -1296,6 +1296,8 @@ class TableViewerWidget(QWidget):
             menu.addAction(t("context.where_in", column=fc)).triggered.connect(
                 lambda: self._copy_where_in(rows_data))
             menu.addAction(t("context.copy_as_select")).triggered.connect(lambda: self._copy_select(rows_data))
+            menu.addSeparator()
+            menu.addAction("🔗 Copy as WHERE").triggered.connect(lambda: self._copy_where(rows_data))
         menu.addSeparator()
 
         menu.addAction(t("context.copy_as_csv")).triggered.connect(lambda: self._copy_csv(rows_data))
@@ -1394,6 +1396,14 @@ class TableViewerWidget(QWidget):
         vals = [self._esc(d[fc]) for d in rows_data if fc in d and d[fc] != "NULL"]
         where = f"WHERE `{fc}` IN ({', '.join(vals)})" if len(vals) > 1 else f"WHERE `{fc}` = {vals[0]}"
         QApplication.clipboard().setText(f"SELECT * FROM `{self._table}` {where};")
+
+    def _copy_where(self, rows_data: list[dict]) -> None:
+        """Copy selected rows as a WHERE clause (col1=val1 AND col2=val2 ...)."""
+        if not rows_data:
+            return
+        d = rows_data[0]
+        clauses = (f"`{k}` = {self._esc(v)}" for k, v in d.items())
+        QApplication.clipboard().setText("WHERE " + " AND ".join(clauses))
 
     def _copy_csv(self, rows_data: list[dict]) -> None:
         if not rows_data:

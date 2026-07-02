@@ -1114,5 +1114,9 @@
   "settings.stripe.every_row": "每行",
   "settings.stripe.every_2": "每二行",
   "settings.stripe.every_3": "每三行",
-  "connection.copy_uri": "复制连接 URI"
+  "connection.copy_uri": "复制连接 URI",
+  "sidebar.browser": "浏览",
+  "sidebar.favorites": "收藏",
+  "context.copy_as_where": "🔗 复制为 WHERE 条件",
+  "context.copy_as_where_tip": "将选中行复制为 WHERE 子句"
 }

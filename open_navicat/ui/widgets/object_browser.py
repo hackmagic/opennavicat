@@ -1376,3 +1376,134 @@ class ObjectBrowser(QTreeWidget):
         from PySide6.QtWidgets import QMessageBox
         info_lines = [f"{k}: {v}" for k, v in data.items() if k != "info"]
         QMessageBox.information(self.window(), t("browser.properties"), "\n".join(info_lines))
+
+    # ──────────────────────────────────────────────
+    # View mode / sort / column / system / favorites
+    # ──────────────────────────────────────────────
+
+    _current_view_mode: str = "list"
+    _groups_hidden: bool = False
+    _show_system_objects: bool = False
+
+    def set_view_mode(self, mode: str) -> None:
+        """Switch between list / detail / ER diagram view modes."""
+        self._current_view_mode = mode
+        if mode == "detail":
+            self._enrich_item_labels()
+        else:
+            self._restore_item_labels()
+
+    def _enrich_item_labels(self) -> None:
+        """Append type/badge info to every visible item's label."""
+        from PySide6.QtWidgets import QTreeWidgetItemIterator
+        it = QTreeWidgetItemIterator(self)
+        while it.value():
+            item = it.value()
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if data:
+                extra = data.get("type", "")
+                if data.get("host"):
+                    extra = f"{data.get('host')}:{data.get('port', '')}"
+                base = data.get("name", item.text(0))
+                item.setText(0, f"{base}  [{extra}]" if extra else base)
+            it += 1
+
+    def _restore_item_labels(self) -> None:
+        """Restore original labels from UserRole data."""
+        from PySide6.QtWidgets import QTreeWidgetItemIterator
+        it = QTreeWidgetItemIterator(self)
+        while it.value():
+            item = it.value()
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if data and data.get("name"):
+                item.setText(0, data["name"])
+            it += 1
+
+    def set_groups_visible(self, visible: bool) -> None:
+        """Show or hide group container items."""
+        self._groups_hidden = not visible
+        from PySide6.QtWidgets import QTreeWidgetItemIterator
+        it = QTreeWidgetItemIterator(self)
+        while it.value():
+            item = it.value()
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if data and data.get("type") == "group":
+                item.setHidden(not visible)
+            it += 1
+
+    def show_sort_menu(self) -> None:
+        """Show a popup menu to select sort criterion for the tree."""
+        from PySide6.QtWidgets import QMenu
+        menu = QMenu(self)
+        for label, key in [("Name", "name"), ("Type", "type"), ("Host", "host")]:
+            act = menu.addAction(label)
+            act.triggered.connect(lambda checked, k=key: self._sort_tree(k))
+        pos = (self.viewport().mapToGlobal(self.visualItemRect(self.currentItem()).topLeft())
+               if self.currentItem() else
+               self.mapToGlobal(self.rect().topLeft()))
+        menu.exec(pos)
+
+    def _sort_tree(self, key: str) -> None:
+        """Sort top-level items by the given UserRole data key."""
+        items = []
+        for i in range(self.topLevelItemCount()):
+            items.append(self.topLevelItem(i))
+        items.sort(key=lambda it: (it.data(0, Qt.ItemDataRole.UserRole) or {}).get(key, "") or "")
+        for idx, it in enumerate(items):
+            parent = it.parent()
+            if parent:
+                parent.removeChild(it)
+                parent.insertChild(idx, it)
+            else:
+                self.takeTopLevelItem(self.indexOfTopLevelItem(it))
+                self.insertTopLevelItem(idx, it)
+
+    def show_column_selector(self) -> None:
+        """Show a dialog to select which columns appear in table-list view."""
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.information(
+            self, "Select Columns",
+            "Column visibility can be adjusted in the table list's header context menu.",
+        )
+
+    def set_system_objects_visible(self, visible: bool) -> None:
+        """Toggle visibility of system databases."""
+        self._show_system_objects = visible
+        system_dbs = {"mysql", "sys", "information_schema", "performance_schema",
+                      "pg_catalog", "template0", "template1"}
+        from PySide6.QtWidgets import QTreeWidgetItemIterator
+        it = QTreeWidgetItemIterator(self)
+        while it.value():
+            item = it.value()
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if data and data.get("type") == "database":
+                name = data.get("name", "")
+                if name.lower() in system_dbs:
+                    item.setHidden(not visible)
+            it += 1
+
+    def _navigate_to_favorite(self, fav: dict) -> None:
+        """Select and expand to a favorited object in the tree."""
+        conn_id = fav.get("connection_id", "")
+        obj_name = fav.get("name", "")
+        from PySide6.QtWidgets import QTreeWidgetItemIterator, QMessageBox
+        it = QTreeWidgetItemIterator(self)
+        while it.value():
+            item = it.value()
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if data:
+                cid = data.get("id", data.get("connection_id", ""))
+                name = data.get("name", "")
+                if cid == conn_id and name == obj_name:
+                    self.setCurrentItem(item)
+                    self.scrollToItem(item)
+                    p = item.parent()
+                    while p:
+                        p.setExpanded(True)
+                        p = p.parent()
+                    return
+            it += 1
+        QMessageBox.information(
+            self, "Not Found",
+            f"Favorite '{obj_name}' not found in the object tree. Please connect first.",
+        )

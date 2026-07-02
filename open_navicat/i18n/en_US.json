@@ -1114,5 +1114,9 @@
   "sql_editor.run_selected": "Run Selected",
   "sql_editor.run_to_cursor": "Run to Cursor",
   "sql_editor.stop": "Stop",
-  "sql_editor.stop_tip": "Stop current query execution"
+  "sql_editor.stop_tip": "Stop current query execution",
+  "sidebar.browser": "Browse",
+  "sidebar.favorites": "Favorites",
+  "context.copy_as_where": "🔗 Copy as WHERE",
+  "context.copy_as_where_tip": "Copy selected row as WHERE clause"
 }

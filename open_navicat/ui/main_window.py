@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import webbrowser as _wb
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QAction, QKeySequence
@@ -11,10 +12,12 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QListWidget,
     QMainWindow,
     QMenu,
     QMessageBox,
     QPushButton,
+    QStackedWidget,
     QStatusBar,
     QTabWidget,
     QVBoxLayout,
@@ -97,12 +100,50 @@ class MainWindow(QMainWindow):
         body_layout.setContentsMargins(0, 0, 0, 0)
         body_layout.setSpacing(0)
 
-        # Object browser (sidebar left)
-        self._object_browser = ObjectBrowser(body)
+        # Sidebar panel (tabbed: Browser / Favorites)
+        sidebar_panel = QWidget(body)
+        sidebar_panel.setObjectName("sidebarPanel")
+        sidebar_panel.setMinimumWidth(200)
+        sidebar_panel.setMaximumWidth(400)
+        sidebar_layout = QVBoxLayout(sidebar_panel)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(0)
+
+        # Sidebar tab buttons
+        self._sidebar_tabs = QWidget(sidebar_panel)
+        self._sidebar_tabs.setObjectName("sidebarTabs")
+        st_layout = QHBoxLayout(self._sidebar_tabs)
+        st_layout.setContentsMargins(4, 2, 4, 0)
+        st_layout.setSpacing(2)
+        self._btn_browser = QPushButton(t("sidebar.browser"), self._sidebar_tabs)
+        self._btn_browser.setCheckable(True)
+        self._btn_browser.setChecked(True)
+        self._btn_browser.setObjectName("sidebarTabBtn")
+        self._btn_browser.clicked.connect(lambda: self._switch_sidebar_tab("browser"))
+        self._btn_fav = QPushButton(t("sidebar.favorites"), self._sidebar_tabs)
+        self._btn_fav.setCheckable(True)
+        self._btn_fav.setObjectName("sidebarTabBtn")
+        self._btn_fav.clicked.connect(lambda: self._switch_sidebar_tab("favorites"))
+        st_layout.addWidget(self._btn_browser)
+        st_layout.addWidget(self._btn_fav)
+        st_layout.addStretch()
+        sidebar_layout.addWidget(self._sidebar_tabs)
+
+        # Stacked sidebar pages
+        self._sidebar_stack = QStackedWidget(sidebar_panel)
+        self._sidebar_stack.setObjectName("sidebarStack")
+
+        # Page 0: Object browser
+        self._object_browser = ObjectBrowser(self._sidebar_stack)
         self._object_browser.setObjectName("objectBrowser")
-        self._object_browser.setMinimumWidth(200)
-        self._object_browser.setMaximumWidth(400)
-        body_layout.addWidget(self._object_browser)
+        self._sidebar_stack.addWidget(self._object_browser)
+
+        # Page 1: Favorites panel
+        self._favorites_panel = self._create_favorites_panel()
+        self._sidebar_stack.addWidget(self._favorites_panel)
+
+        sidebar_layout.addWidget(self._sidebar_stack, 1)
+        body_layout.addWidget(sidebar_panel)
 
         # Main content area
         content = QWidget(body)
@@ -146,6 +187,84 @@ class MainWindow(QMainWindow):
         self._toolbar.deleteLater()
         self._toolbar = self._create_toolbar()
         self._main_layout.insertWidget(1, self._toolbar)
+
+    def _create_favorites_panel(self) -> QWidget:
+        """Create the favorites list panel for the sidebar."""
+        from open_navicat.dal.local_config import local_db
+        panel = QWidget()
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(4, 4, 4, 4)
+
+        header = QLabel("⭐ " + t("sidebar.favorites"))
+        header.setStyleSheet("font-weight: bold; font-size: 13px; padding: 4px 0;")
+        layout.addWidget(header)
+
+        self._fav_list_widget = QListWidget(panel)
+        layout.addWidget(self._fav_list_widget, 1)
+
+        btn_layout = QHBoxLayout()
+        btn_refresh = QPushButton("🔄", panel)
+        btn_refresh.setToolTip("Refresh favorites")
+        btn_refresh.clicked.connect(lambda: self._refresh_favorites_list())
+        btn_open = QPushButton("Open", panel)
+        btn_open.clicked.connect(self._open_selected_favorite)
+        btn_remove = QPushButton("Remove", panel)
+        btn_remove.clicked.connect(self._remove_selected_favorite)
+        btn_layout.addWidget(btn_refresh)
+        btn_layout.addWidget(btn_open)
+        btn_layout.addWidget(btn_remove)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+
+        self._fav_list_widget.itemDoubleClicked.connect(lambda: self._open_selected_favorite())
+        panel._favs = []
+        return panel
+
+    def _refresh_favorites_list(self) -> None:
+        """Reload favorites from DB into the list widget."""
+        from open_navicat.dal.local_config import local_db
+        self._fav_list_widget.clear()
+        favs = local_db.list_favorites()
+        self._favorites_panel._favs = favs
+        for fav in favs:
+            icon = {"connection": "🗄️", "database": "📂", "table": "📄", "view": "👁️",
+                     "routine": "⚡", "query": "📝"}.get(fav.get("type", ""), "⭐")
+            self._fav_list_widget.addItem(f"{icon} {fav['name']} ({fav['connection_id']})")
+
+    def _open_selected_favorite(self) -> None:
+        """Open the selected favorite item."""
+        idx = self._fav_list_widget.currentRow()
+        if idx < 0:
+            return
+        favs = getattr(self._favorites_panel, "_favs", [])
+        if idx >= len(favs):
+            return
+        fav = favs[idx]
+        self._object_browser._navigate_to_favorite(fav)
+
+    def _remove_selected_favorite(self) -> None:
+        """Remove the selected favorite from DB and list."""
+        from open_navicat.dal.local_config import local_db
+        idx = self._fav_list_widget.currentRow()
+        if idx < 0:
+            return
+        favs = getattr(self._favorites_panel, "_favs", [])
+        if idx >= len(favs):
+            return
+        fav = favs[idx]
+        local_db.remove_favorite(fav["connection_id"], fav["database"], fav["type"], fav["name"])
+        self._fav_list_widget.takeItem(idx)
+        del self._favorites_panel._favs[idx]
+
+    def _switch_sidebar_tab(self, tab: str) -> None:
+        """Switch between sidebar tabs (browser / favorites)."""
+        self._btn_browser.setChecked(tab == "browser")
+        self._btn_fav.setChecked(tab == "favorites")
+        if tab == "browser":
+            self._sidebar_stack.setCurrentIndex(0)
+        else:
+            self._sidebar_stack.setCurrentIndex(1)
+            self._refresh_favorites_list()
 
     def _setup_menubar(self) -> None:
         menubar = self.menuBar()
@@ -209,23 +328,30 @@ class MainWindow(QMainWindow):
         act_list = QAction(t("menu.view.list"), self)
         act_list.setCheckable(True)
         act_list.setChecked(True)
+        act_list.triggered.connect(lambda: self._object_browser.set_view_mode("list"))
         view_menu.addAction(act_list)
         act_detail = QAction(t("menu.view.detail"), self)
         act_detail.setCheckable(True)
+        act_detail.triggered.connect(lambda: self._object_browser.set_view_mode("detail"))
         view_menu.addAction(act_detail)
         act_er = QAction(t("menu.view.er_diagram"), self)
         act_er.setCheckable(True)
+        act_er.triggered.connect(lambda: self._object_browser.set_view_mode("er"))
         view_menu.addAction(act_er)
         view_menu.addSeparator()
         act_hide = QAction(t("menu.view.hide_groups"), self)
         act_hide.setCheckable(True)
+        act_hide.triggered.connect(lambda: self._object_browser.set_groups_visible(not act_hide.isChecked()))
         view_menu.addAction(act_hide)
         act_sort = QAction(t("menu.view.sort"), self)
+        act_sort.triggered.connect(self._object_browser.show_sort_menu)
         view_menu.addAction(act_sort)
         act_cols = QAction(t("menu.view.select_columns"), self)
+        act_cols.triggered.connect(self._object_browser.show_column_selector)
         view_menu.addAction(act_cols)
         act_hidden = QAction(t("menu.view.show_hidden"), self)
         act_hidden.setCheckable(True)
+        act_hidden.triggered.connect(lambda: self._object_browser.set_system_objects_visible(act_hidden.isChecked()))
         view_menu.addAction(act_hidden)
         view_menu.addSeparator()
         act_focus = QAction(t("menu.view.focus_mode"), self)
@@ -240,8 +366,10 @@ class MainWindow(QMainWindow):
         # ---- Favorites ----
         fav_menu = menubar.addMenu(t("menu.favorites"))
         act_fav_add = QAction(t("menu.favorites.add"), self)
+        act_fav_add.triggered.connect(self._add_favorite)
         fav_menu.addAction(act_fav_add)
         act_fav_manage = QAction(t("menu.favorites.manage"), self)
+        act_fav_manage.triggered.connect(self._manage_favorites)
         fav_menu.addAction(act_fav_manage)
 
         # ---- Query ----
@@ -359,8 +487,10 @@ class MainWindow(QMainWindow):
         # ---- Help ----
         help_menu = menubar.addMenu(t("menu.help"))
         act_docs = QAction(t("menu.help.online_docs"), self)
+        act_docs.triggered.connect(lambda: _wb.open("https://opennavicat.dev/docs"))
         help_menu.addAction(act_docs)
         act_update = QAction(t("menu.help.check_update"), self)
+        act_update.triggered.connect(self._check_for_updates)
         help_menu.addAction(act_update)
         help_menu.addSeparator()
         act_about = QAction(t("menu.help.about"), self)
@@ -730,6 +860,104 @@ class MainWindow(QMainWindow):
             f"<h3>{__app_name__} {__version__}</h3>"
             + t("about.description"),
         )
+
+    @Slot()
+    def _add_favorite(self) -> None:
+        """Add currently selected item in object browser to favorites."""
+        from open_navicat.dal.local_config import local_db
+        item = self._object_browser.currentItem()
+        if not item:
+            QMessageBox.information(self, t("common.notice"), "Please select an item in the object browser first.")
+            return
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        conn_id = data.get("id", data.get("connection_id", ""))
+        db_name = data.get("name", data.get("database", ""))
+        obj_type = data.get("type", "connection")
+        obj_name = data.get("name", "")
+        if local_db.is_favorite(conn_id, db_name, obj_type, obj_name):
+            QMessageBox.information(self, t("common.notice"), "Already in favorites.")
+            return
+        local_db.add_favorite(conn_id, db_name, obj_type, obj_name)
+        if not item.text(0).startswith("⭐ "):
+            item.setText(0, "⭐ " + item.text(0))
+
+    @Slot()
+    def _manage_favorites(self) -> None:
+        """Open a dialog to view / remove favorites."""
+        from open_navicat.dal.local_config import local_db
+        from PySide6.QtWidgets import QDialog, QHBoxLayout, QListWidget, QPushButton, QVBoxLayout
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(t("menu.favorites.manage"))
+        dlg.setMinimumSize(400, 300)
+        layout = QVBoxLayout(dlg)
+
+        self._fav_list = QListWidget(dlg)
+        layout.addWidget(self._fav_list)
+
+        btn_layout = QHBoxLayout()
+        btn_open = QPushButton("Open", dlg)
+        btn_remove = QPushButton("Remove", dlg)
+        btn_close = QPushButton(t("common.close"), dlg)
+        btn_layout.addWidget(btn_open)
+        btn_layout.addWidget(btn_remove)
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_close)
+        layout.addLayout(btn_layout)
+
+        favs = local_db.list_favorites()
+        for fav in favs:
+            self._fav_list.addItem(f"{fav['name']} ({fav['type']} @ {fav['connection_id']})")
+        self._fav_list._favs = favs
+
+        def do_open() -> None:
+            idx = self._fav_list.currentRow()
+            if idx < 0:
+                return
+            fav = self._fav_list._favs[idx]
+            # Open the relevant object in the browser
+            self._object_browser._navigate_to_favorite(fav)
+            dlg.accept()
+
+        def do_remove() -> None:
+            idx = self._fav_list.currentRow()
+            if idx < 0:
+                return
+            fav = self._fav_list._favs[idx]
+            local_db.remove_favorite(fav["connection_id"], fav["database"], fav["type"], fav["name"])
+            self._fav_list.takeItem(idx)
+            del self._fav_list._favs[idx]
+
+        btn_open.clicked.connect(do_open)
+        btn_remove.clicked.connect(do_remove)
+        btn_close.clicked.connect(dlg.reject)
+        dlg.exec()
+
+    @Slot()
+    def _check_for_updates(self) -> None:
+        """Check GitHub for newer releases."""
+        import urllib.request
+        import json as _json
+        try:
+            req = urllib.request.Request(
+                "https://api.github.com/repos/opennavicat/opennavicat/releases/latest",
+                headers={"User-Agent": "OpenNavicat"},
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                data = _json.loads(resp.read().decode())
+                latest = data.get("tag_name", "").lstrip("v")
+                if latest and latest > __version__:
+                    QMessageBox.information(
+                        self, t("menu.help.check_update"),
+                        f"New version available: v{latest}\nCurrent: v{__version__}\n\n"
+                        f"Download: {data.get('html_url', 'https://github.com/opennavicat/opennavicat/releases')}",
+                    )
+                else:
+                    QMessageBox.information(self, t("menu.help.check_update"), "You have the latest version.")
+        except Exception as exc:
+            QMessageBox.warning(self, t("menu.help.check_update"), f"Could not check for updates:\n{exc}")
 
     @Slot()
     def _show_settings(self) -> None:
