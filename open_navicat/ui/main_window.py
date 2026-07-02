@@ -922,9 +922,59 @@ class MainWindow(QMainWindow):
     # ---- geometry ----
 
     def _restore_geometry(self) -> None:
-        maximized = config.get("window.maximized", False)
-        if maximized:
+        """Restore saved window geometry with screen boundary validation.
+
+        Matches the IDEA approach:
+        1. Read saved bounds from config
+        2. Find which screen the saved position was on (if any)
+        3. Clamp size/position to that screen's available area
+        4. Fallback: center on primary screen if off-screen (disconnected monitor)
+        """
+        if config.get("window.maximized", False):
             self.showMaximized()
+            return
+
+        from PySide6.QtGui import QGuiApplication
+
+        saved_x = config.get("window.x", None)
+        saved_y = config.get("window.y", None)
+        saved_w = config.get("window.width", None)
+        saved_h = config.get("window.height", None)
+
+        if saved_x is None or saved_y is None:
+            return  # No saved position — keep Qt default (centered on primary)
+
+        # Find which screen contains the saved position
+        screens = QGuiApplication.screens()
+        target = None
+        for s in screens:
+            sg = s.geometry()
+            if sg.x() <= saved_x <= sg.x() + sg.width():
+                target = s
+                break
+
+        if target is None:
+            # Saved position was on a now-disconnected monitor → center on primary
+            primary = QGuiApplication.primaryScreen()
+            if not primary:
+                return
+            ag = primary.availableGeometry()
+            self.resize(min(saved_w or self.width(), ag.width()),
+                        min(saved_h or self.height(), ag.height()))
+            cx = ag.x() + (ag.width() - self.width()) // 2
+            cy = ag.y() + (ag.height() - self.height()) // 2
+            self.move(cx, cy)
+            return
+
+        ag = target.availableGeometry()
+        w = min(saved_w or self.width(), ag.width())
+        h = min(saved_h or self.height(), ag.height())
+        x = max(saved_x, ag.x())
+        y = max(saved_y, ag.y())
+        x = min(x, ag.x() + ag.width() - w)
+        y = min(y, ag.y() + ag.height() - h)
+        self.resize(w, h)
+        self.move(x, y)
 
     def closeEvent(self, event):
         if self.isMaximized():
