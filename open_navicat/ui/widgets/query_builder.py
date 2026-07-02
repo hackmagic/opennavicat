@@ -118,22 +118,22 @@ class QueryBuilderWidget(QWidget):
         tb_layout = QHBoxLayout(toolbar)
         tb_layout.setContentsMargins(8, 4, 8, 4)
 
-        lbl = QLabel(f"数据库: {self._database}")
+        lbl = QLabel(t("query_builder.database", database=self._database))
         lbl.setStyleSheet("font-weight:bold;color:#ccc;")
         tb_layout.addWidget(lbl)
 
         tb_layout.addStretch()
 
-        self._btn_gen = QPushButton("生成 SQL")
+        self._btn_gen = QPushButton(t("query_builder.generate_sql"))
         self._btn_gen.clicked.connect(self._generate_sql)
         tb_layout.addWidget(self._btn_gen)
 
-        self._btn_exec = QPushButton("执行")
+        self._btn_exec = QPushButton(t("query_builder.execute"))
         self._btn_exec.setProperty("class", "primary")
         self._btn_exec.clicked.connect(self._execute)
         tb_layout.addWidget(self._btn_exec)
 
-        self._btn_clear = QPushButton("清空画布")
+        self._btn_clear = QPushButton(t("query_builder.clear_canvas"))
         self._btn_clear.clicked.connect(self._clear_canvas)
         tb_layout.addWidget(self._btn_clear)
 
@@ -146,7 +146,7 @@ class QueryBuilderWidget(QWidget):
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.addWidget(QLabel("表 (双击添加)"))
+        left_layout.addWidget(QLabel(t("query_builder.tables_hint")))
         self._table_list = QListWidget()
         self._table_list.itemDoubleClicked.connect(self._add_table_to_canvas)
         left_layout.addWidget(self._table_list)
@@ -167,7 +167,7 @@ class QueryBuilderWidget(QWidget):
         right_layout.setContentsMargins(4, 4, 4, 4)
 
         # Selected columns
-        grp_cols = QGroupBox("输出列")
+        grp_cols = QGroupBox(t("query_builder.output_columns"))
         cols_layout = QVBoxLayout(grp_cols)
         self._cols_text = QTextEdit()
         self._cols_text.setReadOnly(True)
@@ -176,27 +176,27 @@ class QueryBuilderWidget(QWidget):
         right_layout.addWidget(grp_cols)
 
         # Conditions
-        grp_where = QGroupBox("条件 (WHERE)")
+        grp_where = QGroupBox(t("query_builder.where"))
         where_layout = QVBoxLayout(grp_where)
         self._where_edit = QTextEdit()
-        self._where_edit.setPlaceholderText("例如: status = 'active'")
+        self._where_edit.setPlaceholderText(t("query_builder.where_hint"))
         self._where_edit.setMaximumHeight(60)
         where_layout.addWidget(self._where_edit)
         right_layout.addWidget(grp_where)
 
         # Sort
-        grp_sort = QGroupBox("排序 (ORDER BY)")
+        grp_sort = QGroupBox(t("query_builder.order_by"))
         sort_layout = QVBoxLayout(grp_sort)
         self._order_edit = QLineEdit()
-        self._order_edit.setPlaceholderText("例如: created_at DESC")
+        self._order_edit.setPlaceholderText(t("query_builder.order_by_hint"))
         sort_layout.addWidget(self._order_edit)
         right_layout.addWidget(grp_sort)
 
         # Group By
-        grp_group = QGroupBox("分组 (GROUP BY)")
+        grp_group = QGroupBox(t("query_builder.group_by"))
         group_layout = QVBoxLayout(grp_group)
         self._group_edit = QLineEdit()
-        self._group_edit.setPlaceholderText("例如: category_id")
+        self._group_edit.setPlaceholderText(t("query_builder.group_by_hint"))
         group_layout.addWidget(self._group_edit)
         right_layout.addWidget(grp_group)
 
@@ -204,14 +204,14 @@ class QueryBuilderWidget(QWidget):
         grp_having = QGroupBox("HAVING")
         having_layout = QVBoxLayout(grp_having)
         self._having_edit = QLineEdit()
-        self._having_edit.setPlaceholderText("例如: COUNT(*) > 5")
+        self._having_edit.setPlaceholderText(t("query_builder.having_hint"))
         having_layout.addWidget(self._having_edit)
         right_layout.addWidget(grp_having)
 
         right_layout.addStretch()
 
         # SQL preview
-        lbl_sql = QLabel("SQL 预览")
+        lbl_sql = QLabel(t("query_builder.sql_preview"))
         right_layout.addWidget(lbl_sql)
         self._sql_preview = QTextEdit()
         self._sql_preview.setReadOnly(True)
@@ -270,7 +270,7 @@ class QueryBuilderWidget(QWidget):
 
     def _update_cols_text(self) -> None:
         if not self._selected_cols:
-            self._cols_text.setText("* (所有列)")
+            self._cols_text.setText(t("query_builder.all_columns"))
             return
         cols = sorted(f"{tbl}.{c}" for tbl, c in self._selected_cols)
         self._cols_text.setText("\n".join(cols))
@@ -322,7 +322,7 @@ class QueryBuilderWidget(QWidget):
 
     def _generate_sql(self) -> str:
         if not self._table_nodes:
-            self._sql_preview.setText("-- 请先添加表到画布")
+            self._sql_preview.setText(t("query_builder.add_tables_hint"))
             return ""
 
         # SELECT clause

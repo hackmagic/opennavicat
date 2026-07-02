@@ -201,11 +201,11 @@ class ObjectBrowser(QTreeWidget):
         obj_type = data.get("type") if data else None
 
         if obj_type == "connection":
-            act_close = menu.addAction("关闭连接")
+            act_close = menu.addAction(t("browser.close_connection"))
             act_close.triggered.connect(lambda: self._disconnect_connection(item))
-            act_new_conn = menu.addAction("新建连接...")
+            act_new_conn = menu.addAction(t("browser.new_connection"))
             act_new_conn.triggered.connect(lambda: self._new_connection(item))
-            act_copy_conn = menu.addAction("复制连接...")
+            act_copy_conn = menu.addAction(t("browser.copy_connection"))
             act_copy_conn.triggered.connect(lambda: self._copy_connection(item))
             menu.addSeparator()
             act_edit = menu.addAction(t("browser.edit_connection"))
@@ -213,21 +213,21 @@ class ObjectBrowser(QTreeWidget):
             act_delete = menu.addAction(t("browser.delete_connection"))
             act_delete.triggered.connect(lambda: self._remove_connection(item))
             menu.addSeparator()
-            act_new_db = menu.addAction("新建数据库...")
+            act_new_db = menu.addAction(t("browser.new_database"))
             act_new_db.triggered.connect(lambda: self._new_database(item))
             act_query = menu.addAction(t("browser.new_query"))
             act_query.triggered.connect(lambda: self._open_query_tab(item))
-            act_sql_file = menu.addAction("运行 SQL 文件...")
+            act_sql_file = menu.addAction(t("browser.run_sql_file"))
             act_sql_file.triggered.connect(lambda: self._run_sql_file(item))
             menu.addSeparator()
-            act_import = menu.addAction("导入连接...")
+            act_import = menu.addAction(t("browser.import_connection"))
             act_import.triggered.connect(lambda: self._wizard_import(item))
-            act_export = menu.addAction("导出连接...")
+            act_export = menu.addAction(t("browser.export_connection"))
             act_export.triggered.connect(lambda: self._wizard_export(item))
             menu.addSeparator()
-            act_reload = menu.addAction("重载")
+            act_reload = menu.addAction(t("browser.reload"))
             act_reload.triggered.connect(lambda: self._refresh_connection(item))
-            act_star = menu.addAction("添加星标")
+            act_star = menu.addAction(t("browser.add_favorite"))
             act_star.triggered.connect(lambda: self._toggle_favorite(item))
             menu.addSeparator()
             act_refresh = menu.addAction(t("browser.refresh"))
@@ -236,8 +236,8 @@ class ObjectBrowser(QTreeWidget):
             act_disconnect.triggered.connect(lambda: self._disconnect_connection(item))
             menu.addSeparator()
             # Group assignment
-            act_group = menu.addMenu("分配到组")
-            no_group = act_group.addAction("(无分组)")
+            act_group = menu.addMenu(t("browser.assign_to_group"))
+            no_group = act_group.addAction(t("browser.no_group"))
             no_group.triggered.connect(lambda: self._set_connection_group(item, ""))
             act_group.addSeparator()
             for g in local_db.list_groups():
@@ -245,18 +245,18 @@ class ObjectBrowser(QTreeWidget):
                 ga.triggered.connect(lambda checked, gn=g: self._set_connection_group(item, gn))
 
         elif obj_type == "group":
-            act_new_conn = menu.addAction("在此组新建连接...")
+            act_new_conn = menu.addAction(t("browser.new_connection_in_group"))
             act_new_conn.triggered.connect(lambda: self._new_connection_in_group(item))
             menu.addSeparator()
-            act_rename = menu.addAction("重命名组...")
+            act_rename = menu.addAction(t("browser.rename_group"))
             act_rename.triggered.connect(lambda: self._rename_group(item))
-            act_delete_group = menu.addAction("删除组")
+            act_delete_group = menu.addAction(t("browser.delete_group"))
             act_delete_group.triggered.connect(lambda: self._delete_group(item))
 
         elif obj_type in ("database",):
             act_query = menu.addAction(t("browser.new_query"))
             act_query.triggered.connect(lambda: self._open_query_tab(item))
-            act_sql_file = menu.addAction("运行 SQL 文件...")
+            act_sql_file = menu.addAction(t("browser.run_sql_file"))
             act_sql_file.triggered.connect(lambda: self._run_sql_file(item))
             menu.addSeparator()
             act_new_db = menu.addAction(t("browser.new_database"))
@@ -264,9 +264,9 @@ class ObjectBrowser(QTreeWidget):
             act_drop_db = menu.addAction(t("browser.drop_database"))
             act_drop_db.triggered.connect(lambda: self._drop_database(item))
             menu.addSeparator()
-            act_import = menu.addAction("导入向导...")
+            act_import = menu.addAction(t("browser.import_wizard"))
             act_import.triggered.connect(lambda: self._wizard_import(item))
-            act_export = menu.addAction("导出向导...")
+            act_export = menu.addAction(t("browser.export_wizard"))
             act_export.triggered.connect(lambda: self._wizard_export(item))
             menu.addSeparator()
             act_refresh = menu.addAction(t("browser.refresh"))
@@ -289,7 +289,7 @@ class ObjectBrowser(QTreeWidget):
             menu.addSeparator()
             act_copy = menu.addAction(t("browser.copy_table"))
             act_copy.triggered.connect(lambda: self._copy_table(item))
-            act_rename = menu.addAction("重命名...")
+            act_rename = menu.addAction(t("browser.rename"))
             act_rename.triggered.connect(lambda: self._rename_table(item))
             menu.addSeparator()
             act_import = menu.addAction(t("menu.file.import"))
@@ -297,9 +297,9 @@ class ObjectBrowser(QTreeWidget):
             act_export = menu.addAction(t("menu.file.export"))
             act_export.triggered.connect(lambda: self._wizard_export(item))
             menu.addSeparator()
-            act_dump = menu.addAction("转储 SQL 文件...")
+            act_dump = menu.addAction(t("browser.dump_sql"))
             act_dump.triggered.connect(lambda: self._dump_table_sql(item))
-            act_perms = menu.addAction("设置权限...")
+            act_perms = menu.addAction(t("browser.set_permissions"))
             act_perms.triggered.connect(lambda: self._set_table_permissions(item))
             menu.addSeparator()
             maint_menu = menu.addMenu(t("browser.maintenance"))
@@ -312,14 +312,14 @@ class ObjectBrowser(QTreeWidget):
                 act = maint_menu.addAction(t(label_key))
                 act.triggered.connect(lambda checked, m=meth: m(item))
             menu.addSeparator()
-            act_reverse = menu.addAction("逆向表到模型...")
+            act_reverse = menu.addAction(t("browser.reverse_to_model"))
             act_reverse.triggered.connect(lambda: self._reverse_to_model(item))
-            act_bi = menu.addAction("创建 BI 工作区")
+            act_bi = menu.addAction(t("browser.create_bi_workspace"))
             act_bi.triggered.connect(lambda: self._create_bi_workspace(item))
             menu.addSeparator()
             act_copy_to = menu.addAction(t("browser.copy_object_to"))
             act_copy_to.triggered.connect(lambda: self._copy_object_to(item))
-            act_refresh = menu.addAction("刷新")
+            act_refresh = menu.addAction(t("browser.refresh"))
             act_refresh.triggered.connect(lambda: self._refresh_connection(item.parent() if item.parent() else item))
             menu.addSeparator()
             act_props = menu.addAction(t("browser.properties"))
@@ -427,9 +427,9 @@ class ObjectBrowser(QTreeWidget):
 
         # Toolbar
         toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel(f"📋 {db_name} — 表列表"))
+        toolbar.addWidget(QLabel(t("browser.table_list_title", db=db_name)))
         toolbar.addStretch()
-        refresh_btn = QPushButton("🔄 刷新")
+        refresh_btn = QPushButton(t("browser.refresh_short"))
         refresh_btn.clicked.connect(lambda: self._reload_table_list(conn_id, db_name, table_widget))
         toolbar.addWidget(refresh_btn)
         layout.addLayout(toolbar)
@@ -437,7 +437,11 @@ class ObjectBrowser(QTreeWidget):
         # Table widget
         table_widget = QTableWidget(container)
         table_widget.setColumnCount(5)
-        table_widget.setHorizontalHeaderLabels(["名称", "自动递增", "修改日期", "数据长度", "引擎"])
+        table_widget.setHorizontalHeaderLabels([
+            t("browser.col_name"), t("browser.col_auto_increment"),
+            t("browser.col_update_date"), t("browser.col_data_length"),
+            t("browser.col_engine")
+        ])
         table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         table_widget.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -447,7 +451,7 @@ class ObjectBrowser(QTreeWidget):
         self._populate_table_list(table_widget, tables)
         layout.addWidget(table_widget)
 
-        idx = mw._workspace.addTab(container, f"📋 表 - {db_name}")
+        idx = mw._workspace.addTab(container, t("browser.table_list_tab", db=db_name))
         mw._workspace.setCurrentIndex(idx)
 
     def _populate_table_list(self, table_widget: QTableWidget, tables: list[dict]) -> None:
@@ -642,8 +646,8 @@ class ObjectBrowser(QTreeWidget):
                 self._load_saved_connections()
             else:
                 from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self.window(), "连接失败",
-                                    f"无法连接到 {info.host}:{info.port}")
+                QMessageBox.warning(self.window(), t("connection.conn_failed"),
+                                    t("prompt.conn_failed", host=f"{info.host}:{info.port}"))
 
     # ---- group management ----
 
@@ -660,8 +664,8 @@ class ObjectBrowser(QTreeWidget):
                 self._load_saved_connections()
             else:
                 from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self.window(), "连接失败",
-                                    f"无法连接到 {info.host}:{info.port}")
+                QMessageBox.warning(self.window(), t("connection.conn_failed"),
+                                    t("prompt.conn_failed", host=f"{info.host}:{info.port}"))
 
     def _set_connection_group(self, item: QTreeWidgetItem, group_name: str) -> None:
         """Assign connection to a group."""
@@ -682,7 +686,7 @@ class ObjectBrowser(QTreeWidget):
         data = group_item.data(0, Qt.ItemDataRole.UserRole)
         old_name = data.get("name", "")
         new_name, ok = QInputDialog.getText(
-            self.window(), "重命名组", "新组名称:", text=old_name,
+            self.window(), t("browser.rename_group"), t("browser.new_group_name"), text=old_name,
         )
         if ok and new_name and new_name != old_name:
             local_db.rename_group(old_name, new_name)
@@ -694,8 +698,8 @@ class ObjectBrowser(QTreeWidget):
         data = group_item.data(0, Qt.ItemDataRole.UserRole)
         name = data.get("name", "")
         reply = QMessageBox.question(
-            self.window(), "删除组",
-            f"确定要删除组 '{name}' 吗？\n组内的连接不会丢失，只是不再分组。",
+            self.window(), t("browser.delete_group"),
+            t("browser.delete_group_confirm", name=name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -712,7 +716,7 @@ class ObjectBrowser(QTreeWidget):
             return
         from PySide6.QtWidgets import QInputDialog
         new_name, ok = QInputDialog.getText(
-            self.window(), "复制连接", "新连接名称:",
+            self.window(), t("browser.copy_connection"), t("browser.new_connection_name"),
             text=f"{saved_info.name} (copy)",
         )
         if not ok or not new_name:
@@ -727,8 +731,8 @@ class ObjectBrowser(QTreeWidget):
             self._load_saved_connections()
         else:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self.window(), "连接失败",
-                                f"无法连接到 {new_info.host}:{new_info.port}")
+            QMessageBox.warning(self.window(), t("connection.conn_failed"),
+                                t("prompt.conn_failed", host=f"{new_info.host}:{new_info.port}"))
 
     def _run_sql_file(self, item: QTreeWidgetItem) -> None:
         """Execute a .sql file against the selected connection/database."""
@@ -741,8 +745,8 @@ class ObjectBrowser(QTreeWidget):
             return
         from PySide6.QtWidgets import QFileDialog, QProgressDialog
         path, _ = QFileDialog.getOpenFileName(
-            self.window(), "选择 SQL 文件", "",
-            "SQL 文件 (*.sql);;所有文件 (*)",
+            self.window(), t("browser.select_sql_file"), "",
+            t("browser.sql_filter"),
         )
         if not path:
             return
@@ -755,8 +759,9 @@ class ObjectBrowser(QTreeWidget):
         if not connector:
             return
         statements = [s.strip() for s in content.split(";") if s.strip()]
-        progress = QProgressDialog(f"执行 {len(statements)} 条语句...", "取消", 0, len(statements), self.window())
-        progress.setWindowTitle("运行 SQL 文件")
+        progress = QProgressDialog(t("browser.executing_count", count=len(statements)),
+                                    t("common.cancel"), 0, len(statements), self.window())
+        progress.setWindowTitle(t("browser.run_sql_file"))
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(0)
         errors = []
@@ -774,12 +779,12 @@ class ObjectBrowser(QTreeWidget):
         progress.close()
         if errors:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self.window(), "部分执行失败",
-                                f"{len(errors)} 条语句失败:\n" + "\n".join(errors[:5]))
+            QMessageBox.warning(self.window(), t("browser.partial_failure"),
+                                t("browser.statement_errors", count=len(errors)) + "\n" + "\n".join(errors[:5]))
         else:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(self.window(), "完成",
-                                    f"成功执行 {len(statements)} 条语句。")
+            QMessageBox.information(self.window(), t("browser.execution_complete"),
+                                    t("browser.statements_executed", count=len(statements)))
 
     def _toggle_favorite(self, item: QTreeWidgetItem) -> None:
         """Toggle the favorite (star) status of a connection."""
@@ -885,14 +890,14 @@ class ObjectBrowser(QTreeWidget):
         dlg = QMessageBox(self.window())
         dlg.setWindowTitle(t("browser.truncate_table"))
         dlg.setIcon(QMessageBox.Icon.Warning)
-        dlg.setText(f'你确定要清空 "{data["name"]}" 吗？')
+        dlg.setText(t("browser.truncate_confirm", name=data["name"]))
 
         layout = dlg.layout()
-        confirm_cb = QCheckBox("我了解此操作是永久性的且无法撤销")
+        confirm_cb = QCheckBox(t("browser.irreversible_confirm"))
         layout.addWidget(confirm_cb)
 
-        btn_truncate = dlg.addButton("清空", QMessageBox.ButtonRole.AcceptRole)
-        btn_cancel = dlg.addButton("取消", QMessageBox.ButtonRole.RejectRole)  # noqa: F841
+        btn_truncate = dlg.addButton(t("browser.truncate_btn"), QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = dlg.addButton(t("common.cancel"), QMessageBox.ButtonRole.RejectRole)  # noqa: F841
         btn_truncate.setEnabled(False)
         confirm_cb.stateChanged.connect(lambda state: btn_truncate.setEnabled(state == QtConst.CheckState.Checked.value))
 
@@ -919,19 +924,19 @@ class ObjectBrowser(QTreeWidget):
         dlg = QMessageBox(self.window())
         dlg.setWindowTitle(t("browser.drop_table"))
         dlg.setIcon(QMessageBox.Icon.Warning)
-        dlg.setText(f'你确定要删除 "{data["name"]}" 吗？')
+        dlg.setText(t("browser.drop_confirm", name=data["name"]))
 
         layout = dlg.layout()
         fk_combo = QComboBox()
-        fk_combo.addItems(["默认", "启用外键检查", "禁用外键检查"])
-        fk_label = QLabel("外键检查:")
-        confirm_cb = QCheckBox("我了解此操作是永久性的且无法撤销")
+        fk_combo.addItems([t("browser.fk_default"), t("browser.fk_enable"), t("browser.fk_disable")])
+        fk_label = QLabel(t("browser.fk_check"))
+        confirm_cb = QCheckBox(t("browser.irreversible_confirm"))
         layout.addWidget(fk_label)
         layout.addWidget(fk_combo)
         layout.addWidget(confirm_cb)
 
-        btn_delete = dlg.addButton("删除", QMessageBox.ButtonRole.AcceptRole)
-        btn_cancel = dlg.addButton("取消", QMessageBox.ButtonRole.RejectRole)  # noqa: F841
+        btn_delete = dlg.addButton(t("browser.delete_btn"), QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = dlg.addButton(t("common.cancel"), QMessageBox.ButtonRole.RejectRole)  # noqa: F841
         btn_delete.setEnabled(False)
         confirm_cb.stateChanged.connect(lambda state: btn_delete.setEnabled(state == QtConst.CheckState.Checked.value))
 
@@ -1012,7 +1017,7 @@ class ObjectBrowser(QTreeWidget):
 
         from PySide6.QtWidgets import QFileDialog
         path, _ = QFileDialog.getOpenFileName(
-            self, "导入连接", "", "JSON 文件 (*.json);;所有文件 (*)"
+            self, t("browser.import_connection"), "", t("browser.json_filter")
         )
         if not path:
             return
@@ -1050,10 +1055,11 @@ class ObjectBrowser(QTreeWidget):
                 count += 1
             self._load_saved_connections()
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(self, "导入成功", f"已导入 {count} 个连接配置。")
+            QMessageBox.information(self, t("browser.import_success"),
+                                    t("browser.import_success_detail", count=count))
         except Exception as e:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.critical(self, "导入失败", str(e))
+            QMessageBox.critical(self, t("browser.import_failed"), str(e))
 
     def _wizard_export(self, item: QTreeWidgetItem) -> None:
         """Export connection config to JSON file."""
@@ -1068,7 +1074,7 @@ class ObjectBrowser(QTreeWidget):
         if not info:
             return
         path, _ = QFileDialog.getSaveFileName(
-            self, "导出连接", f"{info.name}.json", "JSON 文件 (*.json);;所有文件 (*)"
+            self, t("browser.export_connection"), f"{info.name}.json", t("browser.json_filter")
         )
         if not path:
             return
@@ -1096,13 +1102,14 @@ class ObjectBrowser(QTreeWidget):
             }
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=2, ensure_ascii=False)
-            QMessageBox.information(self, "导出成功", f"连接配置已保存到:\n{path}")
+            QMessageBox.information(self, t("browser.export_success"),
+                                    t("browser.export_success_detail", path=path))
         except Exception as e:
-            QMessageBox.critical(self, "导出失败", str(e))
+            QMessageBox.critical(self, t("browser.export_failed"), str(e))
 
     def _new_database(self, item: QTreeWidgetItem) -> None:
         from PySide6.QtWidgets import QInputDialog
-        name, ok = QInputDialog.getText(self.window(), t("browser.new_database"), "数据库名称:")
+        name, ok = QInputDialog.getText(self.window(), t("browser.new_database"), t("browser.db_name_label"))
         if ok and name:
             data = item.data(0, Qt.ItemDataRole.UserRole)
             connector = connection_pool.get(data["connection_id"])
@@ -1115,8 +1122,8 @@ class ObjectBrowser(QTreeWidget):
         from PySide6.QtWidgets import QMessageBox
         data = item.data(0, Qt.ItemDataRole.UserRole)
         reply = QMessageBox.question(
-            self.window(), t("browser.drop_database"),
-            f"确定要删除数据库 `{data['name']}` 吗？\n此操作不可恢复！",
+            self.window(),             t("browser.drop_database"),
+            t("browser.confirm_drop_db", name=data['name']),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -1140,7 +1147,8 @@ class ObjectBrowser(QTreeWidget):
     def _copy_table(self, item: QTreeWidgetItem) -> None:
         from PySide6.QtWidgets import QInputDialog, QMessageBox
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        name, ok = QInputDialog.getText(self.window(), t("browser.copy_table"), "新表名称:", text=f"{data['name']}_copy")
+        name, ok = QInputDialog.getText(self.window(), t("browser.copy_table"), t("browser.new_table_name"),
+                                        text=f"{data['name']}_copy")
         if ok and name:
             connector = connection_pool.get(data["connection_id"])
             if connector:
@@ -1150,12 +1158,13 @@ class ObjectBrowser(QTreeWidget):
                         connector.execute(f"CREATE TABLE `{data['database']}`.`{name.strip()}` LIKE `{data['database']}`.`{data['name']}`")
                     )
                 except Exception as e:
-                    QMessageBox.warning(self.window(), "错误", str(e))
+                    QMessageBox.warning(self.window(), t("common.error"), str(e))
 
     def _rename_table(self, item: QTreeWidgetItem) -> None:
         from PySide6.QtWidgets import QInputDialog, QMessageBox
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        new_name, ok = QInputDialog.getText(self.window(), "重命名表", "新名称:", text=data["name"])
+        new_name, ok = QInputDialog.getText(self.window(), t("browser.rename_table"),
+                                            t("common.rename_prompt"), text=data["name"])
         if ok and new_name and new_name != data["name"]:
             connector = connection_pool.get(data["connection_id"])
             if connector:
@@ -1166,12 +1175,13 @@ class ObjectBrowser(QTreeWidget):
                     )
                     item.setText(0, new_name.strip())
                 except Exception as e:
-                    QMessageBox.warning(self.window(), "错误", str(e))
+                    QMessageBox.warning(self.window(), t("common.error"), str(e))
 
     def _dump_table_sql(self, item: QTreeWidgetItem) -> None:
         from PySide6.QtWidgets import QFileDialog
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        path, _ = QFileDialog.getSaveFileName(self.window(), "转储 SQL 文件", f"{data['name']}.sql", "SQL 文件 (*.sql)")
+        path, _ = QFileDialog.getSaveFileName(self.window(), t("browser.dump_sql"),
+                                                f"{data['name']}.sql", t("browser.sql_filter_only"))
         if not path:
             return
         connector = connection_pool.get(data["connection_id"])
@@ -1187,7 +1197,7 @@ class ObjectBrowser(QTreeWidget):
                         f.write(f"-- Dump table `{data['name']}`\n{ddl};\n")
             except Exception as e:
                 from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self.window(), "错误", str(e))
+                QMessageBox.warning(self.window(), t("common.error"), str(e))
 
     def _set_table_permissions(self, item: QTreeWidgetItem) -> None:
         pass  # ponytail: permissions UI not yet implemented
@@ -1232,8 +1242,8 @@ class ObjectBrowser(QTreeWidget):
         from PySide6.QtWidgets import QMessageBox
         data = item.data(0, Qt.ItemDataRole.UserRole)
         reply = QMessageBox.question(
-            self.window(), t("browser.drop_view"),
-            f"确定要删除视图 `{data['name']}` 吗？",
+            self.window(),             t("browser.drop_view"),
+            t("browser.confirm_drop_view", name=data['name']),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -1263,8 +1273,8 @@ class ObjectBrowser(QTreeWidget):
         from PySide6.QtWidgets import QMessageBox
         data = item.data(0, Qt.ItemDataRole.UserRole)
         reply = QMessageBox.question(
-            self.window(), t("browser.drop_function"),
-            f"确定要删除函数/存储过程 `{data['name']}` 吗？",
+            self.window(),             t("browser.drop_function"),
+            t("browser.confirm_drop_routine", name=data['name']),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -1310,13 +1320,13 @@ class ObjectBrowser(QTreeWidget):
         conn_id = data.get("connection_id", "")
 
         if not name or not database or not conn_id:
-            QMessageBox.warning(self.window(), "错误", "缺少对象信息。")
+            QMessageBox.warning(self.window(), t("common.error"), t("browser.missing_info"))
             return
 
         from PySide6.QtWidgets import QInputDialog
         target_db, ok = QInputDialog.getItem(
-            self.window(), "复制到数据库",
-            f"选择目标数据库 ({name}):",
+            self.window(), t("browser.copy_to_db"),
+            t("browser.select_target_db", name=name),
             self._get_databases(conn_id), 0, False,
         )
         if not ok or not target_db:
@@ -1332,17 +1342,18 @@ class ObjectBrowser(QTreeWidget):
             if obj_type == "table":
                 sql = f"CREATE TABLE `{target_db}`.`{name}` LIKE `{database}`.`{name}`"
                 pool_loop.run_until_complete(connector.execute(sql))
-                QMessageBox.information(self.window(), "成功",
-                    f"表 `{name}` 已复制到 `{target_db}`。")
+                QMessageBox.information(self.window(), t("common.success"),
+                    t("browser.table_copied", name=name, target=target_db))
             elif obj_type == "view":
                 sql = f"CREATE VIEW `{target_db}`.`{name}` AS SELECT * FROM `{database}`.`{name}`"
                 pool_loop.run_until_complete(connector.execute(sql))
-                QMessageBox.information(self.window(), "成功",
-                    f"视图 `{name}` 已复制到 `{target_db}`。")
+                QMessageBox.information(self.window(), t("common.success"),
+                    t("browser.view_copied", name=name, target=target_db))
             else:
-                QMessageBox.information(self.window(), "提示", f"暂不支持复制 {obj_type} 类型。")
+                QMessageBox.information(self.window(), "提示",
+                    t("browser.unsupported_copy", type=obj_type))
         except Exception as e:
-            QMessageBox.warning(self.window(), "复制失败", str(e))
+            QMessageBox.warning(self.window(), t("browser.copy_failed"), str(e))
 
     def _get_databases(self, conn_id: str) -> list[str]:
         from open_navicat.dal.connection_pool import _loop as pool_loop

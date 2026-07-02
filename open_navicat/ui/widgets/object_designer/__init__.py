@@ -43,6 +43,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from open_navicat.i18n import t
 from open_navicat.models.table_schema import (
     ColumnInfo,
     ForeignKeyInfo,
@@ -84,7 +85,10 @@ class _ColumnListTable(QTableWidget):
         super().__init__(parent)
         self.setColumnCount(8)
         self.setHorizontalHeaderLabels([
-            "#", "字段名", "类型", "长度", "可空", "默认值", "自增", "注释",
+            "#", t("object_designer.col_name"), t("object_designer.col_type"),
+            t("object_designer.col_length"), t("object_designer.col_nullable"),
+            t("object_designer.col_default"), t("object_designer.col_auto_inc"),
+            t("object_designer.col_comment"),
         ])
         self.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.setColumnWidth(0, 30)
@@ -136,7 +140,7 @@ class _IndexTable(QTableWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setColumnCount(4)
-        self.setHorizontalHeaderLabels(["索引名", "列", "唯一", "类型"])
+        self.setHorizontalHeaderLabels([t("object_designer.idx_name"), t("object_designer.idx_column"), t("object_designer.idx_unique"), t("object_designer.idx_type")])
         self.horizontalHeader().setStretchLastSection(True)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setStyleSheet(
@@ -175,7 +179,7 @@ class _ForeignKeyTable(QTableWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setColumnCount(6)
-        self.setHorizontalHeaderLabels(["约束名", "列", "引用表", "引用列", "ON DELETE", "ON UPDATE"])
+        self.setHorizontalHeaderLabels([t("object_designer.fk_name"), t("object_designer.fk_column"), t("object_designer.fk_ref_table"), t("object_designer.fk_ref_column"), "ON DELETE", "ON UPDATE"])
         self.horizontalHeader().setStretchLastSection(True)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setStyleSheet(
@@ -226,7 +230,7 @@ class _TableDesignerTab(QWidget):
 
         # Table name & DB
         top = QHBoxLayout()
-        top.addWidget(QLabel("表名:", self))
+        top.addWidget(QLabel(t("object_designer.table_name"), self))
         self._name_edit = QLineEdit(self._table_info.name, self)
         self._name_edit.setPlaceholderText("table_name")
         top.addWidget(self._name_edit)
@@ -242,14 +246,14 @@ class _TableDesignerTab(QWidget):
         col_layout.addWidget(self._col_table, 1)
 
         col_btns = QHBoxLayout()
-        for text, cb in [("+ 添加行", self._col_add), ("− 删除选中", self._col_remove), ("↑ 上移", self._col_up), ("↓ 下移", self._col_down)]:
+        for text, cb in [(t("object_designer.add_row"), self._col_add), (t("object_designer.delete_selected"), self._col_remove), (t("object_designer.move_up"), self._col_up), (t("object_designer.move_down"), self._col_down)]:
             btn = QPushButton(text, col_tab)
             btn.clicked.connect(cb)
             col_btns.addWidget(btn)
         col_btns.addStretch()
         col_layout.addLayout(col_btns)
 
-        tabs.addTab(col_tab, "字段")
+        tabs.addTab(col_tab, t("object_designer.fields"))
 
         # Indexes tab
         idx_tab = QWidget()
@@ -257,13 +261,13 @@ class _TableDesignerTab(QWidget):
         self._idx_table = _IndexTable(idx_tab)
         idx_layout.addWidget(self._idx_table, 1)
         idx_btns = QHBoxLayout()
-        for text, cb in [("+ 添加索引", self._idx_add), ("− 删除", self._idx_remove)]:
+        for text, cb in [(t("object_designer.add_index"), self._idx_add), (t("common.delete"), self._idx_remove)]:
             btn = QPushButton(text, idx_tab)
             btn.clicked.connect(cb)
             idx_btns.addWidget(btn)
         idx_btns.addStretch()
         idx_layout.addLayout(idx_btns)
-        tabs.addTab(idx_tab, "索引")
+        tabs.addTab(idx_tab, t("object_designer.indexes"))
 
         # Foreign keys tab
         fk_tab = QWidget()
@@ -271,13 +275,13 @@ class _TableDesignerTab(QWidget):
         self._fk_table = _ForeignKeyTable(fk_tab)
         fk_layout.addWidget(self._fk_table, 1)
         fk_btns = QHBoxLayout()
-        for text, cb in [("+ 添加外键", self._fk_add), ("− 删除", self._fk_remove)]:
+        for text, cb in [(t("object_designer.add_fk"), self._fk_add), (t("common.delete"), self._fk_remove)]:
             btn = QPushButton(text, fk_tab)
             btn.clicked.connect(cb)
             fk_btns.addWidget(btn)
         fk_btns.addStretch()
         fk_layout.addLayout(fk_btns)
-        tabs.addTab(fk_tab, "外键")
+        tabs.addTab(fk_tab, t("object_designer.foreign_keys"))
 
         # Options tab
         opt_tab = QWidget()
@@ -285,27 +289,27 @@ class _TableDesignerTab(QWidget):
         self._engine_combo = QComboBox(opt_tab)
         self._engine_combo.addItems(ENGINE_OPTIONS)
         self._engine_combo.setCurrentText(self._table_info.engine or "InnoDB")
-        opt_layout.addRow("引擎:", self._engine_combo)
+        opt_layout.addRow(t("object_designer.engine"), self._engine_combo)
 
         self._charset_combo = QComboBox(opt_tab)
         self._charset_combo.addItems(CHARSET_OPTIONS)
         self._charset_combo.setCurrentText(self._table_info.charset or "utf8mb4")
-        opt_layout.addRow("字符集:", self._charset_combo)
+        opt_layout.addRow(t("object_designer.charset"), self._charset_combo)
 
         self._collation_combo = QComboBox(opt_tab)
         self._collation_combo.addItems(COLLATION_OPTIONS)
         self._collation_combo.setCurrentText(self._table_info.collation or "utf8mb4_general_ci")
-        opt_layout.addRow("排序规则:", self._collation_combo)
+        opt_layout.addRow(t("object_designer.collation"), self._collation_combo)
 
         self._comment_edit = QLineEdit(self._table_info.comment, opt_tab)
-        opt_layout.addRow("注释:", self._comment_edit)
+        opt_layout.addRow(t("object_designer.comment"), self._comment_edit)
 
-        tabs.addTab(opt_tab, "选项")
+        tabs.addTab(opt_tab, t("object_designer.options"))
 
         layout.addWidget(tabs, 1)
 
         # DDL Preview
-        preview_group = QGroupBox("DDL 预览", self)
+        preview_group = QGroupBox(t("object_designer.ddl_preview"), self)
         p_layout = QVBoxLayout(preview_group)
         self._ddl_preview = QTextEdit(preview_group)
         self._ddl_preview.setReadOnly(True)
@@ -427,7 +431,7 @@ class _ViewDesignerTab(QWidget):
 
         # View name
         top = QHBoxLayout()
-        top.addWidget(QLabel("视图名:", self))
+        top.addWidget(QLabel(t("object_designer.view_name"), self))
         self._name_edit = QLineEdit(self)
         self._name_edit.setPlaceholderText("view_name")
         self._name_edit.setStyleSheet(
@@ -437,12 +441,12 @@ class _ViewDesignerTab(QWidget):
 
         # Database selector + load button
         db_row = QHBoxLayout()
-        db_row.addWidget(QLabel("数据库:", self))
+        db_row.addWidget(QLabel(t("object_designer.database"), self))
         self._db_combo = QComboBox(self)
         self._db_combo.setStyleSheet(
             "background: #1e1e1e; color: #ccc; border: 1px solid #3c3c3c; padding: 4px 8px;")
         db_row.addWidget(self._db_combo, 1)
-        self._btn_load = QPushButton("加载表", self)
+        self._btn_load = QPushButton(t("object_designer.load_tables"), self)
         self._btn_load.setStyleSheet(
             "background: #0078d4; color: #fff; border: none; border-radius: 3px; "
             "padding: 4px 12px; font-size: 11px;")
@@ -455,7 +459,7 @@ class _ViewDesignerTab(QWidget):
 
         # Left: table/column tree
         self._tree = QTreeWidget(splitter)
-        self._tree.setHeaderLabel("表 / 列")
+        self._tree.setHeaderLabel(t("object_designer.table_columns"))
         self._tree.itemChanged.connect(self._update_preview)
 
         # Right: WHERE, JOIN, preview
@@ -463,14 +467,14 @@ class _ViewDesignerTab(QWidget):
         right_layout = QVBoxLayout(right)
         right_layout.setSpacing(4)
 
-        right_layout.addWidget(QLabel("WHERE 条件:", right))
+        right_layout.addWidget(QLabel(t("object_designer.where_clause"), right))
         self._where_edit = QTextEdit(right)
         self._where_edit.setPlaceholderText("t1.status = 'active'")
         self._where_edit.setMaximumHeight(60)
         self._where_edit.textChanged.connect(self._update_preview)
         right_layout.addWidget(self._where_edit)
 
-        right_layout.addWidget(QLabel("JOIN 条件 (仅多表时需要):", right))
+        right_layout.addWidget(QLabel(t("object_designer.join_clause"), right))
         self._join_edit = QTextEdit(right)
         self._join_edit.setPlaceholderText(
             "LEFT JOIN table2 t2 ON t1.id = t2.ref_id\n"
@@ -479,7 +483,7 @@ class _ViewDesignerTab(QWidget):
         self._join_edit.textChanged.connect(self._update_preview)
         right_layout.addWidget(self._join_edit)
 
-        right_layout.addWidget(QLabel("SQL 预览:", right))
+        right_layout.addWidget(QLabel(t("object_designer.sql_preview"), right))
         self._preview = QTextEdit(right)
         self._preview.setReadOnly(True)
         self._preview.setObjectName("monospaceText")
@@ -488,7 +492,7 @@ class _ViewDesignerTab(QWidget):
         # Preview data button
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        self._btn_preview = QPushButton("▶ 预览数据", right)
+        self._btn_preview = QPushButton(t("object_designer.preview_data"), right)
         self._btn_preview.setObjectName("primaryBtn")
         self._btn_preview.clicked.connect(self._preview_data)
         btn_row.addWidget(self._btn_preview)
@@ -608,22 +612,22 @@ class _ViewDesignerTab(QWidget):
         """Execute current SELECT and show results in a popup."""
         sql = self._build_sql()
         if not sql:
-            QMessageBox.information(self, "提示", "请先勾选要查询的列。")
+            QMessageBox.information(self, t("common.notice"), t("object_designer.select_columns_first"))
             return
         if not self._connection_id:
-            QMessageBox.warning(self, "错误", "未连接到数据库。")
+            QMessageBox.warning(self, t("common.error"), t("object_designer.not_connected"))
             return
 
         db = self._db_combo.currentData()
         if not db:
-            QMessageBox.warning(self, "错误", "请选择数据库。")
+            QMessageBox.warning(self, t("common.error"), t("object_designer.select_database"))
             return
 
         from open_navicat.dal.connection_pool import _loop as pool_loop
         from open_navicat.dal.connection_pool import connection_pool
         connector = connection_pool.get(self._connection_id)
         if not connector:
-            QMessageBox.warning(self, "错误", "数据库连接已断开。")
+            QMessageBox.warning(self, t("common.error"), t("object_designer.connection_lost"))
             return
 
         # Use database context — prefix tables if not qualified
@@ -633,16 +637,16 @@ class _ViewDesignerTab(QWidget):
                 connector.execute(qualified_sql, database=db)
             )
         except Exception as e:
-            QMessageBox.warning(self, "查询失败", str(e))
+            QMessageBox.warning(self, t("object_designer.query_failed"), str(e))
             return
 
         if not result.success:
-            QMessageBox.warning(self, "查询失败", result.error_message or "未知错误")
+            QMessageBox.warning(self, t("object_designer.query_failed"), result.error_message or t("object_designer.unknown_error"))
             return
 
         # Show results in a resizable dialog
         dlg = QDialog(self)
-        dlg.setWindowTitle(f"预览数据 — {db}")
+        dlg.setWindowTitle(t("object_designer.preview_title", db=db))
         dlg.resize(700, 400)
         layout = QVBoxLayout(dlg)
 
@@ -677,11 +681,11 @@ class _ViewDesignerTab(QWidget):
 
         layout.addWidget(table, 1)
 
-        info_label = QLabel(f"共 {len(result.rows)} 行", dlg)
+        info_label = QLabel(t("object_designer.row_count", count=len(result.rows)), dlg)
         info_label.setStyleSheet("color: #888; padding: 2px 0;")
         layout.addWidget(info_label)
 
-        btn_close = QPushButton("关闭", dlg)
+        btn_close = QPushButton(t("common.close"), dlg)
         btn_close.setStyleSheet(
             "background: #3c3c3c; color: #ccc; border: 1px solid #555; "
             "border-radius: 3px; padding: 4px 16px;")
@@ -755,12 +759,12 @@ class _RoutineDesignerTab(QWidget):
         # Routine name + type
         top = QHBoxLayout()
 
-        top.addWidget(QLabel("类型:", self))
+        top.addWidget(QLabel(t("object_designer.type"), self))
         self._type_combo = QComboBox(self)
         self._type_combo.addItems(self.ROUTINE_TYPES)
         top.addWidget(self._type_combo)
 
-        top.addWidget(QLabel("名称:", self))
+        top.addWidget(QLabel(t("object_designer.name"), self))
         self._name_edit = QLineEdit(self)
         self._name_edit.setPlaceholderText("routine_name")
         top.addWidget(self._name_edit, 1)
@@ -768,7 +772,7 @@ class _RoutineDesignerTab(QWidget):
         layout.addLayout(top)
 
         # Parameters
-        layout.addWidget(QLabel("参数 (每行一个: IN/OUT/INOUT name TYPE):", self))
+        layout.addWidget(QLabel(t("object_designer.parameters"), self))
         self._params_edit = QTextEdit(self)
         self._params_edit.setPlaceholderText(
             "IN p_user_id INT\n"
@@ -782,7 +786,7 @@ class _RoutineDesignerTab(QWidget):
         layout.addWidget(self._params_edit)
 
         # Body
-        layout.addWidget(QLabel("程序体:", self))
+        layout.addWidget(QLabel(t("object_designer.body"), self))
         self._body_edit = QTextEdit(self)
         self._body_edit.setPlaceholderText(
             "BEGIN\n"
@@ -800,7 +804,7 @@ class _RoutineDesignerTab(QWidget):
         layout.addWidget(self._body_edit, 1)
 
         # DDL preview
-        preview_group = QGroupBox("DDL 预览", self)
+        preview_group = QGroupBox(t("object_designer.ddl_preview"), self)
         p_layout = QVBoxLayout(preview_group)
         self._ddl_preview = QTextEdit(preview_group)
         self._ddl_preview.setReadOnly(True)
@@ -849,33 +853,33 @@ class _EventDesignerTab(QWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         top = QHBoxLayout()
-        top.addWidget(QLabel("名称:", self))
+        top.addWidget(QLabel(t("object_designer.name"), self))
         self._name_edit = QLineEdit(self)
         self._name_edit.setPlaceholderText("event_name")
         top.addWidget(self._name_edit, 1)
-        top.addWidget(QLabel("状态:", self))
+        top.addWidget(QLabel(t("object_designer.status"), self))
         self._status_combo = QComboBox(self)
         self._status_combo.addItems(["ENABLE", "DISABLE"])
         top.addWidget(self._status_combo)
         layout.addLayout(top)
 
         mid = QHBoxLayout()
-        mid.addWidget(QLabel("调度:", self))
+        mid.addWidget(QLabel(t("object_designer.schedule"), self))
         self._schedule_edit = QLineEdit(self)
         self._schedule_edit.setPlaceholderText("EVERY 1 DAY STARTS '2026-01-01 02:00:00'")
         mid.addWidget(self._schedule_edit, 1)
         layout.addLayout(mid)
 
-        layout.addWidget(QLabel("程序体 (DO ...):", self))
+        layout.addWidget(QLabel(t("object_designer.do_body"), self))
         self._body_edit = QTextEdit(self)
         self._body_edit.setPlaceholderText("BEGIN\n  DELETE FROM logs WHERE created_at < NOW() - INTERVAL 30 DAY;\nEND")
         self._body_edit.setStyleSheet("background:#1e1e1e;color:#dcdcaa;font-family:Consolas;font-size:12px;border:1px solid #3c3c3c;padding:8px;")
         layout.addWidget(self._body_edit, 1)
-        layout.addWidget(QLabel("注释:", self))
+        layout.addWidget(QLabel(t("object_designer.comment"), self))
         self._comment_edit = QLineEdit(self)
         layout.addWidget(self._comment_edit)
 
-        preview_group = QGroupBox("DDL 预览", self)
+        preview_group = QGroupBox(t("object_designer.ddl_preview"), self)
         p_layout = QVBoxLayout(preview_group)
         self._ddl_preview = QTextEdit(preview_group)
         self._ddl_preview.setReadOnly(True)
@@ -924,31 +928,31 @@ class _TriggerDesignerTab(QWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         top = QHBoxLayout()
-        top.addWidget(QLabel("名称:", self))
+        top.addWidget(QLabel(t("object_designer.name"), self))
         self._name_edit = QLineEdit(self)
         self._name_edit.setPlaceholderText("trigger_name")
         top.addWidget(self._name_edit, 1)
-        top.addWidget(QLabel("时机:", self))
+        top.addWidget(QLabel(t("object_designer.timing"), self))
         self._timing_combo = QComboBox(self)
         self._timing_combo.addItems(self.TRIGGER_TIMING)
         top.addWidget(self._timing_combo)
-        top.addWidget(QLabel("事件:", self))
+        top.addWidget(QLabel(t("object_designer.event"), self))
         self._event_combo = QComboBox(self)
         self._event_combo.addItems(self.TRIGGER_EVENTS)
         top.addWidget(self._event_combo)
-        top.addWidget(QLabel("表:", self))
+        top.addWidget(QLabel(t("object_designer.table"), self))
         self._table_edit = QLineEdit(self)
         self._table_edit.setPlaceholderText("table_name")
         top.addWidget(self._table_edit)
         layout.addLayout(top)
 
-        layout.addWidget(QLabel("程序体:", self))
+        layout.addWidget(QLabel(t("object_designer.body"), self))
         self._body_edit = QTextEdit(self)
         self._body_edit.setPlaceholderText("BEGIN\n  INSERT INTO audit_log(table_name, action) VALUES ('table_name', 'INSERT');\nEND")
         self._body_edit.setStyleSheet("background:#1e1e1e;color:#dcdcaa;font-family:Consolas;font-size:12px;border:1px solid #3c3c3c;padding:8px;")
         layout.addWidget(self._body_edit, 1)
 
-        preview_group = QGroupBox("DDL 预览", self)
+        preview_group = QGroupBox(t("object_designer.ddl_preview"), self)
         p_layout = QVBoxLayout(preview_group)
         self._ddl_preview = QTextEdit(preview_group)
         self._ddl_preview.setReadOnly(True)
@@ -1000,14 +1004,18 @@ class ObjectDesignerWidget(QWidget):
         t_layout.setContentsMargins(8, 4, 8, 4)
 
         self._obj_type_combo = QComboBox(toolbar)
-        self._obj_type_combo.addItems(["表 (TABLE)", "视图 (VIEW)", "存储过程/函数 (ROUTINE)", "事件 (EVENT)", "触发器 (TRIGGER)"])
+        self._obj_type_combo.addItems([
+            t("object_designer.tab_table"), t("object_designer.tab_view"),
+            t("object_designer.tab_routine"), t("object_designer.tab_event"),
+            t("object_designer.tab_trigger"),
+        ])
         self._obj_type_combo.currentIndexChanged.connect(self._switch_tab)
         t_layout.addWidget(self._obj_type_combo)
 
         t_layout.addStretch()
 
         for text, cb in [
-            ("生成 DDL", self._generate_ddl),
+            (t("object_designer.generate_ddl"), self._generate_ddl),
         ]:
             btn = QPushButton(text, toolbar)
             btn.setObjectName("primaryBtn")
@@ -1030,11 +1038,11 @@ class ObjectDesignerWidget(QWidget):
         self._event_tab = _EventDesignerTab(parent=self)
         self._trigger_tab = _TriggerDesignerTab(parent=self)
 
-        self._tab_widget.addTab(self._table_tab, "表设计")
-        self._tab_widget.addTab(self._view_tab, "视图设计")
-        self._tab_widget.addTab(self._routine_tab, "程序设计")
-        self._tab_widget.addTab(self._event_tab, "事件设计")
-        self._tab_widget.addTab(self._trigger_tab, "触发器设计")
+        self._tab_widget.addTab(self._table_tab, t("object_designer.table_design"))
+        self._tab_widget.addTab(self._view_tab, t("object_designer.view_design"))
+        self._tab_widget.addTab(self._routine_tab, t("object_designer.routine_design"))
+        self._tab_widget.addTab(self._event_tab, t("object_designer.event_design"))
+        self._tab_widget.addTab(self._trigger_tab, t("object_designer.trigger_design"))
 
         layout.addWidget(self._tab_widget, 1)
 
@@ -1052,7 +1060,7 @@ class ObjectDesignerWidget(QWidget):
         """Load an existing table for editing."""
         self._table_tab = _TableDesignerTab(table_info, parent=self)
         self._tab_widget.removeTab(0)
-        self._tab_widget.insertTab(0, self._table_tab, "表设计")
+        self._tab_widget.insertTab(0, self._table_tab, t("object_designer.table_design"))
         self._tab_widget.setCurrentIndex(0)
 
     def _generate_ddl(self) -> None:
@@ -1077,12 +1085,12 @@ class ObjectDesignerWidget(QWidget):
             ddl = self._trigger_tab.get_ddl()
 
         if not ddl:
-            QMessageBox.information(self, "提示", "请先填写必要信息。")
+            QMessageBox.information(self, t("common.notice"), t("object_designer.fill_required"))
             return
 
         # Show in a dialog with execute button
         dlg = QDialog(self)
-        dlg.setWindowTitle("DDL 预览")
+        dlg.setWindowTitle(t("object_designer.ddl_preview"))
         dlg.resize(650, 400)
         dlg_layout = QVBoxLayout(dlg)
         editor = QTextEdit(dlg)
@@ -1097,7 +1105,7 @@ class ObjectDesignerWidget(QWidget):
         buttons.rejected.connect(dlg.reject)
         # Add Execute button
         if self._connection_id:
-            btn_exec = buttons.addButton("▶ 执行 SQL", QDialogButtonBox.ButtonRole.ActionRole)
+            btn_exec = buttons.addButton(t("object_designer.execute_sql"), QDialogButtonBox.ButtonRole.ActionRole)
             btn_exec.clicked.connect(lambda: self._execute_ddl(ddl, dlg))
         dlg_layout.addWidget(buttons)
         dlg.exec()
@@ -1108,15 +1116,15 @@ class ObjectDesignerWidget(QWidget):
         from open_navicat.dal.connection_pool import connection_pool
         connector = connection_pool.get(self._connection_id)
         if not connector:
-            QMessageBox.warning(self, "执行失败", "数据库连接已断开。")
+            QMessageBox.warning(self, t("object_designer.execute_failed"), t("object_designer.connection_lost"))
             return
         try:
             result = pool_loop.run_until_complete(connector.execute(ddl))
             if result.success:
-                QMessageBox.information(self, "执行成功", "DDL 已成功执行到数据库。")
+                QMessageBox.information(self, t("object_designer.execute_success"), t("object_designer.ddl_executed"))
                 dialog.accept()
             else:
-                QMessageBox.warning(self, "执行失败", result.error_message or "执行 SQL 出错")
+                QMessageBox.warning(self, t("object_designer.execute_failed"), result.error_message or t("object_designer.sql_error"))
         except Exception as e:
             QMessageBox.warning(self, "执行失败", str(e))
 

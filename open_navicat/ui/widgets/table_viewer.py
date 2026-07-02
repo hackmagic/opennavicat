@@ -166,7 +166,7 @@ class TableViewerWidget(QWidget):
         self._btn_columns.clicked.connect(self._show_columns_manager)
         toolbar.addWidget(self._btn_columns)
 
-        self._btn_cond_fmt = QPushButton("条件格式", self)
+        self._btn_cond_fmt = QPushButton(t("table_viewer.conditional_format"), self)
         self._btn_cond_fmt.clicked.connect(self._show_conditional_formatting)
         toolbar.addWidget(self._btn_cond_fmt)
 
@@ -451,13 +451,13 @@ class TableViewerWidget(QWidget):
         col_name = self._loaded_column_names[col] if col < len(self._loaded_column_names) else ""
         if col_name.endswith("_id"):
             dlg = QDialog(self.window())
-            dlg.setWindowTitle(f"外键选择 — {col_name}")
+            dlg.setWindowTitle(t("table_viewer.fk_selector", column=col_name))
             dlg.resize(300, 400)
             vl = QVBoxLayout(dlg)
             lst = QListWidget(dlg)
             lst.addItem("FK picker would load from referenced table")
             vl.addWidget(lst)
-            btn = QPushButton("关闭", dlg)
+            btn = QPushButton(t("common.close"), dlg)
             btn.clicked.connect(dlg.accept)
             vl.addWidget(btn)
             dlg.exec()
@@ -646,7 +646,7 @@ class TableViewerWidget(QWidget):
         self._btn_undo.setEnabled(self._edit_pos >= 0)
         self._btn_redo.setEnabled(self._edit_pos < len(self._edit_stack) - 1)
         count = self._edit_pos + 1
-        self._dirty_label.setText(f"  ⚡ {count} 个待提交修改" if count else "")
+        self._dirty_label.setText(t("table_viewer.pending_changes", count=count) if count else "")
         for i, edit in enumerate(self._edit_stack):
             item = self._table_widget.item(edit["row"], edit["col"])
             if item:
@@ -702,9 +702,9 @@ class TableViewerWidget(QWidget):
                 errors += 1
                 _log.warning("Commit cell (%s,%s) failed: %s", edit["row"], edit["col"], e)
         if errors:
-            self._status_msg.setText(f"提交完成，{errors} 个错误")
+            self._status_msg.setText(t("table_viewer.commit_errors", errors=errors))
         else:
-            self._status_msg.setText(f"已提交 {len(pending)} 个修改")
+            self._status_msg.setText(t("table_viewer.commit_success", count=len(pending)))
         self._edit_stack.clear()
         self._edit_pos = -1
         self._original_values.clear()
@@ -772,7 +772,7 @@ class TableViewerWidget(QWidget):
         from PySide6.QtWidgets import QMessageBox
         reply = QMessageBox.question(
             self, t("browser.truncate_table"),
-            f"确定要删除选中的 {len(rows_to_delete)} 行吗？",
+            t("table_viewer.confirm_delete_rows", count=len(rows_to_delete)),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -805,7 +805,7 @@ class TableViewerWidget(QWidget):
         """Export current page or all data to CSV or Excel."""
         from PySide6.QtWidgets import QFileDialog, QMessageBox
         path, _ = QFileDialog.getSaveFileName(
-            self, "导出数据", f"{self._table}",
+            self, t("table_viewer.export"), f"{self._table}",
             "CSV 文件 (*.csv);;Excel 文件 (*.xlsx);;所有文件 (*)",
         )
         if not path:
@@ -834,9 +834,9 @@ class TableViewerWidget(QWidget):
             else:
                 self._export_csv(path, result)
 
-            self._status_msg.setText(f"✅ 已导出 {len(result.rows)} 行到 {path}")
+            self._status_msg.setText(t("table_viewer.export_success", count=len(result.rows), path=path))
         except Exception as e:
-            QMessageBox.warning(self, "导出失败", str(e))
+            QMessageBox.warning(self, t("table_viewer.export_failed"), str(e))
 
     def _export_csv(self, path: str, result) -> None:
         import csv
@@ -860,7 +860,7 @@ class TableViewerWidget(QWidget):
         """Import data from CSV or Excel file into the table."""
         from PySide6.QtWidgets import QFileDialog, QMessageBox
         path, _ = QFileDialog.getOpenFileName(
-            self, "导入数据", "",
+            self, t("table_viewer.import"), "",
             "CSV 文件 (*.csv);;Excel 文件 (*.xlsx);;所有文件 (*)",
         )
         if not path:
@@ -882,7 +882,7 @@ class TableViewerWidget(QWidget):
                     rows = [dict(r) for r in reader]
 
             if not rows:
-                QMessageBox.information(self, "导入", "文件为空。")
+                QMessageBox.information(self, t("table_viewer.import_action"), t("table_viewer.file_empty"))
                 return
 
             connector = connection_pool.get(self._connection_id)
@@ -898,10 +898,10 @@ class TableViewerWidget(QWidget):
                 )
                 total += inserted
 
-            self._status_msg.setText(f"✅ 已导入 {total} 行")
+            self._status_msg.setText(t("table_viewer.import_success", count=total))
             self._load_page()
         except Exception as e:
-            QMessageBox.warning(self, "导入失败", str(e))
+            QMessageBox.warning(self, t("table_viewer.import_failed"), str(e))
 
     def _generate_test_data(self) -> None:
         """Generate test data using AI and insert into the table."""
@@ -911,7 +911,7 @@ class TableViewerWidget(QWidget):
         from open_navicat.dal.connection_pool import connection_pool
         from open_navicat.services.ai_service import ai_service
 
-        count, ok = QInputDialog.getInt(self, "生成测试数据", "生成行数:", 10, 1, 1000)
+        count, ok = QInputDialog.getInt(self, t("table_viewer.generate_data"), t("table_viewer.generate_rows"), 10, 1, 1000)
         if not ok:
             return
 
@@ -919,7 +919,7 @@ class TableViewerWidget(QWidget):
         if not connector:
             return
 
-        self._status_msg.setText("⏳ 正在生成数据...")
+        self._status_msg.setText(t("table_viewer.generating_data"))
         try:
             # Get table info for schema
             info_sql = "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION"
@@ -936,17 +936,17 @@ class TableViewerWidget(QWidget):
             # Generate data via AI
             generated = ai_service.generate_data(table_info, count)
             if not generated:
-                self._status_msg.setText("⚠️ 数据生成失败")
+                self._status_msg.setText(t("table_viewer.generate_failed"))
                 return
 
             # Insert
             total = pool_loop.run_until_complete(
                 connector.batch_insert(self._database, self._table, generated)
             )
-            self._status_msg.setText(f"✅ 已生成并插入 {total} 行测试数据")
+            self._status_msg.setText(t("table_viewer.generate_insert_success", count=total))
             self._load_page()
         except Exception as e:
-            self._status_msg.setText(f"❌ 生成失败: {e}")
+            self._status_msg.setText(t("table_viewer.generate_error", error=e))
 
     # ---- new toolbar actions ----
 
@@ -964,23 +964,23 @@ class TableViewerWidget(QWidget):
             )
             r = pool_loop.run_until_complete(connector.execute(sql, (self._database, self._table)))
             if not r.rows:
-                QMessageBox.information(self, "表信息", "无法获取表信息。")
+                QMessageBox.information(self, t("table_viewer.table_info"), t("table_viewer.table_info_unavailable"))
                 return
             row = r.rows[0]
             dlg = QDialog(self)
-            dlg.setWindowTitle(f"表信息 — {self._table}")
+            dlg.setWindowTitle(t("table_viewer.table_info_title", table=self._table))
             dlg.resize(450, 300)
             layout = QVBoxLayout(dlg)
             items = [
-                ("表名", row[0]),
-                ("引擎", row[1] or "—"),
-                ("行数(估算)", f"{row[2]:,}" if row[2] is not None else "—"),
-                ("数据大小", _fmt_bytes(row[3]) if row[3] else "—"),
-                ("索引大小", _fmt_bytes(row[4]) if row[4] else "—"),
-                ("创建时间", str(row[5] or "—")),
-                ("更新时间", str(row[6] or "—")),
-                ("排序规则", row[7] or "—"),
-                ("注释", row[8] or "—"),
+                (t("table_viewer.profile.table_name"), row[0]),
+                (t("table_viewer.profile.engine"), row[1] or "—"),
+                (t("table_viewer.profile.row_count"), f"{row[2]:,}" if row[2] is not None else "—"),
+                (t("table_viewer.profile.data_size"), _fmt_bytes(row[3]) if row[3] else "—"),
+                (t("table_viewer.profile.index_size"), _fmt_bytes(row[4]) if row[4] else "—"),
+                (t("table_viewer.profile.create_time"), str(row[5] or "—")),
+                (t("table_viewer.profile.update_time"), str(row[6] or "—")),
+                (t("table_viewer.profile.collation"), row[7] or "—"),
+                (t("table_viewer.profile.comment"), row[8] or "—"),
             ]
             for label, val in items:
                 row_w = QHBoxLayout()
@@ -992,30 +992,30 @@ class TableViewerWidget(QWidget):
                 row_w.addWidget(val_lbl, 1)
                 layout.addLayout(row_w)
             layout.addStretch()
-            btn = QPushButton("关闭", dlg)
+            btn = QPushButton(t("common.close"), dlg)
             btn.clicked.connect(dlg.accept)
             layout.addWidget(btn, 0, Qt.AlignmentFlag.AlignRight)
             dlg.exec()
         except Exception as e:
-            QMessageBox.warning(self, "错误", str(e))
+            QMessageBox.warning(self, t("common.error"), str(e))
 
     def _commit_transaction(self) -> None:
         connector = connection_pool.get(self._connection_id)
         if connector:
             try:
                 pool_loop.run_until_complete(connector.execute("COMMIT"))
-                self._status_msg.setText("✅ 已提交")
+                self._status_msg.setText(t("table_viewer.committed"))
             except Exception as e:
-                self._status_msg.setText(f"❌ 提交失败: {e}")
+                self._status_msg.setText(t("table_viewer.commit_failed", error=e))
 
     def _rollback_transaction(self) -> None:
         connector = connection_pool.get(self._connection_id)
         if connector:
             try:
                 pool_loop.run_until_complete(connector.execute("ROLLBACK"))
-                self._status_msg.setText("✅ 已回滚")
+                self._status_msg.setText(t("table_viewer.rolled_back"))
             except Exception as e:
-                self._status_msg.setText(f"❌ 回滚失败: {e}")
+                self._status_msg.setText(t("table_viewer.rollback_failed", error=e))
 
     def _toggle_cell_editor(self, checked: bool) -> None:
         if checked:
@@ -1023,16 +1023,16 @@ class TableViewerWidget(QWidget):
                 QAbstractItemView.EditTrigger.DoubleClicked
                 | QAbstractItemView.EditTrigger.EditKeyPressed
             )
-            self._status_msg.setText("单元格编辑: 已启用")
+            self._status_msg.setText(t("table_viewer.cell_edit_on"))
         else:
             self._table_widget.setEditTriggers(
                 QAbstractItemView.EditTrigger.NoEditTriggers
             )
-            self._status_msg.setText("单元格编辑: 已禁用")
+            self._status_msg.setText(t("table_viewer.cell_edit_off"))
 
     def _show_conditional_formatting(self) -> None:
         dlg = QDialog(self.window())
-        dlg.setWindowTitle("条件格式")
+        dlg.setWindowTitle(t("table_viewer.conditional_format"))
         dlg.resize(400, 300)
         layout = QVBoxLayout(dlg)
 
@@ -1040,20 +1040,20 @@ class TableViewerWidget(QWidget):
         cb_col = QComboBox(dlg)
         for c in self._loaded_column_names:
             cb_col.addItem(c)
-        fl.addRow("列:", cb_col)
+        fl.addRow(t("table_viewer.column_label"), cb_col)
 
         cb_op = QComboBox(dlg)
         for op in (">", "<", "=", "!=", "CONTAINS"):
             cb_op.addItem(op)
-        fl.addRow("运算符:", cb_op)
+        fl.addRow(t("table_viewer.operator"), cb_op)
 
         ed_val = QLineEdit(dlg)
-        fl.addRow("值:", ed_val)
+        fl.addRow(t("table_viewer.value"), ed_val)
 
         cb_color = QComboBox(dlg)
         for name, code in [("红色", "#ff4444"), ("绿色", "#44ff44"), ("黄色", "#ffff44"), ("蓝色", "#4444ff")]:
-            cb_color.addItem(name, code)
-        fl.addRow("颜色:", cb_color)
+            cb_color.addItem(t(f"table_viewer.color.{name}"), code)
+        fl.addRow(t("table_viewer.color"), cb_color)
 
         layout.addLayout(fl)
 
@@ -1070,11 +1070,11 @@ class TableViewerWidget(QWidget):
             rules_list.addItem(f"{col} {op} {val} → {cb_color.currentText()}")
             self._render(self._get_current_result())
 
-        btn_add = QPushButton("添加规则", dlg)
+        btn_add = QPushButton(t("table_viewer.add_rule"), dlg)
         btn_add.clicked.connect(_add_rule)
         layout.addWidget(btn_add)
 
-        btn_close = QPushButton("关闭", dlg)
+        btn_close = QPushButton(t("common.close"), dlg)
         btn_close.clicked.connect(dlg.accept)
         layout.addWidget(btn_close)
         dlg.exec()
@@ -1130,7 +1130,7 @@ class TableViewerWidget(QWidget):
         if not connector:
             return
         dlg = QDialog(self)
-        dlg.setWindowTitle(f"数据分析 — {self._table}")
+        dlg.setWindowTitle(t("table_viewer.data_analysis", table=self._table))
         dlg.resize(780, 520)
         layout = QVBoxLayout(dlg)
         tabs = QTabWidget(dlg)
@@ -1141,7 +1141,7 @@ class TableViewerWidget(QWidget):
             # ── Tab 1: Overview ──
             overview = QTableWidget(tabs)
             overview.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-            tabs.addTab(overview, "概览")
+            tabs.addTab(overview, t("table_viewer.overview"))
 
             stats_sql = f"SELECT COUNT(*) as total FROM {db_table}"
             pool_loop.run_until_complete(connector.execute(stats_sql))
@@ -1161,7 +1161,7 @@ class TableViewerWidget(QWidget):
             # Build column stats
             overview.setColumnCount(6)
             overview.setHorizontalHeaderLabels(
-                ["列名", "类型", "行数", "非空", "唯一值", "空值"])
+                [t("table_viewer.col_header.col_name"), t("table_viewer.col_header.type"), t("table_viewer.col_header.row_count"), t("table_viewer.col_header.non_null"), t("table_viewer.col_header.unique"), t("table_viewer.col_header.null_count")])
             overview.setRowCount(len(self._loaded_column_names))
 
             numeric_types = {"int", "tinyint", "smallint", "mediumint", "bigint",
@@ -1190,7 +1190,7 @@ class TableViewerWidget(QWidget):
                             if r2.rows and r2.rows[0][0] is not None:
                                 overview.setColumnCount(9)
                                 overview.setHorizontalHeaderLabels(
-                                    ["列名", "类型", "行数", "非空", "唯一值", "空值", "最小值", "最大值", "平均值"])
+                                    [t("table_viewer.col_header.col_name"), t("table_viewer.col_header.type"), t("table_viewer.col_header.row_count"), t("table_viewer.col_header.non_null"), t("table_viewer.col_header.unique"), t("table_viewer.col_header.null_count"), t("table_viewer.col_header.min"), t("table_viewer.col_header.max"), t("table_viewer.col_header.avg")])
                                 mn, mx, avg = r2.rows[0]
                                 overview.setItem(i, 6, QTableWidgetItem(str(mn)))
                                 overview.setItem(i, 7, QTableWidgetItem(str(mx)))
@@ -1203,7 +1203,7 @@ class TableViewerWidget(QWidget):
             freq_tab = QTableWidget(tabs)
             freq_tab.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
             freq_tab.setStyleSheet(overview.styleSheet())
-            tabs.addTab(freq_tab, "值分布")
+            tabs.addTab(freq_tab, t("table_viewer.value_distribution"))
 
             freq_parts: list[list[str]] = []
             for col_name in self._loaded_column_names:
@@ -1221,7 +1221,7 @@ class TableViewerWidget(QWidget):
                     _log.debug("Frequency query failed for %s: %s", col_name, e)
 
             freq_tab.setColumnCount(1)
-            freq_tab.setHorizontalHeaderLabels(["值 (频次)"])
+            freq_tab.setHorizontalHeaderLabels([t("table_viewer.value_frequency")])
             freq_tab.setRowCount(len(freq_parts))
             for i, line in enumerate(freq_parts):
                 item = QTableWidgetItem(line)
@@ -1230,12 +1230,12 @@ class TableViewerWidget(QWidget):
             freq_tab.resizeColumnsToContents()
 
         except Exception as e:
-            error_widget = QLabel(f"分析出错: {e}", tabs)
+            error_widget = QLabel(f"{t('table_viewer.analysis_error')}: {e}", tabs)
             error_widget.setStyleSheet("color: #f44747; padding: 20px;")
-            tabs.addTab(error_widget, "错误")
+            tabs.addTab(error_widget, t("common.error"))
 
         layout.addWidget(tabs, 1)
-        btn = QPushButton("关闭", dlg)
+        btn = QPushButton(t("common.close"), dlg)
         btn.setStyleSheet(
             "background: #3c3c3c; color: #ccc; border: 1px solid #555; "
             "border-radius: 3px; padding: 4px 16px;")
@@ -1249,4 +1249,4 @@ class TableViewerWidget(QWidget):
             mw._show_bi_dashboard()
         else:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(self, t("data_viewer.bi_workspace"), "敬请期待")
+            QMessageBox.information(self, t("data_viewer.bi_workspace"), t("table_viewer.coming_soon"))

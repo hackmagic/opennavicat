@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from open_navicat.dal.local_config import local_db
+from open_navicat.i18n import t
 
 
 class QueryManagerWidget(QWidget):
@@ -39,26 +40,26 @@ class QueryManagerWidget(QWidget):
         t_layout = QHBoxLayout(toolbar)
         t_layout.setContentsMargins(8, 4, 8, 4)
 
-        title = QLabel(f"📂 查询管理 - {self._database}", toolbar)
+        title = QLabel(t("query_manager.title", database=self._database), toolbar)
         t_layout.addWidget(title)
         t_layout.addStretch()
 
         self._search_input = QLineEdit(toolbar)
-        self._search_input.setPlaceholderText("搜索查询...")
+        self._search_input.setPlaceholderText(t("query_manager.search_placeholder"))
         self._search_input.setMinimumWidth(200)
         self._search_input.textChanged.connect(self._filter_queries)
         t_layout.addWidget(self._search_input)
 
-        btn_new = QPushButton("➕ 新建查询", toolbar)
+        btn_new = QPushButton(t("query_manager.new_query"), toolbar)
         btn_new.setObjectName("primaryBtn")
         btn_new.clicked.connect(self._new_query)
         t_layout.addWidget(btn_new)
 
-        btn_design = QPushButton("✏️ 设计查询", toolbar)
+        btn_design = QPushButton(t("query_manager.design_query"), toolbar)
         btn_design.clicked.connect(self._design_query)
         t_layout.addWidget(btn_design)
 
-        btn_del = QPushButton("🗑️ 删除", toolbar)
+        btn_del = QPushButton(t("common.delete"), toolbar)
         btn_del.setObjectName("dangerBtn")
         btn_del.clicked.connect(self._delete_selected)
         t_layout.addWidget(btn_del)
@@ -68,7 +69,7 @@ class QueryManagerWidget(QWidget):
         # Table
         self._table = QTableWidget(self)
         self._table.setColumnCount(4)
-        self._table.setHorizontalHeaderLabels(["名称", "修改日期", "大小", ""])
+        self._table.setHorizontalHeaderLabels([t("query_manager.column.name"), t("query_manager.column.modified"), t("query_manager.column.size"), ""])
         self._table.horizontalHeader().setStretchLastSection(True)
         self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -101,7 +102,7 @@ class QueryManagerWidget(QWidget):
             size_str = f"{size} B" if size < 1024 else f"{size//1024} KB"
             self._table.setItem(i, 2, QTableWidgetItem(size_str))
 
-        self._status.setText(f"共 {len(queries)} 个查询")
+        self._status.setText(t("query_manager.status.total", count=len(queries)))
 
     def _filter_queries(self, text: str) -> None:
         self._load_queries(text.strip())
@@ -138,7 +139,7 @@ class QueryManagerWidget(QWidget):
         if not rows:
             return
         reply = QMessageBox.question(
-            self, "删除查询", f"确定要删除选中的 {len(rows)} 个查询吗？",
+            self, t("query_manager.delete_title"), t("query_manager.delete_confirm", count=len(rows)),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:

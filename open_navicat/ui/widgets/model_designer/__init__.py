@@ -65,6 +65,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from open_navicat.i18n import t
 from open_navicat.models.table_schema import (
     ColumnInfo,
     ForeignKeyInfo,
@@ -480,39 +481,39 @@ class _ColumnEditorDialog(QDialog):
 
     def __init__(self, column: Optional[ModelColumn] = None, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("编辑字段" if column else "新增字段")
+        self.setWindowTitle(t("model_designer.edit_field") if column else t("model_designer.add_field"))
         self.resize(400, 300)
         layout = QFormLayout(self)
 
         self._name_edit = QLineEdit(self)
         self._name_edit.setPlaceholderText("field_name")
-        layout.addRow("字段名:", self._name_edit)
+        layout.addRow(t("model_designer.field_name"), self._name_edit)
 
         self._type_combo = QComboBox(self)
         self._type_combo.addItems(self.DTYPES)
         self._type_combo.setEditable(True)
-        layout.addRow("数据类型:", self._type_combo)
+        layout.addRow(t("model_designer.data_type"), self._type_combo)
 
         self._len_edit = QLineEdit(self)
         self._len_edit.setPlaceholderText("255 (optional)")
-        layout.addRow("长度:", self._len_edit)
+        layout.addRow(t("model_designer.length"), self._len_edit)
 
-        self._pk_check = QCheckBox("主键 (PRIMARY KEY)", self)
+        self._pk_check = QCheckBox(t("model_designer.primary_key"), self)
         layout.addRow(self._pk_check)
 
-        self._ai_check = QCheckBox("自增 (AUTO_INCREMENT)", self)
+        self._ai_check = QCheckBox(t("model_designer.auto_increment"), self)
         layout.addRow(self._ai_check)
 
-        self._nullable_check = QCheckBox("允许空值 (NULL)", self)
+        self._nullable_check = QCheckBox(t("model_designer.nullable"), self)
         self._nullable_check.setChecked(True)
         layout.addRow(self._nullable_check)
 
         self._default_edit = QLineEdit(self)
         self._default_edit.setPlaceholderText("NULL")
-        layout.addRow("默认值:", self._default_edit)
+        layout.addRow(t("model_designer.default_value"), self._default_edit)
 
         self._comment_edit = QLineEdit(self)
-        layout.addRow("注释:", self._comment_edit)
+        layout.addRow(t("model_designer.comment"), self._comment_edit)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
@@ -551,41 +552,45 @@ class _EntityPropertyDialog(QDialog):
 
     def __init__(self, entity: ModelEntity, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle(f"编辑实体 — {entity.name or 'New Table'}")
+        self.setWindowTitle(t("model_designer.edit_entity", name=entity.name or 'New Table'))
         self.resize(550, 450)
         self._entity = entity
         layout = QVBoxLayout(self)
 
         # Entity name
         name_layout = QHBoxLayout()
-        name_layout.addWidget(QLabel("实体名:", self))
+        name_layout.addWidget(QLabel(t("model_designer.entity_name"), self))
         self._name_edit = QLineEdit(entity.name, self)
         name_layout.addWidget(self._name_edit)
         layout.addLayout(name_layout)
 
         # Comment
         cmt_layout = QHBoxLayout()
-        cmt_layout.addWidget(QLabel("注释:", self))
+        cmt_layout.addWidget(QLabel(t("model_designer.comment"), self))
         self._comment_edit = QLineEdit(entity.comment, self)
         cmt_layout.addWidget(self._comment_edit)
         layout.addLayout(cmt_layout)
 
         # Columns table
-        layout.addWidget(QLabel("字段列表:", self))
+        layout.addWidget(QLabel(t("model_designer.field_list"), self))
         self._col_table = QTableWidget(self)
         self._col_table.setColumnCount(6)
-        self._col_table.setHorizontalHeaderLabels(["字段名", "类型", "PK", "自增", "可空", "默认值"])
+        self._col_table.setHorizontalHeaderLabels([
+            t("model_designer.col_name"), t("model_designer.col_type"),
+            t("model_designer.col_pk"), t("model_designer.col_ai"),
+            t("model_designer.col_nullable"), t("model_designer.col_default"),
+        ])
         self._col_table.horizontalHeader().setStretchLastSection(True)
         self._col_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         layout.addWidget(self._col_table, 1)
 
         # Column buttons
         btn_layout = QHBoxLayout()
-        self._btn_add_col = QPushButton("+ 添加字段", self)
+        self._btn_add_col = QPushButton(t("model_designer.add_field"), self)
         self._btn_add_col.clicked.connect(self._add_column)
-        self._btn_edit_col = QPushButton("编辑", self)
+        self._btn_edit_col = QPushButton(t("model_designer.edit"), self)
         self._btn_edit_col.clicked.connect(self._edit_column)
-        self._btn_del_col = QPushButton("删除", self)
+        self._btn_del_col = QPushButton(t("common.delete"), self)
         self._btn_del_col.clicked.connect(self._delete_column)
         btn_layout.addWidget(self._btn_add_col)
         btn_layout.addWidget(self._btn_edit_col)
@@ -691,7 +696,7 @@ class ModelDesignerWidget(QWidget):
         layout.addWidget(self._view, 1)
 
         # ── Status bar ──
-        self._status = QLabel("选择工具: 点击画布空白处添加实体", self)
+        self._status = QLabel(t("model_designer.tool_hint"), self)
         self._status.setStyleSheet(
             "background: #007acc; color: #fff; padding: 4px 12px; font-size: 11px;"
         )
@@ -700,9 +705,9 @@ class ModelDesignerWidget(QWidget):
     def _build_toolbar(self, layout: QHBoxLayout) -> None:
         """Populate the toolbar with action buttons."""
         actions = [
-            ("↖", "选择/移动", "select", "#0078d4"),
-            ("⊞", "添加实体", "add_entity", "#4ec9b0"),
-            ("⚡", "添加关系", "add_relation", "#dcdcaa"),
+            ("↖", t("model_designer.tool_select"), "select", "#0078d4"),
+            ("⊞", t("model_designer.tool_add_entity"), "add_entity", "#4ec9b0"),
+            ("⚡", t("model_designer.tool_add_relation"), "add_relation", "#dcdcaa"),
         ]
 
         for icon, tip, mode, color in actions:
@@ -720,9 +725,9 @@ class ModelDesignerWidget(QWidget):
 
         # Entity actions
         for text, tip, cb in [
-            ("✏ 编辑", "编辑选中实体", self._edit_selected_entity),
-            ("🗑 删除", "删除选中实体", self._delete_selected_entity),
-            ("📐 布局", "自动排列", self._auto_layout),
+            (t("model_designer.btn_edit"), t("model_designer.btn_edit_tip"), self._edit_selected_entity),
+            (t("model_designer.btn_delete"), t("model_designer.btn_delete_tip"), self._delete_selected_entity),
+            (t("model_designer.btn_layout"), t("model_designer.btn_layout_tip"), self._auto_layout),
         ]:
             btn = QPushButton(text, self)
             btn.setToolTip(tip)
@@ -735,9 +740,9 @@ class ModelDesignerWidget(QWidget):
 
         # Model level selector
         layout.addWidget(QLabel("|", self), 0, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(QLabel("模型:", self))
+        layout.addWidget(QLabel(t("model_designer.model"), self))
         self._level_combo = QComboBox(self)
-        self._level_combo.addItems(["概念模型", "逻辑模型", "物理模型"])
+        self._level_combo.addItems([t("model_designer.conceptual"), t("model_designer.logical"), t("model_designer.physical")])
         self._level_combo.setCurrentIndex(2)  # physical by default
         self._level_combo.currentTextChanged.connect(self._on_level_changed)
         layout.addWidget(self._level_combo)
@@ -745,8 +750,8 @@ class ModelDesignerWidget(QWidget):
         layout.addStretch()
 
         for text, tip, cb in [
-            ("← 逆向工程", "从数据库加载表", self._reverse_engineer),
-            ("→ 正向工程", "生成 DDL", self._forward_engineer),
+            (t("model_designer.reverse_engineering"), t("model_designer.reverse_tip"), self._reverse_engineer),
+            (t("model_designer.forward_engineering"), t("model_designer.generate_ddl"), self._forward_engineer),
         ]:
             btn = QPushButton(text, self)
             btn.setToolTip(tip)
@@ -762,16 +767,20 @@ class ModelDesignerWidget(QWidget):
         self._rel_source = None
         if mode == "select":
             self._view.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
-            self._status.setText("选择模式: 拖动实体或画布")
+            self._status.setText(t("model_designer.mode_hint"))
         elif mode == "add_entity":
             self._view.setDragMode(QGraphicsView.DragMode.NoDrag)
-            self._status.setText("添加实体: 点击画布空白位置")
+            self._status.setText(t("model_designer.add_entity_hint"))
         elif mode == "add_relation":
             self._view.setDragMode(QGraphicsView.DragMode.NoDrag)
-            self._status.setText("添加关系: 先点来源实体，再点目标实体")
+            self._status.setText(t("model_designer.add_relation_hint"))
 
     def _on_level_changed(self, level: str) -> None:
-        mapping = {"概念模型": "conceptual", "逻辑模型": "logical", "物理模型": "physical"}
+        mapping = {
+            t("model_designer.conceptual"): "conceptual",
+            t("model_designer.logical"): "logical",
+            t("model_designer.physical"): "physical",
+        }
         self._model_level = mapping.get(level, "physical")
         for ent in self._entities.values():
             ent.set_model_level(self._model_level)
@@ -797,7 +806,7 @@ class ModelDesignerWidget(QWidget):
                 if entity_item:
                     if self._rel_source is None:
                         self._rel_source = entity_item
-                        self._status.setText(f"来源: {entity_item.entity().name} — 点击目标实体")
+                        self._status.setText(t("model_designer.source_click", name=entity_item.entity().name))
                     elif entity_item != self._rel_source:
                         self._add_relation(self._rel_source, entity_item)
                         self._rel_source = None
@@ -881,13 +890,13 @@ class ModelDesignerWidget(QWidget):
             r = rel.relation()
             if (r.from_entity == from_name and r.to_entity == to_name) or \
                (r.from_entity == to_name and r.to_entity == from_name):
-                QMessageBox.information(self, "提示", "这两个实体之间已存在关系。")
+                QMessageBox.information(self, t("common.notice"), t("model_designer.relation_exists"))
                 return
 
         # Ask for relation type
         types = ["1:N", "1:1", "M:N"]
         rel_type, ok = QInputDialog.getItem(
-            self, "关系类型", f"{from_name} → {to_name}",
+            self, t("model_designer.relation_type"), f"{from_name} → {to_name}",
             types, 0, False,
         )
         if not ok:
@@ -944,7 +953,7 @@ class ModelDesignerWidget(QWidget):
         if not self._connection_id:
             from PySide6.QtWidgets import QInputDialog
             db, ok = QInputDialog.getText(
-                self, "逆向工程", "输入数据库名称:",
+                self, t("model_designer.reverse_engineering"), t("model_designer.input_db_name"),
             )
             if not ok or not db:
                 return
@@ -953,25 +962,25 @@ class ModelDesignerWidget(QWidget):
             databases = [d.name for d in metadata_service.list_databases(self._connection_id)]
 
         if not databases:
-            QMessageBox.information(self, "提示", "未发现可用数据库。")
+            QMessageBox.information(self, t("common.notice"), t("model_designer.no_databases"))
             return
 
         db_name, ok = QInputDialog.getItem(
-            self, "选择数据库", "选择要逆向的数据库:",
+            self, t("model_designer.select_database"), t("model_designer.select_db_to_reverse"),
             databases, 0, False,
         )
         if not ok or not db_name:
             return
 
         QMessageBox.information(
-            self, "逆向工程",
-            f"正在从「{db_name}」加载表结构...",
+            self, t("model_designer.reverse_engineering"),
+            t("model_designer.loading_tables", db=db_name),
         )
 
         try:
             tables = metadata_service.list_tables(self._connection_id, db_name)
             if not tables:
-                QMessageBox.information(self, "提示", "该数据库中没有表。")
+                QMessageBox.information(self, t("common.notice"), t("model_designer.no_tables"))
                 return
 
             spacing_x, spacing_y = 260, 180
@@ -992,9 +1001,9 @@ class ModelDesignerWidget(QWidget):
                 self._entities[entity.name] = item
 
             self._scene.update()
-            self._status.setText(f"已加载 {len(tables)} 张表到画布")
+            self._status.setText(t("model_designer.loaded_tables", count=len(tables)))
         except Exception as e:
-            QMessageBox.warning(self, "逆向工程失败", str(e))
+            QMessageBox.warning(self, t("model_designer.reverse_failed"), str(e))
 
     # ── Forward engineering ──────────────────────────────────────────
 
@@ -1003,7 +1012,7 @@ class ModelDesignerWidget(QWidget):
         from open_navicat.utils.sql_generator import generate_create_table
 
         if not self._entities:
-            QMessageBox.information(self, "提示", "画布上没有实体，无法生成 DDL。")
+            QMessageBox.information(self, t("common.notice"), t("model_designer.no_entities"))
             return
 
         statements: list[str] = []
@@ -1015,7 +1024,7 @@ class ModelDesignerWidget(QWidget):
 
         # Show in a dialog
         dlg = QDialog(self)
-        dlg.setWindowTitle("正向工程 — DDL 预览")
+        dlg.setWindowTitle(t("model_designer.forward_preview"))
         dlg.resize(700, 500)
         dlg_layout = QVBoxLayout(dlg)
 

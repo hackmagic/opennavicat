@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, Slot
+
+from open_navicat.i18n import t
 from PySide6.QtGui import QBrush, QColor, QFont, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -117,7 +119,7 @@ class ChartCanvas(QWidget):
         if not self._values:
             painter.setFont(QFont("Segoe UI", 10))
             painter.setPen(QColor("#888888"))
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "无数据 — 执行查询后显示")
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, t("bi_dashboard.no_data"))
             return
 
         if self._chart_type == ChartType.PIE:
@@ -278,7 +280,7 @@ class ChartCard(QFrame):
 
     closed = Signal(object)  # emits self
 
-    def __init__(self, title: str = "图表", chart_type: str = ChartType.BAR,
+    def __init__(self, title: str = "", chart_type: str = ChartType.BAR,
                  parent=None) -> None:
         super().__init__(parent)
         self._title = title
@@ -323,7 +325,8 @@ class ChartCard(QFrame):
         idx = types.index(self._chart_type)
         self._chart_type = types[(idx + 1) % len(types)]
         self._canvas.set_chart_type(self._chart_type)
-        type_names = {"bar": "柱状图", "line": "折线图", "pie": "饼图", "area": "面积图"}
+        type_names = {"bar": t("bi_dashboard.chart.bar"), "line": t("bi_dashboard.chart.line"),
+                      "pie": t("bi_dashboard.chart.pie"), "area": t("bi_dashboard.chart.area")}
         self._title_label.setText(f"{self._title} ({type_names.get(self._chart_type, '')})")
 
     def set_data(self, labels: list[str], values: list[float]) -> None:
@@ -355,25 +358,28 @@ class BIDashboardWidget(QWidget):
         t_layout = QHBoxLayout(toolbar)
         t_layout.setContentsMargins(8, 4, 8, 4)
 
-        title = QLabel("BI 看板", toolbar)
+        title = QLabel(t("bi_dashboard.title"), toolbar)
         t_layout.addWidget(title)
 
         t_layout.addStretch()
 
         self._chart_type_combo = QComboBox(toolbar)
-        self._chart_type_combo.addItems(["柱状图", "折线图", "饼图", "面积图"])
+        self._chart_type_combo.addItems([
+            t("bi_dashboard.chart.bar"), t("bi_dashboard.chart.line"),
+            t("bi_dashboard.chart.pie"), t("bi_dashboard.chart.area")
+        ])
         t_layout.addWidget(self._chart_type_combo)
 
         for text, cb in [
-            ("+ 添加图表", self._add_chart),
-            ("清空全部", self._clear_all),
+            (t("bi_dashboard.add_chart"), self._add_chart),
+            (t("bi_dashboard.clear_all"), self._clear_all),
         ]:
             btn = QPushButton(text, toolbar)
             btn.clicked.connect(cb)
             t_layout.addWidget(btn)
 
         t_layout.addSpacing(8)
-        btn_save = QPushButton("💾 保存看板", toolbar)
+        btn_save = QPushButton(t("bi_dashboard.save"), toolbar)
         btn_save.setStyleSheet(
             "background: transparent; color: #ccc; border: 1px solid #3c3c3c; "
             "border-radius: 3px; padding: 4px 12px; font-size: 11px;"
@@ -381,7 +387,7 @@ class BIDashboardWidget(QWidget):
         btn_save.clicked.connect(self._save_dashboard)
         t_layout.addWidget(btn_save)
 
-        btn_load = QPushButton("📂 加载看板", toolbar)
+        btn_load = QPushButton(t("bi_dashboard.load"), toolbar)
         btn_load.setStyleSheet(
             "background: transparent; color: #ccc; border: 1px solid #3c3c3c; "
             "border-radius: 3px; padding: 4px 12px; font-size: 11px;"
@@ -397,8 +403,8 @@ class BIDashboardWidget(QWidget):
         sql_layout.setContentsMargins(8, 6, 8, 6)
 
         sql_header = QHBoxLayout()
-        sql_header.addWidget(QLabel("数据查询 (SQL):", sql_panel))
-        sql_header.addWidget(QLabel("第一列为标签，后续列为数值", sql_panel),
+        sql_header.addWidget(QLabel(t("bi_dashboard.sql_label"), sql_panel))
+        sql_header.addWidget(QLabel(t("bi_dashboard.sql_hint"), sql_panel),
                               0, Qt.AlignmentFlag.AlignRight)
         sql_layout.addLayout(sql_header)
 
@@ -414,7 +420,7 @@ class BIDashboardWidget(QWidget):
         self._sql_edit.setMaximumHeight(80)
         sql_input_row.addWidget(self._sql_edit, 1)
 
-        self._btn_execute = QPushButton("▶ 执行并刷新", sql_panel)
+        self._btn_execute = QPushButton(t("bi_dashboard.execute"), sql_panel)
         self._btn_execute.setObjectName("primaryBtn")
         sql_input_row.addWidget(self._btn_execute)
         sql_layout.addLayout(sql_input_row)
@@ -434,13 +440,13 @@ class BIDashboardWidget(QWidget):
         layout.addWidget(scroll, 1)
 
         # ── Status bar ──
-        self._status_label = QLabel("就绪 — 输入 SQL 查询后点击「执行并刷新」", self)
+        self._status_label = QLabel(t("bi_dashboard.status.ready"), self)
         layout.addWidget(self._status_label)
 
     def _type_to_key(self, name: str) -> str:
         mapping = {
-            "柱状图": "bar", "折线图": "line",
-            "饼图": "pie", "面积图": "area",
+            t("bi_dashboard.chart.bar"): "bar", t("bi_dashboard.chart.line"): "line",
+            t("bi_dashboard.chart.pie"): "pie", t("bi_dashboard.chart.area"): "area",
         }
         return mapping.get(name, "bar")
 
@@ -449,7 +455,7 @@ class BIDashboardWidget(QWidget):
         chart_type = self._type_to_key(self._chart_type_combo.currentText())
 
         card = ChartCard(
-            title=f"图表 {self._chart_counter}",
+            title=t("bi_dashboard.chart.default_name", n=self._chart_counter),
             chart_type=chart_type,
             parent=self._chart_container,
         )
@@ -482,7 +488,7 @@ class BIDashboardWidget(QWidget):
         self._charts.clear()
         self._chart_counter = 0
         self._last_result = None
-        self._status_label.setText("已清空所有图表")
+        self._status_label.setText(t("bi_dashboard.all_cleared"))
 
     def _relayout(self) -> None:
         # Remove all from grid
@@ -496,15 +502,15 @@ class BIDashboardWidget(QWidget):
     def _execute_query(self) -> None:
         sql = self._sql_edit.toPlainText().strip()
         if not sql:
-            QMessageBox.warning(self, "提示", "请输入 SQL 查询语句。")
+            QMessageBox.warning(self, t("common.notice"), t("bi_dashboard.enter_sql"))
             return
 
         if not self._connection_id:
-            self._status_label.setText("未连接数据库 — 模拟模式")
+            self._status_label.setText(t("bi_dashboard.mock_mode"))
             self._simulate_data()
             return
 
-        self._status_label.setText("正在执行查询...")
+        self._status_label.setText(t("bi_dashboard.executing"))
         self._btn_execute.setEnabled(False)
 
         QTimer.singleShot(50, lambda: self._do_execute(sql))
@@ -515,12 +521,13 @@ class BIDashboardWidget(QWidget):
 
             result = query_engine.execute(self._connection_id, sql)
             if not result.success:
-                QMessageBox.critical(self, "查询失败", result.error_message or "执行出错")
-                self._status_label.setText("查询执行失败")
+                QMessageBox.critical(self, t("bi_dashboard.query_failed"),
+                                     result.error_message or t("bi_dashboard.execution_error"))
+                self._status_label.setText(t("bi_dashboard.query_execution_failed"))
                 return
 
             if not result.rows:
-                self._status_label.setText("查询结果为空")
+                self._status_label.setText(t("bi_dashboard.query_empty"))
                 return
 
             # First column = labels, remaining = values
@@ -544,7 +551,7 @@ class BIDashboardWidget(QWidget):
             if not self._charts:
                 self._chart_counter += 1
                 card = ChartCard(
-                    title=f"查询结果 ({result.row_count} 行)",
+                    title=t("bi_dashboard.query_result", rows=result.row_count),
                     chart_type="bar",
                     parent=self._chart_container,
                 )
@@ -554,13 +561,12 @@ class BIDashboardWidget(QWidget):
                 card.set_data(labels, values)
 
             self._status_label.setText(
-                f"查询完成: {result.row_count} 行, "
-                f"已更新 {len(self._charts)} 个图表"
+                t("bi_dashboard.query_complete", rows=result.row_count, charts=len(self._charts))
             )
 
         except Exception as exc:
-            QMessageBox.critical(self, "错误", str(exc))
-            self._status_label.setText(f"错误: {exc}")
+            QMessageBox.critical(self, t("common.error"), str(exc))
+            self._status_label.setText(f"{t('common.error')}: {exc}")
         finally:
             self._btn_execute.setEnabled(True)
 
@@ -583,13 +589,13 @@ class BIDashboardWidget(QWidget):
 
         if not self._charts:
             self._chart_counter += 1
-            card = ChartCard(title="模拟数据 (最近14天)", chart_type="bar")
+            card = ChartCard(title=t("bi_dashboard.mock_data"), chart_type="bar")
             card.closed.connect(self._remove_chart)
             self._chart_grid.addWidget(card, 0, 0)
             self._charts.append(card)
             card.set_data(labels, values)
 
-        self._status_label.setText("模拟数据已加载 (14 天趋势)")
+        self._status_label.setText(t("bi_dashboard.mock_loaded"))
         self._btn_execute.setEnabled(True)
 
     # ---- save/load dashboard ----
@@ -606,14 +612,14 @@ class BIDashboardWidget(QWidget):
             "chart_counter": self._chart_counter,
         }
         config.set("bi_dashboard", data)
-        self._status_label.setText("✅ 看板已保存")
+        self._status_label.setText(t("bi_dashboard.saved"))
 
     def _load_dashboard(self) -> None:
         """Load dashboard config from local settings and restore."""
         from open_navicat.config import config
         data = config.get("bi_dashboard")
         if not data:
-            self._status_label.setText("ℹ️ 暂无已保存的看板")
+            self._status_label.setText(t("bi_dashboard.no_saved"))
             return
         # Clear existing
         self._clear_all()
@@ -624,7 +630,7 @@ class BIDashboardWidget(QWidget):
         for ci in data.get("charts", []):
             self._chart_counter += 1
             card = ChartCard(
-                title=ci.get("title", f"图表 {self._chart_counter}"),
+                title=ci.get("title", t("bi_dashboard.chart.default_name", n=self._chart_counter)),
                 chart_type=ci.get("type", "bar"),
                 parent=self._chart_container,
             )
@@ -634,7 +640,7 @@ class BIDashboardWidget(QWidget):
             self._chart_grid.addWidget(card, row, col)
             self._charts.append(card)
         self._relayout()
-        self._status_label.setText(f"✅ 已加载 {len(self._charts)} 个图表")
+        self._status_label.setText(t("bi_dashboard.loaded_charts", count=len(self._charts)))
 
 
 # ── Convenience ───────────────────────────────────────────────────────────
