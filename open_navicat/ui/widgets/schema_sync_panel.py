@@ -14,7 +14,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMessageBox,
     QPlainTextEdit,
-    QProgressBar,
     QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -119,13 +118,6 @@ class SchemaSyncPanel(QWidget):
         self._status_label = QLabel("就绪 — 选择来源和目标数据库后点击「开始比较」", self)
         self._status_label.setVisible(False)
         layout.addWidget(self._status_label)
-
-        # ── Progress bar (for DDL execution) ──
-        self._progress = QProgressBar(self)
-        self._progress.setMaximumHeight(4)
-        self._progress.setTextVisible(False)
-        self._progress.hide()
-        layout.addWidget(self._progress)
 
         # ── Action bar ──
         actions = QWidget(self)
@@ -336,7 +328,7 @@ class SchemaSyncPanel(QWidget):
             self._apply_changes()
 
     def _apply_changes(self) -> None:
-        """Execute the sync script on the target database with progress feedback."""
+        """Execute the sync script on the target database."""
         if not self._diff_result:
             return
 
@@ -357,26 +349,11 @@ class SchemaSyncPanel(QWidget):
 
         from open_navicat.services.query_engine import query_engine
 
-        # Show progress
-        self._btn_apply.setEnabled(False)
-        self._btn_preview.setEnabled(False)
-        self._progress.show()
-        self._progress.setRange(0, len(statements))
-        self._progress.setValue(0)
-        self._status_label.setText("正在执行 DDL ...")
-        self._status_label.setVisible(True)
-
         errors = []
         for i, stmt in enumerate(statements):
-            self._progress.setValue(i)
-            self._status_label.setText(f"正在执行 ({i + 1}/{len(statements)}): {stmt[:60]}...")
             result = query_engine.execute(self._connection_id, stmt)
             if not result.success:
                 errors.append(f"#{i + 1}: {result.error_message}")
-
-        self._progress.hide()
-        self._btn_apply.setEnabled(True)
-        self._btn_preview.setEnabled(True)
 
         if errors:
             QMessageBox.critical(

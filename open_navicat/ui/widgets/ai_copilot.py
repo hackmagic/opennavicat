@@ -191,7 +191,6 @@ class AICopilotSidebar(QWidget):
             ("optimize", "⚡", "优化"),
             ("design", "📐", "设计"),
             ("generate", "🧪", "生成"),
-            ("review", "🔍", "审查"),
         ]:
             btn = QPushButton(f"{icon} {label}", modes)
             btn.setCheckable(True)
@@ -252,7 +251,6 @@ class AICopilotSidebar(QWidget):
             ("📊 最近注册", "查询最近7天注册用户数"),
             ("⚡ SQL 优化", "优化当前 SQL"),
             ("📐 设计 Schema", "设计数据库表结构"),
-            ("🔍 SQL 审查", "安全与性能审查 SQL"),
             ("💡 SQL 教学", "SQL 概念解释"),
         ]:
             btn = QPushButton(text, quick)
@@ -294,11 +292,9 @@ class AICopilotSidebar(QWidget):
             "optimize": "⚡ 粘贴 SQL，我会分析性能问题",
             "design": "📐 描述业务需求，设计表结构",
             "generate": "🧪 选择表，生成测试数据",
-            "review": "🔍 粘贴 SQL，我会做安全与性能审查",
         }
-        mode_names = {"ask": "问答", "optimize": "优化", "design": "设计", "generate": "生成", "review": "审查"}
         self._clear_messages()
-        self._add_system_message(f"切换到 <b>{mode_names[mode_id]}</b> 模式<br><br>{hints[mode_id]}")
+        self._add_system_message(f"切换到 <b>{['问答','优化','设计','生成'][['ask','optimize','design','generate'].index(mode_id)]}</b> 模式<br><br>{hints[mode_id]}")
 
     def _mode_style(self, active: bool) -> str:
         if active:
@@ -496,9 +492,6 @@ class AICopilotSidebar(QWidget):
             elif mode == "generate":
                 result = ai_service.generate_data(None, 10, text)
                 response = f"🧪 生成 {len(result)} 条测试数据。\n```json\n{str(result[:3])}\n```"
-            elif mode == "review":
-                result = ai_service.review_sql(text, schema_context=schema_context)
-                response = f"🔍 SQL 审查报告：\n\n{result}" if result else "无法审查该 SQL。"
             else:
                 result = ai_service.nl2sql(text, schema_context)
                 if result:

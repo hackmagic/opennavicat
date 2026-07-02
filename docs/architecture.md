@@ -1,6 +1,6 @@
 # OpenNavicat 架构设计
 
-> 版本: 0.2.0 | 更新: 2026-06-24
+> 版本: 0.5.0 | 更新: 2026-07-02
 
 ## 1. 设计哲学
 
@@ -25,7 +25,7 @@ CLI-First + AI-Native + GUI-Optional
                                     │ 调用 CLI 命令
                          ┌──────────▼───────────────┐
                          │        CLI (Typer)        │
-                         │  核心交互接口，40+ 子命令   │
+                         │  核心交互接口，50+ 子命令   │
                          └──────────┬───────────────┘
                                     │
               ┌─────────────────────┼─────────────────────┐
@@ -60,14 +60,16 @@ main.py
   │   ├─ schema_cmd.py   ──→ services/metadata_service   ──→ dal/mysql_connector.py
   │   ├─ data_cmd.py     ──→ services/query_engine       ──→ dal/mysql_connector.py
   │   ├─ backup_cmd.py   ──→ services/backup_service      ──→ subprocess(mysqldump/pg_dump)
-  │   └─ ai_cmd.py       ──→ services/ai_service          ──→ httpx/OpenAI
+  │   ├─ ai_cmd.py       ──→ services/ai_service          ──→ httpx/OpenAI
+  │   └─ snippet_cmd.py  ──→ dal/local_config              (SQLite snippets table)
   │
   └─ app.py              (QApplication, GUI 入口)
       └─ ui/main_window.py
           ├─ ui/widgets/object_browser.py  ──→ services/metadata_service
           ├─ ui/widgets/sql_editor.py      ──→ services/query_engine
           ├─ ui/widgets/table_viewer.py    ──→ services/query_engine
-          └─ ui/dialogs/connection_dialog.py ──→ services/connection_manager
+          ├─ ui/dialogs/connection_dialog.py ──→ services/connection_manager
+          └─ ui/dialogs/snippet_manager.py   ──→ dal/local_config
 ```
 
 ## 4. 分层职责
@@ -81,6 +83,7 @@ main.py
 | `SQLEditorWidget` | SQL 编辑、执行、结果查看 | `QueryEngine` |
 | `TableViewerWidget` | 数据网格/表单视图、分页、编辑、筛选、BLOB 查看 | `QueryEngine` |
 | `ConnectionDialog` | 连接编辑表单 | `ConnectionManager` |
+| `SnippetManagerDialog` | 代码片段编辑/管理 (CRUD + 变量替换) | `local_db` |
 | `BlobViewerDialog` | BLOB 图片/文本/十六进制查看 | — |
 
 ### 4.2 CLI 层 (open_navicat/cli/)
@@ -92,7 +95,9 @@ main.py
 | `schema` | `schema_cmd.py` | 6 | list/show/create/diff/sync/design + databases |
 | `data` | `data_cmd.py` | 4 | browse/export/import/generate |
 | `backup` | `backup_cmd.py` | 9 | create/restore/list/schedule/delete/history/jobs/job-remove/job-toggle |
-| `ai` | `ai_cmd.py` | 10 | ask/optimize/explain/fix/chat/tables/agent/config/test/chat-history |
+| `ai` | `ai_cmd.py` | 12 | ask/optimize/explain/fix/chat/tables/agent/config/test/chat-history/schema/build |
+| `snippet` | `snippet_cmd.py` | 4 | list/add/remove/show |
+| `snippet` | `snippet_cmd.py` | 4 | list/add/remove/show |
 
 ### 4.3 服务层 (open_navicat/services/)
 
@@ -101,8 +106,9 @@ main.py
 | `ConnectionManager` | 连接生命周期 | `connect()`, `disconnect()`, `list_saved()` |
 | `QueryEngine` | SQL 执行与解释 + 查询结果缓存 | `execute()`, `explain()`, `explain_format_json()` |
 | `QueryCache` | LRU 查询结果缓存 (TTL 60s, max 256) | `get()`, `set()`, `invalidate()` |
+| `QueryCache` | LRU 查询结果缓存 (TTL 60s, max 256) | `get()`, `set()`, `invalidate()` |
 | `MetadataService` | Schema 信息 | `list_databases()`, `get_table_info()`, `list_tables()` |
-| `AIService` | LLM 集成 (含 Function Calling Agent) | `nl2sql()`, `optimize()`, `agent()`, `chat()` |
+| `AIService` | LLM 集成 (含 Function Calling + 多轮 Schema 设计) | `nl2sql()`, `optimize()`, `agent()`, `design_schema_iterative()`, `chat()` |
 | `BackupService` | 备份/恢复 | `backup()`, `restore()`, `schedule_backup()` (mysqldump + pg_dump) |
 | `SyncEngine` | 结构对比与同步 | `compare_schemas()`, `sync_schema()`, `generate_sync_sql()` (MySQL/PostgreSQL) |
 | `DataSyncEngine` | 数据对比与同步 | `compare_data()`, `sync_data()`, `generate_sync_sql()` (MySQL/PostgreSQL) |
@@ -126,6 +132,7 @@ main.py
 | `sql_generator.py` | DDL/DML 代码生成 |
 | `safe_password.py` | 密码 AES-GCM 加密存储 |
 | `output_formatter.py` | CLI 输出格式化 (table/json/csv/markdown) |
+| `query_cache.py` | LRU 查询结果缓存 (TTL 60s, max 256) |
 
 ## 5. 技术栈
 

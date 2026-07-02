@@ -1,6 +1,6 @@
 # OpenNavicat CLI 参考手册
 
-> 版本: 0.5.0 | 命令总数: 47+
+> 版本: 0.5.0 | 命令总数: 51+
 
 `opennavicat` 是 CLI-First 设计，所有功能通过命令行暴露。GUI 只是可选的可视化包装。
 
@@ -715,9 +715,89 @@ opennavicat ai chat-history show --session "prod"    # 查看指定会话
 | `action` | str | show | 操作: show/clear |
 | `--session`, `-s` | str | default | 会话 ID |
 
+### 6.11 ai schema — 多轮 Schema 设计
+
+```bash
+opennavicat ai schema "users table with email and name"    # 从描述开始
+opennavicat ai schema --ddl "CREATE TABLE ..."             # 从已有 DDL 开始
+opennavicat ai schema "orders" --deploy --conn "MyDB"      # 设计并部署
+```
+
+交互式命令:
+| 命令 | 说明 |
+|------|------|
+| `/show` | 显示当前 DDL |
+| `/deploy` | 部署到数据库 |
+| `/done` / `/exit` | 退出 |
+
+进入交互模式后，可以连续输入修改请求，如"加个索引"、"把 status 改为 ENUM"。
+
+### 6.12 ai build — 对话式查询构建器
+
+```bash
+opennavicat ai build "show me orders with user info"           # 开始构建查询
+opennavicat ai build "monthly sales by category" --conn "MyDB" # 带 Schema 上下文
+opennavicat ai build "active users" --execute                  # 构建后直接执行
+```
+
+交互式命令:
+| 命令 | 说明 |
+|------|------|
+| `/run` | 执行当前 SQL |
+| `/show` | 显示当前查询 |
+| `/exit` | 退出 |
+
+在对话中可以用自然语言逐步完善查询: "加个 status 过滤"、"按日期排序"。
+
 ---
 
-## 7. 输出格式
+## 7. snippet — 代码片段管理
+
+```bash
+opennavicat snippet list                    # 列出所有片段
+opennavicat snippet add my_snip "SELECT *"  # 新增片段
+opennavicat snippet remove 1                # 删除片段
+opennavicat snippet show 1                  # 查看片段详情
+```
+
+### 7.1 snippet list
+
+```bash
+opennavicat snippet list [--format table|json|csv]
+```
+
+列出所有已保存的 SQL 代码片段。
+
+### 7.2 snippet add
+
+```bash
+opennavicat snippet add "get_users" "SELECT * FROM users WHERE active = 1" \
+  --desc "Fetch active users"
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `name` | str | — | 片段名称 |
+| `sql` | str | — | SQL 代码 |
+| `--desc`, `-d` | str | '' | 描述 |
+| `--force`, `-f` | bool | false | 跳过确认 |
+
+### 7.3 snippet remove
+
+```bash
+opennavicat snippet remove 1          # 删除 ID 为 1 的片段
+opennavicat snippet remove 1 --force  # 跳过确认
+```
+
+### 7.4 snippet show
+
+```bash
+opennavicat snippet show 1            # 显示片段 #1 的完整内容
+```
+
+---
+
+## 8. 输出格式
 
 所有支持 `--format` 的命令可以使用以下输出格式:
 
@@ -730,7 +810,7 @@ opennavicat ai chat-history show --session "prod"    # 查看指定会话
 
 ---
 
-## 8. 环境配置
+## 9. 环境配置
 
 ```bash
 # AI 提供商配置

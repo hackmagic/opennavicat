@@ -148,31 +148,6 @@ class ConnectionDialog(QDialog):
 
         tabs.addTab(ssl_tab, "SSL")
 
-        # ---- Pool tab ----
-        pool_tab = QWidget()
-        pool_layout = QFormLayout(pool_tab)
-
-        self._spin_pool_min = QSpinBox(pool_tab)
-        self._spin_pool_min.setRange(0, 100)
-        self._spin_pool_min.setValue(1)
-        self._spin_pool_min.setToolTip("Minimum connections kept alive in the pool")
-        pool_layout.addRow(t("connection.pool.min"), self._spin_pool_min)
-
-        self._spin_pool_max = QSpinBox(pool_tab)
-        self._spin_pool_max.setRange(1, 500)
-        self._spin_pool_max.setValue(10)
-        self._spin_pool_max.setToolTip("Maximum connections allowed in the pool")
-        pool_layout.addRow(t("connection.pool.max"), self._spin_pool_max)
-
-        self._spin_timeout = QSpinBox(pool_tab)
-        self._spin_timeout.setRange(1, 300)
-        self._spin_timeout.setValue(10)
-        self._spin_timeout.setSuffix(" s")
-        self._spin_timeout.setToolTip("Connection timeout in seconds")
-        pool_layout.addRow(t("connection.pool.timeout"), self._spin_timeout)
-
-        tabs.addTab(pool_tab, t("connection.pool"))
-
         layout.addWidget(tabs)
 
         # ---- Test & Save buttons ----
@@ -224,11 +199,6 @@ class ConnectionDialog(QDialog):
             self._edit_ssl_cert.setText(self._info.ssl_cert)
             self._edit_ssl_key.setText(self._info.ssl_key)
 
-        # Pool
-        self._spin_pool_min.setValue(self._info.pool_min)
-        self._spin_pool_max.setValue(self._info.pool_max)
-        self._spin_timeout.setValue(self._info.connect_timeout)
-
     # ---- public API ----
 
     def connection_info(self) -> ConnectionInfo:
@@ -254,9 +224,6 @@ class ConnectionDialog(QDialog):
             ssl_cert=self._edit_ssl_cert.text().strip(),
             ssl_key=self._edit_ssl_key.text().strip(),
             color=self._combo_color.currentData(),
-            pool_min=self._spin_pool_min.value(),
-            pool_max=self._spin_pool_max.value(),
-            connect_timeout=self._spin_timeout.value(),
         )
 
     # ---- slots ----

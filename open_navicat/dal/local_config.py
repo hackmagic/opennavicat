@@ -50,9 +50,6 @@ class LocalConfigDB:
                 ssl_key     TEXT DEFAULT '',
                 color       TEXT DEFAULT '#4A90D9',
                 conn_group  TEXT DEFAULT '',
-                pool_min    INTEGER DEFAULT 1,
-                pool_max    INTEGER DEFAULT 10,
-                connect_timeout INTEGER DEFAULT 10,
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -125,9 +122,8 @@ class LocalConfigDB:
             """INSERT OR REPLACE INTO connections
                (id, name, host, port, user, password, database, charset,
                 use_ssh, ssh_host, ssh_port, ssh_user, ssh_password, ssh_key_file,
-                use_ssl, ssl_ca, ssl_cert, ssl_key, color, conn_group,
-                pool_min, pool_max, connect_timeout)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                use_ssl, ssl_ca, ssl_cert, ssl_key, color, conn_group)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 info.id, info.name, info.host, info.port,
                 info.user, info.password, info.database, info.charset,
@@ -135,7 +131,6 @@ class LocalConfigDB:
                 info.ssh_user, info.ssh_password, info.ssh_key_file,
                 1 if info.use_ssl else 0, info.ssl_ca, info.ssl_cert, info.ssl_key,
                 info.color, info.group,
-                info.pool_min, info.pool_max, info.connect_timeout,
             ),
         )
         conn.commit()
@@ -184,9 +179,6 @@ class LocalConfigDB:
             ssl_key=row["ssl_key"] or "",
             color=row["color"] or "#4A90D9",
             group=row["conn_group"] or "",
-            pool_min=row["pool_min"] if row["pool_min"] is not None else 1,
-            pool_max=row["pool_max"] if row["pool_max"] is not None else 10,
-            connect_timeout=row["connect_timeout"] if row["connect_timeout"] is not None else 10,
         )
 
     def list_groups(self) -> list[str]:

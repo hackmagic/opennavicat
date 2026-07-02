@@ -234,11 +234,10 @@ export OPENNAVICAT_AI_MODEL=llama3
 | **Schema RAG** | 自动获取表结构、列名、索引、外键作为上下文 | ✅ v0.2.0 |
 | **AI Agent (ReAct)** | LLM 自主规划多步操作: 搜索 Schema → 生成 SQL → 执行 → 分析 | ✅ v0.2.0 |
 | **AI Agent (Function Calling)** | 原生函数调用: search_schema / list_tables / execute_sql，无需文本 JSON 解析 | ✅ v0.5.0 |
+| **多轮 Schema 设计** | 迭代式数据库设计: 在已有 DDL 上连续修改（"加个索引""改 status 为 ENUM"） | ✅ v0.5.0 |
+| **对话式查询构建器** | 用自然语言逐步构建和优化 SQL 查询，支持 `/run` 直接执行 | ✅ v0.5.0 |
 | **聊天历史持久化** | SQLite 存储多轮对话历史，支持按 session 管理 | ✅ v0.2.0 |
 | **AI 配置 CLI** | `ai config` 命令行配置提供商、API Key、模型 | ✅ v0.2.0 |
-| **多轮 Schema 设计** | `ai schema` 命令，基于已有 DDL 的迭代式修改（"加个索引"） | ✅ v0.5.0 |
-| **AI 查询构建器** | `ai build` 命令，对话式逐步构建 SQL 查询 | ✅ v0.5.0 |
-| **SQL Review** | `ai review` 命令，安全+性能+最佳实践审查 | ✅ v0.6.0 |
 
 ### 6.1 Function Calling Agent
 
@@ -249,36 +248,6 @@ v0.5.0 将 ReAct Agent 升级为原生 LLM Function Calling：
 3. **多工具支持**: 单次响应可调用多个工具（OpenAI/DeepSeek 原生支持）
 4. **兼容后备**: 不支持 tools 的提供者（Ollama 旧版等）自动降级为纯文本对话
 5. **支持所有后端**: OpenAI、DeepSeek、Ollama（≥0.3.0）、自定义 OpenAI-compatible API
-
-### 6.2 SQL Review
-
-`review_sql()` 方法对 SQL 查询进行安全、性能和最佳实践的多维度审查：
-
-```python
-def review_sql(
-    self,
-    sql: str,
-    schema_context: str = "",
-    db_type: str = "mysql",
-) -> str:
-    """Security and performance review of a SQL query."""
-```
-
-**审查维度**:
-
-| 维度 | 检查项 | 输出标签 |
-|------|--------|---------|
-| 🔴 安全 | SQL 注入风险、缺少 WHERE 的 DELETE/UPDATE、权限暴露 | HIGH / MEDIUM / LOW |
-| 🟡 性能 | 缺少索引、全表扫描、低效 JOIN、N+1 查询 | HIGH / MEDIUM / LOW |
-| 🔵 最佳实践 | SELECT *、缺少 LIMIT、隐式列、命名规范 | 建议 |
-| 🟢 风险评级 | 综合评估 + 修复建议（含修正后的 SQL） | LOW / MEDIUM / HIGH |
-
-**LLM Prompt 设计**: 使用结构化四段式输出（安全→性能→最佳实践→摘要），Temperature 0.1 保证一致性。
-
-**调用方式**:
-- CLI: `opennavicat ai review`
-- GUI: AICopilotSidebar "审查" 模式 / "🔍 SQL 审查" 快捷按钮
-- 代码: `ai_service.review_sql(sql, schema_context=ctx)`
 
 ## 7. 未来扩展
 

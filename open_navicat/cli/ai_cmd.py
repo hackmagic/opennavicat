@@ -128,35 +128,6 @@ def ai_fix(
     console.print(Syntax(fixed, "sql", theme="monokai", word_wrap=True))
 
 
-@ai_app.command("review")
-def ai_review(
-    sql: str = typer.Argument(..., help="SQL query to review"),
-    conn: str = typer.Option("", "--conn", "-c", help="Connection name for schema context"),
-    db_type: str = typer.Option("mysql", "--db-type", "-d", help="Database type: mysql | postgresql"),
-) -> None:
-    """Security & performance review of a SQL query — identify risks and get fix suggestions."""
-    from open_navicat.services.ai_service import ai_service
-
-    cid = ""
-    schema_context = ""
-    if conn or connection_manager.active_ids:
-        cid = _resolve_conn(conn)
-        if cid:
-            schema_context = _get_schema_context(cid)
-
-    console.print("[yellow]🔍 Reviewing SQL query...[/yellow]")
-    review = ai_service.review_sql(sql, schema_context=schema_context, db_type=db_type)
-    if not review:
-        console.print("[red]Failed to review the query.[/red]")
-        raise typer.Exit(1)
-
-    console.print(Panel(
-        Syntax(sql, "sql", theme="monokai", word_wrap=True),
-        title="📝 SQL Under Review", border_style="yellow",
-    ))
-    console.print(Panel(Markdown(review), title="🔍 Review Report", border_style="green"))
-
-
 @ai_app.command("chat")
 def ai_chat(
     conn: str = typer.Option("", "--conn", "-c", help="Connection name for live context"),

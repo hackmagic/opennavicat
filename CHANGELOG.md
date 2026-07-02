@@ -8,7 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ### Added
 
-#### Connection Groups & Search
+#### Snippet Management
+- SnippetManagerDialog: CRUD + preview + variable substitution (`{{var}}`)
+- Dynamic snippet menu in SQL editor (DB-backed + built-in templates)
+- Right-click "Save as snippet" from editor
+- CLI: `snippet list|add|remove|show`
+
+#### Multi-Round Schema Design
+- `AIService.design_schema_iterative()` method for incremental schema changes
+- CLI `ai schema` — interactive session with `/deploy` `/show` `/done`
+
+#### Conversational Query Builder
+- CLI `ai build` — focused query-building mode with `/run` to execute
+- Iterative refinement: "add filter", "join with orders" etc.
+
+#### CI/CD Dependency Scanning
+- `pip-audit` step in CI workflow
+- Dedicated `security-audit.yml` (weekly schedule + manual trigger, pip-audit + safety)
 - `ConnectionInfo.group` field + `conn_group` DB column
 - ObjectBrowser search bar with real-time filtering
 - Connection folder groups in tree view with drag-drop support
