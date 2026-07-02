@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QComboBox,
     QDialog,
     QFormLayout,
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
+    QMenu,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -217,8 +219,8 @@ class TableViewerWidget(QWidget):
         # Page 0: Table grid
         self._table_widget = QTableWidget(self)
         from open_navicat.config import config as _cfg
-        stripe = _cfg.get("records.row_stripe", "每三行")
-        self._table_widget.setAlternatingRowColors(stripe != "无")
+        stripe = _cfg.get("records.row_stripe", t("settings.stripe.every_3"))
+        self._table_widget.setAlternatingRowColors(stripe != t("settings.stripe.none"))
         self._table_widget.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
@@ -231,6 +233,10 @@ class TableViewerWidget(QWidget):
         self._table_widget.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
         self._table_widget.cellChanged.connect(self._on_cell_changed)
         self._table_widget.cellDoubleClicked.connect(self._on_cell_double_click)
+        self._table_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table_widget.customContextMenuRequested.connect(self._show_table_context_menu)
+        self._table_widget.horizontalHeader().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table_widget.horizontalHeader().customContextMenuRequested.connect(self._show_table_header_menu)
         self._view_stack.addWidget(self._table_widget)
 
         # Page 1: Form view
@@ -1242,6 +1248,176 @@ class TableViewerWidget(QWidget):
         btn.clicked.connect(dlg.accept)
         layout.addWidget(btn, 0, Qt.AlignmentFlag.AlignRight)
         dlg.exec()
+
+    # ---- right-click context menu (same as ResultTable) ----
+
+    def _show_table_context_menu(self, pos) -> None:
+        menu = QMenu(self)
+        rows_data = self._selected_rows_data()
+        row = self._table_widget.indexAt(pos).row()
+
+        if row < 0 and not rows_data:
+            menu.addAction(t("context.refresh")).triggered.connect(self._load_page)
+            menu.addSeparator()
+            menu.addAction(t("context.copy_all_csv")).triggered.connect(self._copy_all_csv)
+            menu.exec(self._table_widget.viewport().mapToGlobal(pos))
+            return
+
+        if not rows_data:
+            return
+
+        count = len(rows_data)
+        single = rows_data[0] if count == 1 else None
+        cell = self._table_widget.currentItem()
+
+        if cell and single:
+            menu.addAction(t("context.copy_cell")).triggered.connect(
+                lambda: QApplication.clipboard().setText(cell.text()))
+            menu.addSeparator()
+
+        menu.addAction(t("context.selected_rows", count=count)).setEnabled(False)
+        menu.addSeparator()
+
+        if single:
+            menu.addAction(t("context.copy_row_json")).triggered.connect(
+                lambda: QApplication.clipboard().setText(str(single).replace("'", '"')))
+        else:
+            menu.addAction(t("context.copy_rows_json", count=count)).triggered.connect(
+                lambda: QApplication.clipboard().setText(
+                    "[\n" + ",\n".join(str(d).replace("'", '"') for d in rows_data) + "\n]"))
+        menu.addSeparator()
+
+        menu.addAction(t("context.copy_as_insert")).triggered.connect(lambda: self._copy_insert(rows_data))
+        menu.addAction(t("context.copy_as_update")).triggered.connect(lambda: self._copy_update(rows_data))
+        menu.addSeparator()
+
+        if rows_data:
+            fc = list(rows_data[0].keys())[0]
+            menu.addAction(t("context.where_in", column=fc)).triggered.connect(
+                lambda: self._copy_where_in(rows_data))
+            menu.addAction(t("context.copy_as_select")).triggered.connect(lambda: self._copy_select(rows_data))
+        menu.addSeparator()
+
+        menu.addAction(t("context.copy_as_csv")).triggered.connect(lambda: self._copy_csv(rows_data))
+        menu.addAction(t("context.copy_as_json")).triggered.connect(
+            lambda: QApplication.clipboard().setText(
+                "[\n" + ",\n".join(str(d).replace("'", '"') for d in rows_data) + "\n]"))
+        menu.exec(self._table_widget.viewport().mapToGlobal(pos))
+
+    def _show_table_header_menu(self, pos) -> None:
+        col = self._table_widget.horizontalHeader().logicalIndexAt(pos)
+        if col < 0:
+            return
+        col_name = self._table_widget.horizontalHeaderItem(col).text()
+        menu = QMenu(self)
+        menu.addAction(t("context.column_name", name=col_name)).setEnabled(False)
+        menu.addSeparator()
+
+        vals = []
+        for row_data in self._selected_rows_data():
+            v = row_data.get(col_name, "")
+            if v and v != "NULL":
+                vals.append(v)
+        if not vals:
+            for row in range(self._table_widget.rowCount()):
+                item = self._table_widget.item(row, col)
+                if item and item.text() and item.text() != "(NULL)":
+                    vals.append(item.text())
+        if not vals:
+            return
+
+        esc_vals = ", ".join(self._esc(v) for v in vals)
+        menu.addAction(t("context.where_in_values", column=col_name, count=len(vals))).triggered.connect(
+            lambda: QApplication.clipboard().setText(f"`{col_name}` IN ({esc_vals})"))
+
+        for v in sorted(set(vals))[:20]:
+            ev = self._esc(v)
+            menu.addAction(t("context.filter_value", value=ev)).triggered.connect(
+                lambda checked, x=ev: QApplication.clipboard().setText(f"`{col_name}` = {x}"))
+        menu.exec(self._table_widget.horizontalHeader().viewport().mapToGlobal(pos))
+
+    def _esc(self, v: str) -> str:
+        if not v or v == "NULL":
+            return "NULL"
+        try:
+            float(v)
+            return v
+        except ValueError:
+            return "'" + v.replace("'", "\\'") + "'"
+
+    def _selected_rows_data(self) -> list[dict[str, str]]:
+        headers = [self._table_widget.horizontalHeaderItem(c).text() for c in range(self._table_widget.columnCount())]
+        rows = set()
+        data = []
+        for item in self._table_widget.selectedItems():
+            r = item.row()
+            if r in rows:
+                continue
+            rows.add(r)
+            row_data = {}
+            for c in range(self._table_widget.columnCount()):
+                cell = self._table_widget.item(r, c)
+                row_data[headers[c]] = cell.text() if cell else ""
+            data.append(row_data)
+        return data
+
+    def _copy_insert(self, rows_data: list[dict]) -> None:
+        if not rows_data:
+            return
+        cols = ",\n  ".join(f"`{k}`" for k in rows_data[0])
+        vals = ",\n".join("  (" + ", ".join(self._esc(v) for v in d.values()) + ")" for d in rows_data)
+        QApplication.clipboard().setText(f"INSERT INTO `{self._table}` (\n  {cols}\n) VALUES\n{vals};")
+
+    def _copy_update(self, rows_data: list[dict]) -> None:
+        if not rows_data:
+            return
+        pks = list(rows_data[0].keys())
+        pk_col = pks[0]
+        stmts = []
+        for d in rows_data:
+            sets = ",\n  ".join(f"`{k}` = {self._esc(v)}" for k, v in d.items() if k != pk_col)
+            stmts.append(f"UPDATE `{self._table}`\nSET\n  {sets}\nWHERE `{pk_col}` = {self._esc(d[pk_col])};")
+        QApplication.clipboard().setText("\n\n".join(stmts))
+
+    def _copy_where_in(self, rows_data: list[dict]) -> None:
+        if not rows_data:
+            return
+        fc = list(rows_data[0].keys())[0]
+        vals = [self._esc(d[fc]) for d in rows_data if fc in d and d[fc] != "NULL"]
+        if vals:
+            QApplication.clipboard().setText(f"`{fc}` IN ({', '.join(vals)})")
+
+    def _copy_select(self, rows_data: list[dict]) -> None:
+        if not rows_data:
+            return
+        fc = list(rows_data[0].keys())[0]
+        vals = [self._esc(d[fc]) for d in rows_data if fc in d and d[fc] != "NULL"]
+        where = f"WHERE `{fc}` IN ({', '.join(vals)})" if len(vals) > 1 else f"WHERE `{fc}` = {vals[0]}"
+        QApplication.clipboard().setText(f"SELECT * FROM `{self._table}` {where};")
+
+    def _copy_csv(self, rows_data: list[dict]) -> None:
+        if not rows_data:
+            return
+        lines = [",".join(f'"{h}"' for h in rows_data[0])]
+        for d in rows_data:
+            vals = []
+            for v in d.values():
+                s = str(v)
+                vals.append('"' + s.replace('"', '""') + '"' if "," in s or '"' in s else s)
+            lines.append(",".join(vals))
+        QApplication.clipboard().setText("\n".join(lines))
+
+    def _copy_all_csv(self) -> None:
+        tw = self._table_widget
+        rows = [",".join(f'"{tw.horizontalHeaderItem(c).text()}"' for c in range(tw.columnCount()))]
+        for r in range(tw.rowCount()):
+            vals = []
+            for c in range(tw.columnCount()):
+                item = tw.item(r, c)
+                s = item.text() if item else ""
+                vals.append('"' + s.replace('"', '""') + '"' if "," in s or '"' in s else s)
+            rows.append(",".join(vals))
+        QApplication.clipboard().setText("\n".join(rows))
 
     def _show_bi_workspace(self) -> None:
         mw = self.window()
