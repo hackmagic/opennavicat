@@ -58,7 +58,6 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._build_editor_tab(), "编辑器")
         tabs.addTab(self._build_records_tab(), "记录")
         tabs.addTab(self._build_ai_tab(), "AI")
-        tabs.addTab(self._build_auto_recovery_tab(), "自动恢复")
         tabs.addTab(self._build_advanced_tab(), "高级")
 
         layout.addWidget(tabs)
@@ -170,8 +169,6 @@ class SettingsDialog(QDialog):
         form1 = QFormLayout(grp_general)
         self._chk_line_numbers = QCheckBox("显示行号")
         form1.addRow("", self._chk_line_numbers)
-        self._chk_code_folding = QCheckBox("使用代码折叠")
-        form1.addRow("", self._chk_code_folding)
         self._chk_bracket_highlight = QCheckBox("使用括号高亮显示")
         form1.addRow("", self._chk_bracket_highlight)
         self._chk_syntax_highlight = QCheckBox("使用语法高亮显示")
@@ -292,9 +289,11 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(tab)
 
         self._chk_ai_enabled = QCheckBox("启用 AI 助手")
+        self._chk_ai_enabled.toggled.connect(self._on_ai_toggled)
         layout.addWidget(self._chk_ai_enabled)
 
         grp = QGroupBox("AI 助手")
+        self._ai_group = grp
         form = QFormLayout(grp)
 
         self._combo_ai_provider = QComboBox()
@@ -355,47 +354,6 @@ class SettingsDialog(QDialog):
         layout.addStretch()
         return tab
 
-    # ---- Auto Recovery ----
-
-    def _build_auto_recovery_tab(self) -> QWidget:
-        tab = QWidget()
-        form = QFormLayout(tab)
-
-        self._chk_autosave_query = QCheckBox("查询")
-        self._spin_autosave_query = QSpinBox()
-        self._spin_autosave_query.setRange(10, 3600)
-        self._spin_autosave_query.setValue(30)
-        row_q = QHBoxLayout()
-        row_q.addWidget(self._chk_autosave_query)
-        row_q.addWidget(QLabel("自动保存间隔 (秒):"))
-        row_q.addWidget(self._spin_autosave_query)
-        row_q.addStretch()
-        form.addRow("", row_q)
-
-        self._chk_autosave_model = QCheckBox("模型")
-        self._spin_autosave_model = QSpinBox()
-        self._spin_autosave_model.setRange(10, 3600)
-        self._spin_autosave_model.setValue(180)
-        row_m = QHBoxLayout()
-        row_m.addWidget(self._chk_autosave_model)
-        row_m.addWidget(QLabel("自动保存间隔 (秒):"))
-        row_m.addWidget(self._spin_autosave_model)
-        row_m.addStretch()
-        form.addRow("", row_m)
-
-        self._chk_autosave_bi = QCheckBox("BI")
-        self._spin_autosave_bi = QSpinBox()
-        self._spin_autosave_bi.setRange(10, 3600)
-        self._spin_autosave_bi.setValue(180)
-        row_b = QHBoxLayout()
-        row_b.addWidget(self._chk_autosave_bi)
-        row_b.addWidget(QLabel("自动保存间隔 (秒):"))
-        row_b.addWidget(self._spin_autosave_bi)
-        row_b.addStretch()
-        form.addRow("", row_b)
-
-        return tab
-
     # ---- Advanced ----
 
     def _build_advanced_tab(self) -> QWidget:
@@ -425,6 +383,9 @@ class SettingsDialog(QDialog):
         labels = {0.0: "精确的", 0.5: "创造性的", 1.0: "平衡的", 1.5: "更随机", 2.0: "最随机"}
         closest = min(labels.keys(), key=lambda x: abs(x - v))
         self._lbl_temp.setText(f"{v:.1f} - {labels[closest]}")
+
+    def _on_ai_toggled(self, checked: bool) -> None:
+        self._ai_group.setVisible(checked)
 
     def _on_ai_provider_changed(self, index: int) -> None:
         provider = self._combo_ai_provider.itemData(index)
@@ -476,7 +437,6 @@ class SettingsDialog(QDialog):
         self._chk_include_sys.setChecked(True)
         self._chk_auto_select_first.setChecked(True)
         self._chk_line_numbers.setChecked(True)
-        self._chk_code_folding.setChecked(True)
         self._chk_bracket_highlight.setChecked(True)
         self._chk_syntax_highlight.setChecked(True)
         self._chk_word_wrap.setChecked(True)
@@ -492,12 +452,6 @@ class SettingsDialog(QDialog):
         self._chk_ai_enabled.setChecked(False)
         self._slider_temp.setValue(10)
         self._combo_enter.setCurrentIndex(0)
-        self._chk_autosave_query.setChecked(True)
-        self._spin_autosave_query.setValue(30)
-        self._chk_autosave_model.setChecked(True)
-        self._spin_autosave_model.setValue(180)
-        self._chk_autosave_bi.setChecked(True)
-        self._spin_autosave_bi.setValue(180)
         self._chk_diag_log.setChecked(False)
         self._chk_allow_multi.setChecked(False)
 
@@ -529,7 +483,6 @@ class SettingsDialog(QDialog):
         self._chk_auto_select_first.setChecked(config.get("code_completion.auto_select", True))
 
         self._chk_line_numbers.setChecked(config.get("editor.line_numbers", True))
-        self._chk_code_folding.setChecked(config.get("editor.code_folding", True))
         self._chk_bracket_highlight.setChecked(config.get("editor.bracket_highlight", True))
         self._chk_syntax_highlight.setChecked(config.get("editor.syntax_highlight", True))
         self._chk_word_wrap.setChecked(config.get("editor.word_wrap", True))
@@ -553,6 +506,7 @@ class SettingsDialog(QDialog):
         self._chk_use_locale.setChecked(config.get("records.use_locale", True))
 
         self._chk_ai_enabled.setChecked(config.get("ai.enabled", False))
+        self._ai_group.setVisible(config.get("ai.enabled", False))
         provider = config.get("ai.provider", "openai")
         for i in range(self._combo_ai_provider.count()):
             if self._combo_ai_provider.itemData(i) == provider:
@@ -562,13 +516,6 @@ class SettingsDialog(QDialog):
         self._edit_ai_key.setText(config.get("ai.api_key", ""))
         self._edit_ai_model.setText(config.get("ai.model", "gpt-4o-mini"))
         self._slider_temp.setValue(int(config.get("ai.temperature", 1.0) * 10))
-
-        self._chk_autosave_query.setChecked(config.get("autosave.query_enabled", True))
-        self._spin_autosave_query.setValue(config.get("autosave.query_interval", 30))
-        self._chk_autosave_model.setChecked(config.get("autosave.model_enabled", True))
-        self._spin_autosave_model.setValue(config.get("autosave.model_interval", 180))
-        self._chk_autosave_bi.setChecked(config.get("autosave.bi_enabled", True))
-        self._spin_autosave_bi.setValue(config.get("autosave.bi_interval", 180))
 
         self._chk_diag_log.setChecked(config.get("advanced.diag_log", False))
         self._chk_allow_multi.setChecked(config.get("advanced.allow_multi", False))
@@ -588,7 +535,6 @@ class SettingsDialog(QDialog):
             "code_completion.include_system": self._chk_include_sys.isChecked(),
             "code_completion.auto_select": self._chk_auto_select_first.isChecked(),
             "editor.line_numbers": self._chk_line_numbers.isChecked(),
-            "editor.code_folding": self._chk_code_folding.isChecked(),
             "editor.bracket_highlight": self._chk_bracket_highlight.isChecked(),
             "editor.syntax_highlight": self._chk_syntax_highlight.isChecked(),
             "editor.word_wrap": self._chk_word_wrap.isChecked(),
@@ -607,12 +553,6 @@ class SettingsDialog(QDialog):
             "ai.api_base": self._edit_ai_base.text().strip(),
             "ai.model": self._edit_ai_model.text().strip(),
             "ai.temperature": self._slider_temp.value() / 10.0,
-            "autosave.query_enabled": self._chk_autosave_query.isChecked(),
-            "autosave.query_interval": self._spin_autosave_query.value(),
-            "autosave.model_enabled": self._chk_autosave_model.isChecked(),
-            "autosave.model_interval": self._spin_autosave_model.value(),
-            "autosave.bi_enabled": self._chk_autosave_bi.isChecked(),
-            "autosave.bi_interval": self._spin_autosave_bi.value(),
             "advanced.diag_log": self._chk_diag_log.isChecked(),
             "advanced.allow_multi": self._chk_allow_multi.isChecked(),
         }

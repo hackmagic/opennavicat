@@ -216,7 +216,9 @@ class TableViewerWidget(QWidget):
 
         # Page 0: Table grid
         self._table_widget = QTableWidget(self)
-        self._table_widget.setAlternatingRowColors(True)
+        from open_navicat.config import config as _cfg
+        stripe = _cfg.get("records.row_stripe", "每三行")
+        self._table_widget.setAlternatingRowColors(stripe != "无")
         self._table_widget.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )

@@ -250,18 +250,19 @@ class MainWindow(QMainWindow):
         query_menu.addAction(act_builder)
 
         # ---- AI ----
-        ai_menu = menubar.addMenu(t("menu.ai"))
-        act_ai = QAction(t("menu.ai.copilot"), self)
-        act_ai.setShortcut(QKeySequence("Ctrl+I"))
-        act_ai.triggered.connect(lambda: self._ai_copilot.open_panel())
-        ai_menu.addAction(act_ai)
-        act_nl = QAction(t("menu.ai.nl_query"), self)
-        act_nl.triggered.connect(self._ai_query)
-        ai_menu.addAction(act_nl)
-        ai_menu.addSeparator()
-        act_ai_config = QAction(t("menu.ai.config"), self)
-        act_ai_config.triggered.connect(lambda: self._show_settings())
-        ai_menu.addAction(act_ai_config)
+        if config.get("ai.enabled", False):
+            ai_menu = menubar.addMenu(t("menu.ai"))
+            act_ai = QAction(t("menu.ai.copilot"), self)
+            act_ai.setShortcut(QKeySequence("Ctrl+I"))
+            act_ai.triggered.connect(lambda: self._ai_copilot.open_panel())
+            ai_menu.addAction(act_ai)
+            act_nl = QAction(t("menu.ai.nl_query"), self)
+            act_nl.triggered.connect(self._ai_query)
+            ai_menu.addAction(act_nl)
+            ai_menu.addSeparator()
+            act_ai_config = QAction(t("menu.ai.config"), self)
+            act_ai_config.triggered.connect(lambda: self._show_settings())
+            ai_menu.addAction(act_ai_config)
 
         # ---- Tools ----
         tools_menu = menubar.addMenu(t("menu.tools"))
@@ -414,11 +415,12 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
 
-        # AI query button
-        ai_btn = QPushButton(t("toolbar.ai_query"), bar)
-        ai_btn.setObjectName("aiQueryBtn")
-        ai_btn.clicked.connect(self._ai_query)
-        layout.addWidget(ai_btn)
+        # AI query button (only if AI enabled)
+        if config.get("ai.enabled", False):
+            ai_btn = QPushButton(t("toolbar.ai_query"), bar)
+            ai_btn.setObjectName("aiQueryBtn")
+            ai_btn.clicked.connect(self._ai_query)
+            layout.addWidget(ai_btn)
 
         return bar
 
@@ -654,6 +656,12 @@ class MainWindow(QMainWindow):
             self._workspace.setTabText(index, name.strip())
 
     def open_table_tab(self, connection_id: str, database: str, table: str) -> None:
+        if not config.get("general.allow_duplicate", False):
+            for i in range(self._workspace.count()):
+                w = self._workspace.widget(i)
+                if hasattr(w, '_table_name') and w._table_name == table and hasattr(w, '_database') and w._database == database:
+                    self._workspace.setCurrentIndex(i)
+                    return
         from open_navicat.ui.widgets.table_viewer import TableViewerWidget
         viewer = TableViewerWidget(connection_id, database, table, parent=self._workspace)
         idx = self._workspace.addTab(viewer, t("tab.table_view", table=table))

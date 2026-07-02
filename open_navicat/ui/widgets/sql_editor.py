@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import QPoint, Qt, Signal, Slot
+from PySide6.QtCore import QPoint, QSize, Qt, Signal, Slot
 from PySide6.QtGui import (
     QColor,
     QFont,
     QKeySequence,
+    QPainter,
     QSyntaxHighlighter,
     QTextCharFormat,
 )
@@ -100,6 +101,20 @@ class SQLHighlighter(QSyntaxHighlighter):
             self.setFormat(m.start(), m.end() - m.start(), self._fmt["number"])
 
 
+class LineNumberArea(QWidget):
+    """Widget that paints line numbers for the SQL editor."""
+
+    def __init__(self, editor: QPlainTextEdit) -> None:
+        super().__init__(editor)
+        self._editor = editor
+
+    def sizeHint(self) -> QSize:
+        return QSize(self._editor.line_number_area_width(), 0)
+
+    def paintEvent(self, event) -> None:
+        self._editor.line_number_area_paint_event(event)
+
+
 class ResultTable(QTableWidget):
     """Query results table with multi-select, right-click copy, and column WHERE IN."""
 
@@ -107,7 +122,9 @@ class ResultTable(QTableWidget):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setAlternatingRowColors(True)
+        from open_navicat.config import config as _cfg
+        stripe = _cfg.get("records.row_stripe", "每三行")
+        self.setAlternatingRowColors(stripe != "无")
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -504,7 +521,7 @@ class SQLEditorWidget(QWidget):
         )
         if word_wrap:
             from PySide6.QtGui import QTextOption
-            self._editor.setWordWrapMode(QTextOption.WrapMode.WidgetWidth)
+            self._editor.setWordWrapMode(QTextOption.WrapMode.WordWrap)
         if insert_spaces:
             self._editor.setTabChangesFocus(False)
         self._editor.setObjectName("sqlEditor")
@@ -512,8 +529,19 @@ class SQLEditorWidget(QWidget):
         self._editor.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._editor.customContextMenuRequested.connect(self._show_editor_context_menu)
         # Syntax highlighting (respects config colors)
-        self._highlighter = SQLHighlighter(self._editor.document())
+        if _cfg.get("editor.syntax_highlight", True):
+            self._highlighter = SQLHighlighter(self._editor.document())
+        else:
+            self._highlighter = None
         ed_layout.addWidget(self._editor)
+
+        # Line numbers
+        self._line_area = LineNumberArea(self._editor)
+        self._editor.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
+        self._editor.updateRequest.connect(self._line_area.update)
+        self._editor.blockCountChanged.connect(self._update_line_number_area_width)
+        self._editor.cursorPositionChanged.connect(self._highlight_current_line)
+        self._update_line_number_area_width(0)
 
         # Quick SQL snippet bar
         snippet_bar = QWidget(editor_container)
@@ -638,6 +666,51 @@ class SQLEditorWidget(QWidget):
         splitter.setSizes([250, 250])
 
         layout.addWidget(splitter)
+
+    def line_number_area_width(self) -> int:
+        digits = len(str(self._editor.blockCount()))
+        space = 10 + self._editor.fontMetrics().horizontalAdvance("9") * digits + 10
+        return space
+
+    def _update_line_number_area_width(self, _new_block_count: int) -> None:
+        self._editor.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
+        self._line_area.update()
+
+    def _highlight_current_line(self) -> None:
+        from PySide6.QtGui import QTextEdit
+        extras = self._editor.selectedTexts()
+        self._editor.setExtraSelections([])
+        if not extras:
+            selection = QTextEdit.ExtraSelection()
+            selection.format.setBackground(QColor("#2a2d2e"))
+            selection.format.setProperty(QTextCharFormat.Property.FullWidthSelection, True)
+            selection.cursor = self._editor.textCursor()
+            selection.cursor.clearSelection()
+            self._editor.setExtraSelections([selection])
+
+    def line_number_area_paint_event(self, event) -> None:
+        painter = QPainter(self._line_area)
+        painter.fillRect(event.rect(), QColor("#252526"))
+
+        block = self._editor.firstVisibleBlock()
+        block_number = block.blockNumber()
+        top = round(self._editor.blockBoundingGeometry(block).translated(self._editor.contentOffset()).top())
+        bottom = top + round(self._editor.blockBoundingRect(block).height())
+
+        while block.isValid() and top <= event.rect().bottom():
+            if block.isVisible() and bottom >= event.rect().top():
+                number = str(block_number + 1)
+                painter.setPen(QColor("#858585"))
+                painter.drawText(
+                    0, top, self._line_area.width() - 5,
+                    self._editor.fontMetrics().height(),
+                    Qt.AlignmentFlag.AlignRight, number,
+                )
+            block = block.next()
+            top = bottom
+            bottom = top + round(self._editor.blockBoundingRect(block).height())
+            block_number += 1
+        painter.end()
 
     def _load_databases(self) -> None:
         """Populate the database selector dropdown with available databases."""
