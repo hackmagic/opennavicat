@@ -859,9 +859,9 @@ class ObjectBrowser(QTreeWidget):
         if data:
             mw = self.window()
             if hasattr(mw, 'open_query_tab'):
-                mw.open_query_tab(
-                    data["connection_id"], data.get("name", "")
-                )
+                conn_id = data.get("connection_id") or data.get("id", "")
+                db_name = data.get("database") or data.get("name", "")
+                mw.open_query_tab(conn_id, db_name)
 
     def _design_table(self, item: QTreeWidgetItem) -> None:
         """Open table designer for the selected table."""

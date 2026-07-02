@@ -449,7 +449,8 @@ class MainWindow(QMainWindow):
         if not active:
             QMessageBox.warning(self, t("common.notice"), t("prompt.need_connection"))
             return
-        editor = SQLEditorWidget(active, parent=self._workspace)
+        db = self._get_current_database()
+        editor = SQLEditorWidget(active, db, parent=self._workspace)
         editor.ai_requested.connect(self._on_ai_request)
         idx = self._workspace.addTab(editor, t("tab.new_query", n=self._workspace.count() + 1))
         self._workspace.setCurrentIndex(idx)
@@ -687,6 +688,29 @@ class MainWindow(QMainWindow):
         from open_navicat.dal.connection_pool import connection_pool
         active = connection_pool.active_connections
         return active[0] if active else None
+
+    def _get_current_database(self) -> str:
+        """Get the database name from the object browser's current selection."""
+        item = self._object_browser.currentItem()
+        if not item:
+            return ""
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return ""
+        # Database node
+        if data.get("type") == "database":
+            return data.get("name", "")
+        # Category or child under a database
+        if "database" in data:
+            return data["database"]
+        # Walk up to find a database ancestor
+        parent = item.parent()
+        while parent:
+            pd = parent.data(0, Qt.ItemDataRole.UserRole)
+            if pd and pd.get("type") == "database":
+                return pd.get("name", "")
+            parent = parent.parent()
+        return ""
 
     @Slot()
     def _show_about(self) -> None:

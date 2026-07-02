@@ -104,15 +104,15 @@ class SQLHighlighter(QSyntaxHighlighter):
 class LineNumberArea(QWidget):
     """Widget that paints line numbers for the SQL editor."""
 
-    def __init__(self, editor: QPlainTextEdit) -> None:
-        super().__init__(editor)
-        self._editor = editor
+    def __init__(self, editor_widget: SQLEditorWidget) -> None:
+        super().__init__(editor_widget._editor)
+        self._editor_widget = editor_widget
 
     def sizeHint(self) -> QSize:
-        return QSize(self._editor.line_number_area_width(), 0)
+        return QSize(self._editor_widget.line_number_area_width(), 0)
 
     def paintEvent(self, event) -> None:
-        self._editor.line_number_area_paint_event(event)
+        self._editor_widget.line_number_area_paint_event(event)
 
 
 class ResultTable(QTableWidget):
@@ -536,7 +536,7 @@ class SQLEditorWidget(QWidget):
         ed_layout.addWidget(self._editor)
 
         # Line numbers
-        self._line_area = LineNumberArea(self._editor)
+        self._line_area = LineNumberArea(self)
         self._editor.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
         self._editor.updateRequest.connect(self._line_area.update)
         self._editor.blockCountChanged.connect(self._update_line_number_area_width)
