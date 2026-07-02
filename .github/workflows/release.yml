@@ -87,7 +87,7 @@ jobs:
         run: pip install pyinstaller
 
       - name: Build executable
-        run: pyinstaller --onefile --windowed --name opennavicat --collect-all PySide6 --collect-all pyside6_essentials --collect-all pyside6_addons --collect-all shiboken6 open_navicat/main.py
+        run: pyinstaller --onefile --windowed --name opennavicat --hidden-import PySide6 open_navicat/main.py
 
       - name: Rename artifact (Linux/macOS)
         if: runner.os != 'Windows'
