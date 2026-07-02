@@ -123,8 +123,9 @@ class ResultTable(QTableWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         from open_navicat.config import config as _cfg
-        stripe = _cfg.get("records.row_stripe", "每三行")
-        self.setAlternatingRowColors(stripe != "无")
+        from open_navicat.i18n import t
+        stripe = _cfg.get("records.row_stripe", t("settings.stripe.every_3"))
+        self.setAlternatingRowColors(stripe != t("settings.stripe.none"))
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)

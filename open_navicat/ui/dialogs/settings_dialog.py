@@ -74,6 +74,8 @@ class SettingsDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             self,
         )
+        btn_box.button(QDialogButtonBox.StandardButton.Ok).setText(t("common.ok"))
+        btn_box.button(QDialogButtonBox.StandardButton.Cancel).setText(t("common.cancel"))
         btn_box.accepted.connect(self._save_and_accept)
         btn_box.rejected.connect(self.reject)
         layout.addWidget(btn_box)

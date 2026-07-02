@@ -49,6 +49,7 @@ class Color:
     ACCENT_PRESSED = "#6a94e0"  # 按下：略暗
     ACCENT_DISABLED = "#45475a" # 禁用：低对比
     ACCENT_BG = "#1e2a4a"       # 强调背景（按钮/标签/选中行）
+    SELECTION_BG = "#2b4d7a"    # SQL 编辑器选中背景 — 更饱和，明显区分于输入框背景
 
     # ── 语义色 ──
     SUCCESS = "#a6e3a1"
@@ -488,9 +489,10 @@ QTreeWidget::branch, QTreeView::branch {{
    =========================================================== */
 QTableWidget, QTableView {{
     background-color: {Color.BG_PRIMARY};
+    alternate-background-color: #25253e;
     border: 1px solid {Color.BORDER};
     border-radius: {R_SM};
-    gridline-color: {Color.BORDER};
+    gridline-color: {Color.BORDER_LIGHT};
     color: {Color.TEXT_PRIMARY};
     font-size: {FS_12};
     font-family: {FONT_SANS};
@@ -584,7 +586,7 @@ QPlainTextEdit#sqlEditor {{
     padding: {S8} {S12};
     font-family: {FONT_MONO};
     font-size: "13px";
-    selection-background-color: {Color.ACCENT_BG};
+    selection-background-color: {Color.SELECTION_BG};
     selection-color: {Color.TEXT_ACCENT};
 }}
 

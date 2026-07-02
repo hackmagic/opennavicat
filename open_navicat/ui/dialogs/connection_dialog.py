@@ -167,6 +167,8 @@ class ConnectionDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             self,
         )
+        button_box.button(QDialogButtonBox.StandardButton.Ok).setText(t("common.ok"))
+        button_box.button(QDialogButtonBox.StandardButton.Cancel).setText(t("common.cancel"))
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         btn_layout.addWidget(button_box)

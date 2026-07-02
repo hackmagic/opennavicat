@@ -35,6 +35,7 @@ class Color:
     ACCENT_PRESSED = "#2e4ac4"  # 按下
     ACCENT_DISABLED = "#c0c4d0" # 禁用
     ACCENT_BG = "#eef1ff"       # 强调背景
+    SELECTION_BG = "#d0daff"    # SQL 编辑器选中背景 — 更明显区别于输入框背景
 
     # 语义色
     SUCCESS = "#16a34a"
@@ -353,12 +354,13 @@ QTreeWidget::item:selected, QTreeView::item:selected {{
 
 QTableWidget, QTableView {{
     background-color: {Color.BG_PRIMARY};
+    alternate-background-color: #f6f7fb;
     border: 1px solid {Color.BORDER};
     border-radius: {R_SM};
     gridline-color: {Color.BORDER};
     color: {Color.TEXT_PRIMARY};
     font-size: {FS_12};
-    selection-background-color: {Color.ACCENT_BG};
+    selection-background-color: {Color.SELECTION_BG};
     selection-color: {Color.TEXT_ACCENT};
     outline: none;
 }}
@@ -368,6 +370,7 @@ QTableWidget::item, QTableView::item {{
     border-right: 1px solid {Color.BORDER};
     border-bottom: 1px solid {Color.BORDER};
     min-height: 24px;
+    color: #0a0a14;
 }}
 QTableWidget::item:hover, QTableView::item:hover {{
     background-color: {Color.BG_HOVER};
@@ -423,7 +426,7 @@ QPlainTextEdit#sqlEditor {{
     padding: {S8} {S12};
     font-family: {FONT_MONO};
     font-size: "13px";
-    selection-background-color: {Color.ACCENT_BG};
+    selection-background-color: {Color.SELECTION_BG};
     selection-color: {Color.TEXT_ACCENT};
 }}
 
