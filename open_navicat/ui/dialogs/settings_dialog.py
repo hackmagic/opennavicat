@@ -257,7 +257,7 @@ class SettingsDialog(QDialog):
         form2.addRow(t("settings.grid_font"), font_row)
 
         self._combo_row_stripe = QComboBox()
-        self._combo_row_stripe.addItems(["无", "每行", "每二行", "每三行"])
+        self._combo_row_stripe.addItems([t("settings.stripe.none"), t("settings.stripe.every_row"), t("settings.stripe.every_2"), t("settings.stripe.every_3")])
         self._combo_row_stripe.setCurrentIndex(3)
         form2.addRow(t("settings.row_stripe"), self._combo_row_stripe)
         layout.addWidget(grp2)
@@ -504,7 +504,7 @@ class SettingsDialog(QDialog):
 
         self._chk_limit_records.setChecked(config.get("records.limit_enabled", True))
         self._spin_limit.setValue(config.get("records.limit", 1000))
-        stripe = config.get("records.row_stripe", "每三行")
+        stripe = config.get("records.row_stripe", t("settings.stripe.every_3"))
         idx = self._combo_row_stripe.findText(stripe)
         if idx >= 0:
             self._combo_row_stripe.setCurrentIndex(idx)

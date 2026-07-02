@@ -24,9 +24,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from open_navicat.i18n import t
 from open_navicat.dal.connection_pool import _loop as pool_loop
 from open_navicat.dal.connection_pool import connection_pool
+from open_navicat.i18n import t
 from open_navicat.services.connection_manager import connection_manager
 from open_navicat.services.metadata_service import metadata_service
 

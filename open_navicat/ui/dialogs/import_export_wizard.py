@@ -30,13 +30,13 @@ class FormatPage(QWizardPage):
     """Page 1: select import/export format."""
 
     FORMATS = [
-        ("txt", "文本文件 (*.txt)"),
-        ("csv", "CSV 文件 (*.csv)"),
-        ("json", "JSON 文件 (*.json)"),
-        ("xml", "XML 文件 (*.xml)"),
-        ("html", "HTML 文件 (*.html)"),
-        ("sql", "SQL 脚本文件 (*.sql)"),
-        ("xlsx", "Excel 文件 (*.xlsx)"),
+        ("txt", t("import_export.file_type.text")),
+        ("csv", t("import_export.file_type.csv")),
+        ("json", t("import_export.file_type.json")),
+        ("xml", t("import_export.file_type.xml")),
+        ("html", t("import_export.file_type.html")),
+        ("sql", t("import_export.file_type.sql")),
+        ("xlsx", t("import_export.file_type.excel")),
     ]
 
     def __init__(self, is_import: bool = True) -> None:
@@ -63,21 +63,21 @@ class FilePage(QWizardPage):
         self.setTitle(t("import_export.step_file"))
         layout = QFormLayout(self)
         self._path_input = QLineEdit(self)
-        self._path_input.setPlaceholderText("选择文件路径...")
-        browse_btn = QPushButton("浏览...", self)
+        self._path_input.setPlaceholderText(t("import_export.file_placeholder"))
+        browse_btn = QPushButton(t("import_export.btn.browse"), self)
         browse_btn.clicked.connect(self._browse)
         row = QHBoxLayout()
         row.addWidget(self._path_input)
         row.addWidget(browse_btn)
-        layout.addRow("文件:", row)
+        layout.addRow(t("import_export.label.file"), row)
         self.registerField("file_path*", self._path_input)
 
     def _browse(self) -> None:
         filter_str = "文本文件 (*.txt);;CSV (*.csv);;JSON (*.json);;XML (*.xml);;HTML (*.html);;SQL (*.sql);;Excel (*.xlsx);;所有文件 (*)"
         if self._is_import:
-            path, _ = QFileDialog.getOpenFileName(self, "选择导入文件", "", filter_str)
+            path, _ = QFileDialog.getOpenFileName(self, t("import_export.import_file_dialog"), "", filter_str)
         else:
-            path, _ = QFileDialog.getSaveFileName(self, "选择导出路径", "export", filter_str)
+            path, _ = QFileDialog.getSaveFileName(self, t("import_export.export_file_dialog"), "export", filter_str)
         if path:
             self._path_input.setText(path)
 
@@ -99,7 +99,7 @@ class OptionsPage(QWizardPage):
         layout.addRow(t("import_export.encoding") + ":", self._encoding_combo)
 
         self._delimiter_combo = QComboBox(self)
-        self._delimiter_combo.addItems([", (逗号)", "; (分号)", "\t (制表符)", "| (竖线)"])
+        self._delimiter_combo.addItems([t("import_export.delimiter.comma"), t("import_export.delimiter.semicolon"), t("import_export.delimiter.tab"), t("import_export.delimiter.pipe")])
         layout.addRow(t("import_export.delimiter") + ":", self._delimiter_combo)
 
         self._header_check = QCheckBox(t("import_export.has_header"), self)
@@ -109,8 +109,8 @@ class OptionsPage(QWizardPage):
         self._batch_spin = QSpinBox(self)
         self._batch_spin.setRange(10, 10000)
         self._batch_spin.setValue(500)
-        self._batch_spin.setSuffix(" 行/批")
-        layout.addRow("批量大小:", self._batch_spin)
+        self._batch_spin.setSuffix(f" {t('import_export.rows_per_batch')}")
+        layout.addRow(t("import_export.label.batch_size"), self._batch_spin)
 
     def encoding(self) -> str:
         return self._encoding_combo.currentText()
@@ -284,12 +284,12 @@ class ImportWizard(QWizard):
                     rows.append(row_data)
 
             if not rows:
-                self._confirm_page.set_result("文件为空")
+                self._confirm_page.set_result(t("import_export.msg.file_empty"))
                 return
 
             connector = connection_pool.get(self._connection_id)
             if not connector:
-                self._confirm_page.set_result("未连接")
+                self._confirm_page.set_result(t("import_export.msg.not_connected"))
                 return
 
             total = 0
@@ -337,14 +337,14 @@ class ExportWizard(QWizard):
 
         connector = connection_pool.get(self._connection_id)
         if not connector:
-            self._confirm_page.set_result("未连接")
+            self._confirm_page.set_result(t("import_export.msg.not_connected"))
             return
 
         try:
             sql = f"SELECT * FROM `{self._database}`.`{self._table}`"
             result = pool_loop.run_until_complete(connector.execute(sql))
             if not result.columns:
-                self._confirm_page.set_result("无数据")
+                self._confirm_page.set_result(t("import_export.msg.no_data"))
                 return
 
             cols = [c.name for c in result.columns]

@@ -300,7 +300,7 @@ class MainWindow(QMainWindow):
         act_dict.triggered.connect(self._show_data_dictionary)
         tools_menu.addAction(act_dict)
         tools_menu.addSeparator()
-        act_scheduler = QAction("定时任务", self)
+        act_scheduler = QAction(t("menu.tools.scheduler"), self)
         act_scheduler.triggered.connect(self._show_scheduler)
         tools_menu.addAction(act_scheduler)
         act_bi = QAction(t("menu.tools.bi_dashboard"), self)
@@ -317,7 +317,7 @@ class MainWindow(QMainWindow):
         act_cmdline.setShortcut(QKeySequence("F6"))
         act_cmdline.triggered.connect(self._show_command_line)
         tools_menu.addAction(act_cmdline)
-        act_monitor = QAction("服务器监控", self)
+        act_monitor = QAction(t("menu.tools.server_monitor"), self)
         act_monitor.triggered.connect(self._show_server_monitor)
         tools_menu.addAction(act_monitor)
         act_history = QAction(t("menu.tools.history_log"), self)
@@ -516,7 +516,7 @@ class MainWindow(QMainWindow):
                 if data:
                     db = data.get("database", "")
         if not db:
-            QMessageBox.warning(self, t("common.notice"), "请先在对象浏览器中选择一个数据库")
+            QMessageBox.warning(self, t("common.notice"), t("main_window.msg.select_db_browser"))
             return
         from open_navicat.ui.widgets.query_builder import QueryBuilderWidget
         builder = QueryBuilderWidget(active, db, parent=self._workspace)
@@ -531,7 +531,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, t("common.notice"), t("prompt.need_connection"))
             return
         panel = DataSyncPanel(active, parent=self._workspace)
-        idx = self._workspace.addTab(panel, "数据同步")
+        idx = self._workspace.addTab(panel, t("tab.data_sync"))
         self._workspace.setCurrentIndex(idx)
 
     @Slot()
@@ -554,10 +554,10 @@ class MainWindow(QMainWindow):
                 if data:
                     db = data.get("database", "")
         if not db:
-            QMessageBox.warning(self, t("common.notice"), "请先选择数据库")
+            QMessageBox.warning(self, t("common.notice"), t("main_window.msg.select_db"))
             return
         panel = DataDictionaryWidget(conn_id, db, parent=self._workspace)
-        idx = self._workspace.addTab(panel, f"📖 数据字典 - {db}")
+        idx = self._workspace.addTab(panel, t("tab.data_dictionary", db=db))
         self._workspace.setCurrentIndex(idx)
 
     @Slot()
@@ -575,7 +575,7 @@ class MainWindow(QMainWindow):
                 if data:
                     db = data.get("database", "")
         panel = CommandLineWidget(conn_id, db, parent=self._workspace)
-        idx = self._workspace.addTab(panel, "💻 命令列")
+        idx = self._workspace.addTab(panel, t("tab.command_line"))
         self._workspace.setCurrentIndex(idx)
 
     @Slot()
@@ -586,7 +586,7 @@ class MainWindow(QMainWindow):
             return
         from open_navicat.ui.widgets.data_transfer import DataTransferWidget
         panel = DataTransferWidget(conn_id, parent=self._workspace)
-        idx = self._workspace.addTab(panel, "📦 数据传输")
+        idx = self._workspace.addTab(panel, t("tab.data_transfer"))
         self._workspace.setCurrentIndex(idx)
 
     @Slot()
@@ -597,21 +597,21 @@ class MainWindow(QMainWindow):
             return
         from open_navicat.ui.widgets.server_monitor import ServerMonitorWidget
         panel = ServerMonitorWidget(conn_id, parent=self._workspace)
-        idx = self._workspace.addTab(panel, "🖥️ 服务器监控")
+        idx = self._workspace.addTab(panel, t("tab.server_monitor"))
         self._workspace.setCurrentIndex(idx)
 
     @Slot()
     def _show_history_log(self) -> None:
         from open_navicat.ui.widgets.history_log import HistoryLogWidget
         panel = HistoryLogWidget(parent=self._workspace)
-        idx = self._workspace.addTab(panel, "📋 历史日志")
+        idx = self._workspace.addTab(panel, t("tab.history_log"))
         self._workspace.setCurrentIndex(idx)
 
     @Slot()
     def _show_scheduler(self) -> None:
         active = self._get_active_connection() or ""
         panel = SchedulerPanel(active, parent=self._workspace)
-        idx = self._workspace.addTab(panel, "定时任务")
+        idx = self._workspace.addTab(panel, t("tab.scheduler"))
         self._workspace.setCurrentIndex(idx)
 
     @Slot()
@@ -749,7 +749,7 @@ class MainWindow(QMainWindow):
         """Search across all tables/columns in the connected database."""
         active = self._get_active_connection()
         if not active:
-            QMessageBox.information(self, t("menu.edit.advanced_find"), "请先连接到数据库。")
+            QMessageBox.information(self, t("menu.edit.advanced_find"), t("main_window.msg.connect_db"))
             return
         from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QListWidget, QVBoxLayout
 
@@ -760,14 +760,14 @@ class MainWindow(QMainWindow):
             return
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("高级查找")
+        dlg.setWindowTitle(t("advanced_find.title"))
         dlg.resize(500, 400)
         layout = QVBoxLayout(dlg)
         search_row = QHBoxLayout()
         inp = QLineEdit(dlg)
-        inp.setPlaceholderText("输入搜索关键词...")
+        inp.setPlaceholderText(t("advanced_find.placeholder"))
         search_row.addWidget(inp, 1)
-        btn = QPushButton("搜索", dlg)
+        btn = QPushButton(t("advanced_find.btn.search"), dlg)
         btn.setObjectName("primaryBtn")
         search_row.addWidget(btn)
         layout.addLayout(search_row)
@@ -781,28 +781,28 @@ class MainWindow(QMainWindow):
             if not q:
                 return
             results.clear()
-            status.setText("搜索中...")
+            status.setText(t("advanced_find.status.searching"))
             databases = [d.name for d in metadata_service.list_databases(active)]
             found = 0
             for db in databases:
                 tables = metadata_service.list_tables(active, db)
                 for tbl in tables:
                     if q in tbl.lower():
-                        results.addItem(f"表: {db}.{tbl}")
+                        results.addItem(f"{t('advanced_find.result.table_prefix')}{db}.{tbl}")
                         found += 1
                     try:
                         info = metadata_service.get_table_info(active, db, tbl)
                         if info:
                             for col in info.columns:
                                 if q in col.name.lower():
-                                    results.addItem(f"列: {db}.{tbl}.{col.name} ({col.data_type})")
+                                    results.addItem(f"{t('advanced_find.result.column_prefix')}{db}.{tbl}.{col.name} ({col.data_type})")
                                     found += 1
                     except Exception:
                         pass
-            status.setText(f"找到 {found} 个匹配")
+            status.setText(t("advanced_find.status.found", count=found))
         btn.clicked.connect(do_search)
         inp.returnPressed.connect(do_search)
-        close_btn = QPushButton("关闭", dlg)
+        close_btn = QPushButton(t("common.close"), dlg)
         close_btn.clicked.connect(dlg.accept)
         layout.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignRight)
         dlg.exec()
@@ -849,7 +849,7 @@ class MainWindow(QMainWindow):
             return
         items = [self._workspace.tabText(i) for i in range(count)]
         from PySide6.QtWidgets import QInputDialog
-        name, ok = QInputDialog.getItem(self, t("menu.window.switch_tab"), "选择标签页:", items, 0, False)
+        name, ok = QInputDialog.getItem(self, t("menu.window.switch_tab"), t("main_window.msg.select_tab"), items, 0, False)
         if ok and name:
             for i in range(count):
                 if self._workspace.tabText(i) == name:

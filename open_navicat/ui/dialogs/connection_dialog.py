@@ -157,7 +157,7 @@ class ConnectionDialog(QDialog):
         self._btn_test.clicked.connect(self._test_connection)
         btn_layout.addWidget(self._btn_test)
 
-        self._btn_copy_uri = QPushButton("复制连接 URI", self)
+        self._btn_copy_uri = QPushButton(t("connection.copy_uri"), self)
         self._btn_copy_uri.clicked.connect(self._copy_uri)
         btn_layout.addWidget(self._btn_copy_uri)
 

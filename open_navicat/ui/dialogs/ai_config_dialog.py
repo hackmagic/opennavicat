@@ -28,8 +28,8 @@ class AIConfigDialog(QDialog):
     PROVIDERS = [
         ("openai", "OpenAI"),
         ("deepseek", "DeepSeek"),
-        ("ollama", "Ollama (本地)"),
-        ("custom", "自定义(兼容OpenAI)"),
+        ("ollama", t("ai.config.ollama")),
+        ("custom", t("ai.config.custom")),
     ]
 
     def __init__(self, parent=None) -> None:
@@ -50,7 +50,7 @@ class AIConfigDialog(QDialog):
         for pid, pname in self.PROVIDERS:
             self._combo_provider.addItem(pname, pid)
         self._combo_provider.currentIndexChanged.connect(self._on_provider_changed)
-        p_layout.addRow("提供商:", self._combo_provider)
+        p_layout.addRow(t("ai.config.provider"), self._combo_provider)
 
         layout.addWidget(provider_group)
 
@@ -166,7 +166,7 @@ class AIConfigDialog(QDialog):
         """Test the current AI config by making a simple API call."""
         cfg = self._collect_config()
         if not cfg["api_key"] and cfg["provider"] != "ollama":
-            QMessageBox.warning(self, "提示", "请先输入 API Key")
+            QMessageBox.warning(self, t("common.notice"), t("ai.config.enter_key"))
             return
 
         self._btn_test.setEnabled(False)
