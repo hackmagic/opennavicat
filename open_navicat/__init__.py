@@ -6,6 +6,6 @@ Designed for the AI era: natural-language queries, CLI automation, and GUI optio
 Supports MySQL, MariaDB, and more.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"
 __app_name__ = "OpenNavicat"
 __org_name__ = "OpenNavicat"
