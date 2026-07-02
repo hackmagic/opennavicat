@@ -39,7 +39,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    if "--gui" in sys.argv or os.environ.get("OPENNAVICAT_MODE") == "gui":
-        sys.exit(main())
-    else:
+    if len(sys.argv) > 1:
         cli_main()
+    else:
+        sys.exit(main())
