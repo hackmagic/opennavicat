@@ -1126,7 +1126,7 @@ class ObjectDesignerWidget(QWidget):
             else:
                 QMessageBox.warning(self, t("object_designer.execute_failed"), result.error_message or t("object_designer.sql_error"))
         except Exception as e:
-            QMessageBox.warning(self, "执行失败", str(e))
+            QMessageBox.warning(self, t("object_designer.execute_failed"), str(e))
 
 
 # ── Convenience ───────────────────────────────────────────────────────────

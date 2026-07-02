@@ -15,8 +15,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal, Slot
-
-from open_navicat.i18n import t
 from PySide6.QtGui import QBrush, QColor, QFont, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -46,6 +44,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from open_navicat.i18n import t
 
 # ── Color Palette ─────────────────────────────────────────────────────────
 

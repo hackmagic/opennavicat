@@ -397,7 +397,7 @@ class ObjectBrowser(QTreeWidget):
             from open_navicat.ui.widgets.query_manager import QueryManagerWidget
             if hasattr(mw, '_workspace'):
                 qm = QueryManagerWidget(conn_id, db_name, parent=mw._workspace)
-                idx = mw._workspace.addTab(qm, f"📂 查询 - {db_name}")
+                idx = mw._workspace.addTab(qm, t("sql_editor.query_manager_tab", database=db_name))
                 mw._workspace.setCurrentIndex(idx)
         elif "tables" in cat_key:
             self._open_table_list(conn_id, db_name)
@@ -774,7 +774,7 @@ class ObjectBrowser(QTreeWidget):
                     pool_loop.run_until_complete(connector.execute(f"USE `{database}`"))
                 pool_loop.run_until_complete(connector.execute(stmt))
             except Exception as e:
-                errors.append(f"第 {i+1} 条: {e}")
+                errors.append(f"{t('browser.statement_number', n=i+1)}: {e}")
         progress.setValue(len(statements))
         progress.close()
         if errors:
@@ -828,7 +828,8 @@ class ObjectBrowser(QTreeWidget):
         ok = connection_pool.open(new_info)
         if not ok:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self.window(), "连接失败", f"无法使用新配置连接到 {new_info.host}")
+            QMessageBox.warning(self.window(), t("connection.conn_failed"),
+                                t("browser.connect_failed_new_config", host=new_info.host))
 
         # Update tree item
         item.setText(0, new_info.display_name)
@@ -982,7 +983,7 @@ class ObjectBrowser(QTreeWidget):
             return
         from PySide6.QtWidgets import QInputDialog, QLineEdit
         name, ok = QInputDialog.getText(
-            self.window(), t("browser.rename_query"), "新名称:", QLineEdit.EchoMode.Normal,
+            self.window(), t("browser.rename_query"), t("common.rename_prompt"), QLineEdit.EchoMode.Normal,
             data.get("name", ""),
         )
         if ok and name:
@@ -999,8 +1000,8 @@ class ObjectBrowser(QTreeWidget):
             return
         from PySide6.QtWidgets import QMessageBox
         reply = QMessageBox.question(
-            self.window(), t("browser.delete_query"),
-            f"确定要删除查询 '{data.get('name', '')}' 吗？",
+            self.window(),             t("browser.delete_query"),
+            t("browser.delete_query_confirm", name=data.get('name', '')),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -1350,7 +1351,7 @@ class ObjectBrowser(QTreeWidget):
                 QMessageBox.information(self.window(), t("common.success"),
                     t("browser.view_copied", name=name, target=target_db))
             else:
-                QMessageBox.information(self.window(), "提示",
+                QMessageBox.information(self.window(), t("common.notice"),
                     t("browser.unsupported_copy", type=obj_type))
         except Exception as e:
             QMessageBox.warning(self.window(), t("browser.copy_failed"), str(e))
