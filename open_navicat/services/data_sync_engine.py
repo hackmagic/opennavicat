@@ -56,8 +56,10 @@ class DataSyncEngine:
         target_conn_id: str,
         target_database: str,
         target_table: str = "",
+        incremental_column: str = "",
+        last_sync_value: str = "",
     ) -> DataCompareResult:
-        """Compare all rows between source and target tables."""
+        """Compare rows between source and target tables. If incremental_column is set, only sync rows where that column > last_sync_value."""
         target_table = target_table or source_table
         result = DataCompareResult(
             source_table=source_table,
@@ -139,8 +141,9 @@ class DataSyncEngine:
         result.pk_columns = pk_cols
 
         # Fetch all rows from both sides
+        inc_filter = f" WHERE {q}{incremental_column}{q} > '{last_sync_value}'" if incremental_column else ""
         cols_csv = ", ".join(f"{q}{c}{q}" for c in col_names)
-        src_sql = f"SELECT {cols_csv} FROM {q}{source_database}{q}.{q}{source_table}{q}"
+        src_sql = f"SELECT {cols_csv} FROM {q}{source_database}{q}.{q}{source_table}{q}{inc_filter}"
         tgt_sql = f"SELECT {cols_csv} FROM {q}{target_database}{q}.{q}{target_table}{q}"
 
         src_rows = pool_loop.run_until_complete(src_conn.execute(src_sql))

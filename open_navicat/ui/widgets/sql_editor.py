@@ -450,6 +450,11 @@ class SQLEditorWidget(QWidget):
         btn_simplify.clicked.connect(self._simplify)
         m_layout.addWidget(btn_simplify)
 
+        btn_compare = QPushButton("对比当前查询", mini_bar)
+        btn_compare.setToolTip("Compare current SQL with another query side by side")
+        btn_compare.clicked.connect(self._open_compare_dialog)
+        m_layout.addWidget(btn_compare)
+
         btn_clear = QPushButton(t("sql_editor.clear"), mini_bar)
         btn_clear.clicked.connect(lambda: self._editor.clear())
         m_layout.addWidget(btn_clear)
@@ -1057,6 +1062,11 @@ class SQLEditorWidget(QWidget):
         raw = self._editor.toPlainText()
         simplified = sqlparse.format(raw, reindent=False, keyword_case="upper")
         self._editor.setPlainText(simplified)
+
+    def _open_compare_dialog(self) -> None:
+        from open_navicat.ui.dialogs.query_compare_dialog import QueryCompareDialog
+        dlg = QueryCompareDialog(sql_a=self._editor.toPlainText(), sql_b="", parent=self.window())
+        dlg.exec()
 
     # ---- snippets ----
 

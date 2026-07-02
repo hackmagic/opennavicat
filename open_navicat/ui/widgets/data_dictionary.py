@@ -52,6 +52,9 @@ class DataDictionaryWidget(QWidget):
         btn_export = QPushButton("📤 导出 HTML")
         btn_export.clicked.connect(self._export_html)
         h_layout.addWidget(btn_export)
+        btn_export_pdf = QPushButton("📄 导出 PDF")
+        btn_export_pdf.clicked.connect(self._export_pdf)
+        h_layout.addWidget(btn_export_pdf)
         layout.addWidget(header)
 
         # Splitter: table list + detail
@@ -182,3 +185,43 @@ class DataDictionaryWidget(QWidget):
         lines.append("</body></html>")
         with open(path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
+
+    def _export_pdf(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(self, "导出数据字典 PDF", f"{self._database}_dictionary.pdf", "PDF 文件 (*.pdf)")
+        if not path:
+            return
+        from PySide6.QtGui import QTextDocument
+        from PySide6.QtPrintSupport import QPrinter
+        html_lines = [
+            "<html><head><meta charset='utf-8'><style>"
+            "body{font-family:sans-serif;margin:20px}"
+            "table{border-collapse:collapse;width:100%;margin:10px 0}"
+            "th,td{border:1px solid #555;padding:4px 8px;text-align:left}"
+            "th{background:#e0e0e0}h2{color:#333}"
+            "</style></head><body>",
+            f"<h1>数据字典 — {self._database}</h1>",
+        ]
+        for info in self._tables:
+            html_lines.append(f"<h2>{info['name']}</h2>")
+            html_lines.append("<table><tr><th>字段名</th><th>类型</th><th>可空</th><th>默认值</th><th>主键</th><th>自增</th><th>注释</th></tr>")
+            try:
+                connector = connection_pool.get(self._connection_id)
+                table_info = pool_loop.run_until_complete(connector.get_table_info(self._database, info["name"]))
+                for col in table_info.columns:
+                    html_lines.append(f"<tr><td>{col.name}</td><td>{col.data_type}</td>"
+                                     f"<td>{'YES' if col.nullable else 'NO'}</td>"
+                                     f"<td>{col.default or ''}</td>"
+                                     f"<td>{'PRI' if col.is_primary_key else ''}</td>"
+                                     f"<td>{'AUTO' if col.is_auto_increment else ''}</td>"
+                                     f"<td>{col.comment}</td></tr>")
+            except Exception:
+                pass
+            html_lines.append("</table>")
+        html_lines.append("</body></html>")
+        doc = QTextDocument()
+        doc.setHtml("\n".join(html_lines))
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+        printer.setOutputFileName(path)
+        doc.print_(printer)

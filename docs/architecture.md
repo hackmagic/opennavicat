@@ -61,7 +61,8 @@ main.py
   │   ├─ data_cmd.py     ──→ services/query_engine       ──→ dal/mysql_connector.py
   │   ├─ backup_cmd.py   ──→ services/backup_service      ──→ subprocess(mysqldump/pg_dump)
   │   ├─ ai_cmd.py       ──→ services/ai_service          ──→ httpx/OpenAI
-  │   └─ snippet_cmd.py  ──→ dal/local_config              (SQLite snippets table)
+  │   ├─ snippet_cmd.py  ──→ dal/local_config              (SQLite snippets table)
+  │   └─ cloud_cmd.py    ──→ services/cloud_discovery      (cloud provider APIs)
   │
   └─ app.py              (QApplication, GUI 入口)
       └─ ui/main_window.py
@@ -85,18 +86,21 @@ main.py
 | `ConnectionDialog` | 连接编辑表单 | `ConnectionManager` |
 | `SnippetManagerDialog` | 代码片段编辑/管理 (CRUD + 变量替换) | `local_db` |
 | `BlobViewerDialog` | BLOB 图片/文本/十六进制查看 | — |
+| `QueryBuilderWidget` | 可视化拖拽 SQL 查询构建器 | `metadata_service` |
+| `QueryCompareDialog` | 并排 SQL 对比 | — |
 
 ### 4.2 CLI 层 (open_navicat/cli/)
 
 | 命令组 | 入口文件 | 子命令数 | 说明 |
 |--------|----------|----------|------|
 | `conn` | `conn_cmd.py` | 12 | list/add/edit/remove/test/open/close/export/import + group list/rename/delete |
-| `query` | `query_cmd.py` | 5 | run/file/explain/nl/history |
-| `schema` | `schema_cmd.py` | 6 | list/show/create/diff/sync/design + databases |
+| `query` | `query_cmd.py` | 6 | run/file/explain/nl/history/stream |
+| `schema` | `schema_cmd.py` | 7 | list/show/create/diff/sync/design + databases |
 | `data` | `data_cmd.py` | 4 | browse/export/import/generate |
 | `backup` | `backup_cmd.py` | 9 | create/restore/list/schedule/delete/history/jobs/job-remove/job-toggle |
-| `ai` | `ai_cmd.py` | 12 | ask/optimize/explain/fix/chat/tables/agent/config/test/chat-history/schema/build |
+| `ai` | `ai_cmd.py` | 15 | ask/optimize/explain/fix/chat/tables/agent/config/test/chat-history/schema/build/data-quality/anomaly/review |
 | `snippet` | `snippet_cmd.py` | 4 | list/add/remove/show |
+| `cloud` | `cloud_cmd.py` | 1 | discover |
 | `snippet` | `snippet_cmd.py` | 4 | list/add/remove/show |
 
 ### 4.3 服务层 (open_navicat/services/)
@@ -108,11 +112,12 @@ main.py
 | `QueryCache` | LRU 查询结果缓存 (TTL 60s, max 256) | `get()`, `set()`, `invalidate()` |
 | `QueryCache` | LRU 查询结果缓存 (TTL 60s, max 256) | `get()`, `set()`, `invalidate()` |
 | `MetadataService` | Schema 信息 | `list_databases()`, `get_table_info()`, `list_tables()` |
-| `AIService` | LLM 集成 (含 Function Calling + 多轮 Schema 设计) | `nl2sql()`, `optimize()`, `agent()`, `design_schema_iterative()`, `chat()` |
+| `AIService` | LLM 集成 (含 Function Calling + 多轮 Schema 设计 + 数据质量/异常检测/SQL Review) | `nl2sql()`, `optimize()`, `agent()`, `design_schema_iterative()`, `chat()`, `data_quality()`, `anomaly_detection()`, `sql_review()` |
 | `BackupService` | 备份/恢复 | `backup()`, `restore()`, `schedule_backup()` (mysqldump + pg_dump) |
 | `SyncEngine` | 结构对比与同步 | `compare_schemas()`, `sync_schema()`, `generate_sync_sql()` (MySQL/PostgreSQL) |
-| `DataSyncEngine` | 数据对比与同步 | `compare_data()`, `sync_data()`, `generate_sync_sql()` (MySQL/PostgreSQL) |
+| `DataSyncEngine` | 数据对比与同步 (含增量同步) | `compare_tables()`, `sync_data()`, `generate_sync_script()` (MySQL/PostgreSQL) |
 | `AutomationService` | 定时调度 | `add_job()`, `remove_job()`, `list_jobs()` (APScheduler, backup/query/sync) |
+| `CloudDiscoveryService` | 云数据库发现 (AWS 存根) | `discover_aws()`, `discover_all()` |
 
 ### 4.4 数据访问层 (open_navicat/dal/)
 
@@ -133,6 +138,7 @@ main.py
 | `safe_password.py` | 密码 AES-GCM 加密存储 |
 | `output_formatter.py` | CLI 输出格式化 (table/json/csv/markdown) |
 | `query_cache.py` | LRU 查询结果缓存 (TTL 60s, max 256) |
+| `cloud_discovery.py` | 云数据库发现服务 |
 
 ## 5. 技术栈
 

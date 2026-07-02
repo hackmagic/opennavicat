@@ -13,6 +13,7 @@ from open_navicat.ui.widgets.history_log import HistoryLogWidget
 from open_navicat.ui.widgets.model_designer import ModelDesignerWidget
 from open_navicat.ui.widgets.object_browser import ObjectBrowser
 from open_navicat.ui.widgets.object_designer import ObjectDesignerWidget
+from open_navicat.ui.widgets.query_builder import QueryBuilderWidget
 from open_navicat.ui.widgets.query_manager import QueryManagerWidget
 from open_navicat.ui.widgets.scheduler_panel import SchedulerPanel
 from open_navicat.ui.widgets.schema_sync_panel import SchemaSyncPanel
@@ -36,6 +37,7 @@ __all__ = [
     "BIDashboardWidget",
     "ModelDesignerWidget",
     "ObjectDesignerWidget",
+    "QueryBuilderWidget",
     "DataSyncPanel",
     "SchedulerPanel",
     "DataDictionaryWidget",

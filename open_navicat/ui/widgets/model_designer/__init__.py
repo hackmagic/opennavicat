@@ -204,6 +204,7 @@ class EntityItem(QGraphicsItem):
         self._entity = entity
         self._width = Style.ENTITY_WIDTH
         self._selected = False
+        self._model_level = "physical"  # conceptual | logical | physical
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True)
@@ -213,6 +214,10 @@ class EntityItem(QGraphicsItem):
 
     def entity(self) -> ModelEntity:
         return self._entity
+
+    def set_model_level(self, level: str) -> None:
+        self._model_level = level
+        self.prepareGeometryChange()
 
     def boundingRect(self) -> QRectF:
         h = self._header_height() + self._body_height()
@@ -273,26 +278,50 @@ class EntityItem(QGraphicsItem):
             y = rect.y() + hh + 4 + i * Style.ROW_HEIGHT
             col_rect = QRectF(rect.x() + 8, y, rect.width() - 16, Style.ROW_HEIGHT)
 
-            # PK indicator
-            if col.is_primary_key:
-                painter.setPen(Style.TEXT_PK)
-                painter.drawText(QRectF(rect.x() + 8, y, 24, Style.ROW_HEIGHT),
-                                 "PK")
-                painter.setPen(Style.TEXT_COLUMN)
-                painter.drawText(QRectF(rect.x() + 32, y, rect.width() - 40, Style.ROW_HEIGHT),
-                                 f"{col.name}  {col.data_type}")
-            elif col.is_foreign_key:
-                painter.setPen(Style.TEXT_FK)
-                painter.drawText(QRectF(rect.x() + 8, y, 24, Style.ROW_HEIGHT),
-                                 "FK")
-                painter.setPen(Style.TEXT_COLUMN)
-                painter.drawText(QRectF(rect.x() + 32, y, rect.width() - 40, Style.ROW_HEIGHT),
-                                 f"{col.name}  {col.data_type}")
-            else:
+            if self._model_level == "conceptual":
                 painter.setPen(Style.TEXT_COLUMN)
                 painter.drawText(col_rect,
                                  Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                                 f"  {col.name}  {col.data_type}")
+                                 f"  {col.name}")
+            elif self._model_level == "logical":
+                if col.is_primary_key:
+                    painter.setPen(Style.TEXT_PK)
+                    painter.drawText(QRectF(rect.x() + 8, y, 24, Style.ROW_HEIGHT), "PK")
+                    painter.setPen(Style.TEXT_COLUMN)
+                    painter.drawText(QRectF(rect.x() + 32, y, rect.width() - 40, Style.ROW_HEIGHT),
+                                     f"{col.name}")
+                elif col.is_foreign_key:
+                    painter.setPen(Style.TEXT_FK)
+                    painter.drawText(QRectF(rect.x() + 8, y, 24, Style.ROW_HEIGHT), "FK")
+                    painter.setPen(Style.TEXT_COLUMN)
+                    painter.drawText(QRectF(rect.x() + 32, y, rect.width() - 40, Style.ROW_HEIGHT),
+                                     f"{col.name}")
+                else:
+                    painter.setPen(Style.TEXT_COLUMN)
+                    painter.drawText(col_rect,
+                                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                                     f"  {col.name}")
+            else:
+                # physical — full detail
+                if col.is_primary_key:
+                    painter.setPen(Style.TEXT_PK)
+                    painter.drawText(QRectF(rect.x() + 8, y, 24, Style.ROW_HEIGHT),
+                                     "PK")
+                    painter.setPen(Style.TEXT_COLUMN)
+                    painter.drawText(QRectF(rect.x() + 32, y, rect.width() - 40, Style.ROW_HEIGHT),
+                                     f"{col.name}  {col.data_type}")
+                elif col.is_foreign_key:
+                    painter.setPen(Style.TEXT_FK)
+                    painter.drawText(QRectF(rect.x() + 8, y, 24, Style.ROW_HEIGHT),
+                                     "FK")
+                    painter.setPen(Style.TEXT_COLUMN)
+                    painter.drawText(QRectF(rect.x() + 32, y, rect.width() - 40, Style.ROW_HEIGHT),
+                                     f"{col.name}  {col.data_type}")
+                else:
+                    painter.setPen(Style.TEXT_COLUMN)
+                    painter.drawText(col_rect,
+                                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                                     f"  {col.name}  {col.data_type}")
 
         # Selection border
         if self.isSelected():
@@ -625,6 +654,7 @@ class ModelDesignerWidget(QWidget):
         self._relations: list[RelationItem] = []
         self._edit_mode = "select"  # select | add_entity | add_relation
         self._rel_source: Optional[EntityItem] = None
+        self._model_level: str = "physical"  # conceptual | logical | physical
 
         self._setup_ui()
 
@@ -703,6 +733,15 @@ class ModelDesignerWidget(QWidget):
             btn.clicked.connect(cb)
             layout.addWidget(btn)
 
+        # Model level selector
+        layout.addWidget(QLabel("|", self), 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(QLabel("模型:", self))
+        self._level_combo = QComboBox(self)
+        self._level_combo.addItems(["概念模型", "逻辑模型", "物理模型"])
+        self._level_combo.setCurrentIndex(2)  # physical by default
+        self._level_combo.currentTextChanged.connect(self._on_level_changed)
+        layout.addWidget(self._level_combo)
+
         layout.addStretch()
 
         for text, tip, cb in [
@@ -730,6 +769,15 @@ class ModelDesignerWidget(QWidget):
         elif mode == "add_relation":
             self._view.setDragMode(QGraphicsView.DragMode.NoDrag)
             self._status.setText("添加关系: 先点来源实体，再点目标实体")
+
+    def _on_level_changed(self, level: str) -> None:
+        mapping = {"概念模型": "conceptual", "逻辑模型": "logical", "物理模型": "physical"}
+        self._model_level = mapping.get(level, "physical")
+        for ent in self._entities.values():
+            ent.set_model_level(self._model_level)
+            ent.update()
+        for rel in self._relations:
+            rel.update()
 
     # ── View click (for adding entities on canvas) ──
 
@@ -781,6 +829,7 @@ class ModelDesignerWidget(QWidget):
             nullable=True,
         ))
         item = EntityItem(entity, pos)
+        item.set_model_level(self._model_level)
         self._scene.addItem(item)
         self._entities[entity.name] = item
 
@@ -938,6 +987,7 @@ class ModelDesignerWidget(QWidget):
                 col = i % cols
                 pos = QPointF(col * spacing_x, row * spacing_y)
                 item = EntityItem(entity, pos)
+                item.set_model_level(self._model_level)
                 self._scene.addItem(item)
                 self._entities[entity.name] = item
 

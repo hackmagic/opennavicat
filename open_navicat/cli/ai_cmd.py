@@ -473,6 +473,51 @@ def ai_build(
         console.print(Panel(Markdown(answer), title="🤖 SQL Query", border_style="green"))
 
 
+@ai_app.command("data-quality")
+def ai_data_quality(
+    table: str = typer.Argument(..., help="Table name"),
+    conn: str = typer.Option("", "--conn", "-c", help="Connection name"),
+) -> None:
+    """Analyze data quality issues in a table."""
+    from open_navicat.services.ai_service import ai_service
+
+    cid = _resolve_conn(conn) if conn else _get_active_conn() if connection_manager.active_ids else ""
+    schema_context = _get_schema_context(cid) if cid else ""
+    console.print("[yellow]🤖 Analyzing data quality...[/yellow]")
+    result = ai_service.data_quality(table, schema_context)
+    console.print(Panel(Markdown(result), title="🔍 Data Quality", border_style="blue"))
+
+
+@ai_app.command("anomaly")
+def ai_anomaly(
+    table: str = typer.Argument(..., help="Table name"),
+    column: str = typer.Argument(..., help="Column name"),
+    conn: str = typer.Option("", "--conn", "-c", help="Connection name"),
+) -> None:
+    """Detect anomalies in table data."""
+    from open_navicat.services.ai_service import ai_service
+
+    console.print("[yellow]🤖 Analyzing anomalies...[/yellow]")
+    result = ai_service.anomaly_detection(table, column)
+    console.print(Panel(Markdown(result), title="📊 Anomaly Detection", border_style="red"))
+
+
+@ai_app.command("review")
+def ai_review(
+    sql: str = typer.Argument(..., help="SQL query to review"),
+    conn: str = typer.Option("", "--conn", "-c", help="Connection name (for schema context)"),
+) -> None:
+    """Review SQL for security and performance issues."""
+    from open_navicat.services.ai_service import ai_service
+
+    cid = _resolve_conn(conn) if conn else _get_active_conn() if connection_manager.active_ids else ""
+    schema_context = _get_schema_context(cid) if cid else ""
+    console.print("[yellow]🤖 Reviewing SQL...[/yellow]")
+    result = ai_service.sql_review(sql, schema_context)
+    console.print(Syntax(sql, "sql", theme="monokai", word_wrap=True))
+    console.print(Panel(Markdown(result), title="🛡️ SQL Review", border_style="yellow"))
+
+
 def ai_test(
     provider: str = typer.Option("", "--provider", "-p", help="Provider to test"),
     api_key: str = typer.Option("", "--api-key", "-k", help="API key"),

@@ -72,6 +72,10 @@ class AppConfig:
                 "api_base": "https://api.openai.com/v1",
                 "model": "gpt-4o-mini",
             },
+            "pool": {
+                "min_size": 1,
+                "max_size": 10,
+            },
             "recent_connections": [],
             "window": {
                 "x": 100,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Slot
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -150,11 +151,16 @@ class ConnectionDialog(QDialog):
 
         layout.addWidget(tabs)
 
-        # ---- Test & Save buttons ----
+        # ---- Test, Copy URI & Save buttons ----
         btn_layout = QHBoxLayout()
         self._btn_test = QPushButton(t("connection.test"), self)
         self._btn_test.clicked.connect(self._test_connection)
         btn_layout.addWidget(self._btn_test)
+
+        self._btn_copy_uri = QPushButton("复制连接 URI", self)
+        self._btn_copy_uri.clicked.connect(self._copy_uri)
+        btn_layout.addWidget(self._btn_copy_uri)
+
         btn_layout.addStretch()
 
         button_box = QDialogButtonBox(
@@ -273,3 +279,9 @@ class ConnectionDialog(QDialog):
 
         self._btn_test.setText(t("connection.test"))
         self._btn_test.setEnabled(True)
+
+    @Slot()
+    def _copy_uri(self) -> None:
+        info = self.connection_info()
+        uri = f"{info.engine}://{info.user}:{info.password}@{info.host}:{info.port}/{info.database}"
+        QGuiApplication.clipboard().setText(uri)

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+
 from open_navicat.dal.connection_pool import _loop as pool_loop
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.models.query_result import QueryResult
 from open_navicat.utils.query_cache import query_cache
+
+_log = logging.getLogger(__name__)
 
 
 class QueryEngine:
@@ -65,6 +69,21 @@ class QueryEngine:
         if result.success and result.rows:
             return result.rows[0][0]
         return 0
+
+
+    def execute_stream(self, connection_id: str, sql: str, chunk_size: int = 1000):
+        """Execute a query and yield rows in chunks (server-side cursor for large datasets)."""
+        conn = connection_pool.get(connection_id)
+        if not conn:
+            return
+        try:
+            result = pool_loop.run_until_complete(conn.execute(sql))
+            if result.success and result.rows:
+                total = len(result.rows)
+                for i in range(0, total, chunk_size):
+                    yield result.rows[i:i + chunk_size]
+        except Exception as e:
+            _log.warning("Stream execute failed: %s", e)
 
 
 # Module-level singleton

@@ -53,6 +53,9 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._restore_geometry()
 
+        # ponytail: pinned tabs set
+        self._pinned_tabs: set[int] = set()
+
     # ---- window setup ----
 
     def _setup_window(self) -> None:
@@ -114,6 +117,8 @@ class MainWindow(QMainWindow):
         self._workspace.setMovable(True)
         self._workspace.tabCloseRequested.connect(self._close_tab)
         self._workspace.tabBarDoubleClicked.connect(self._rename_tab)
+        self._workspace.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._workspace.tabBar().customContextMenuRequested.connect(self._tab_context_menu)
         content_layout.addWidget(self._workspace, 1)
 
         # Status bar
@@ -238,6 +243,11 @@ class MainWindow(QMainWindow):
         act_run.setShortcut(QKeySequence("Ctrl+Return"))
         act_run.triggered.connect(self._run_query)
         query_menu.addAction(act_run)
+        query_menu.addSeparator()
+        act_builder = QAction(t("menu.query.builder"), self)
+        act_builder.setShortcut(QKeySequence("Ctrl+Shift+Q"))
+        act_builder.triggered.connect(self._show_query_builder)
+        query_menu.addAction(act_builder)
 
         # ---- AI ----
         ai_menu = menubar.addMenu(t("menu.ai"))
@@ -380,6 +390,7 @@ class MainWindow(QMainWindow):
             ("|", None, "sep"),
             (t("menu.query.new"), self._new_query, "ghost"),
             (t("menu.query.run"), self._run_query, "primary"),
+            (t("menu.query.builder"), self._show_query_builder, "ghost"),
             ("|", None, "sep"),
             (t("toolbar.design_table"), self._design_table, "ghost"),
             ("|", None, "sep"),
@@ -475,6 +486,28 @@ class MainWindow(QMainWindow):
             return
         backup = BackupPanel(active, parent=self._workspace)
         idx = self._workspace.addTab(backup, t("menu.tools.backup"))
+        self._workspace.setCurrentIndex(idx)
+
+    @Slot()
+    def _show_query_builder(self) -> None:
+        active = self._get_active_connection()
+        if not active:
+            QMessageBox.warning(self, t("common.notice"), t("prompt.need_connection"))
+            return
+        db = ""
+        if hasattr(self, '_object_browser'):
+            item = self._object_browser.currentItem()
+            if item:
+                data = item.data(0, Qt.ItemDataRole.UserRole)
+                if data:
+                    db = data.get("database", "")
+        if not db:
+            QMessageBox.warning(self, t("common.notice"), "请先在对象浏览器中选择一个数据库")
+            return
+        from open_navicat.ui.widgets.query_builder import QueryBuilderWidget
+        builder = QueryBuilderWidget(active, db, parent=self._workspace)
+        builder.sql_generated.connect(self._on_ai_sql_generated)
+        idx = self._workspace.addTab(builder, t("tab.query_builder"))
         self._workspace.setCurrentIndex(idx)
 
     @Slot()
@@ -586,9 +619,32 @@ class MainWindow(QMainWindow):
 
     @Slot(int)
     def _close_tab(self, index: int) -> None:
+        if index in self._pinned_tabs:
+            return  # pinned tabs cannot be closed
         widget = self._workspace.widget(index)
         self._workspace.removeTab(index)
         widget.deleteLater()
+        # Re-index pinned tabs after removal
+        self._pinned_tabs = {i if i < index else i - 1 for i in self._pinned_tabs if i != index}
+
+    def _tab_context_menu(self, pos) -> None:
+        index = self._workspace.tabBar().tabAt(pos)
+        if index < 0:
+            return
+        menu = QMenu(self)
+        is_pinned = index in self._pinned_tabs
+        act_pin = QAction("📌 取消固定" if is_pinned else "📌 固定标签页", self)
+        act_pin.triggered.connect(lambda: self._toggle_pin_tab(index))
+        menu.addAction(act_pin)
+        menu.exec(self._workspace.tabBar().mapToGlobal(pos))
+
+    def _toggle_pin_tab(self, index: int) -> None:
+        if index in self._pinned_tabs:
+            self._pinned_tabs.discard(index)
+            self._workspace.setTabText(index, self._workspace.tabText(index).replace(" 📌", ""))
+        else:
+            self._pinned_tabs.add(index)
+            self._workspace.setTabText(index, self._workspace.tabText(index) + " 📌")
 
     def _rename_tab(self, index: int) -> None:
         from PySide6.QtWidgets import QInputDialog, QLineEdit
@@ -742,10 +798,11 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _close_all_tabs(self) -> None:
-        while self._workspace.count():
-            w = self._workspace.widget(0)
-            self._workspace.removeTab(0)
-            w.deleteLater()
+        for i in range(self._workspace.count() - 1, -1, -1):
+            if i not in self._pinned_tabs:
+                w = self._workspace.widget(i)
+                self._workspace.removeTab(i)
+                w.deleteLater()
 
     @Slot()
     def _switch_tab(self) -> None:

@@ -839,6 +839,145 @@ class _RoutineDesignerTab(QWidget):
         )
 
 
+class _EventDesignerTab(QWidget):
+    """Tab for editing MySQL events."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        top = QHBoxLayout()
+        top.addWidget(QLabel("名称:", self))
+        self._name_edit = QLineEdit(self)
+        self._name_edit.setPlaceholderText("event_name")
+        top.addWidget(self._name_edit, 1)
+        top.addWidget(QLabel("状态:", self))
+        self._status_combo = QComboBox(self)
+        self._status_combo.addItems(["ENABLE", "DISABLE"])
+        top.addWidget(self._status_combo)
+        layout.addLayout(top)
+
+        mid = QHBoxLayout()
+        mid.addWidget(QLabel("调度:", self))
+        self._schedule_edit = QLineEdit(self)
+        self._schedule_edit.setPlaceholderText("EVERY 1 DAY STARTS '2026-01-01 02:00:00'")
+        mid.addWidget(self._schedule_edit, 1)
+        layout.addLayout(mid)
+
+        layout.addWidget(QLabel("程序体 (DO ...):", self))
+        self._body_edit = QTextEdit(self)
+        self._body_edit.setPlaceholderText("BEGIN\n  DELETE FROM logs WHERE created_at < NOW() - INTERVAL 30 DAY;\nEND")
+        self._body_edit.setStyleSheet("background:#1e1e1e;color:#dcdcaa;font-family:Consolas;font-size:12px;border:1px solid #3c3c3c;padding:8px;")
+        layout.addWidget(self._body_edit, 1)
+        layout.addWidget(QLabel("注释:", self))
+        self._comment_edit = QLineEdit(self)
+        layout.addWidget(self._comment_edit)
+
+        preview_group = QGroupBox("DDL 预览", self)
+        p_layout = QVBoxLayout(preview_group)
+        self._ddl_preview = QTextEdit(preview_group)
+        self._ddl_preview.setReadOnly(True)
+        self._ddl_preview.setObjectName("monospaceText")
+        self._ddl_preview.setMaximumHeight(100)
+        p_layout.addWidget(self._ddl_preview)
+        layout.addWidget(preview_group)
+
+        self._name_edit.textChanged.connect(self._update_preview)
+        self._status_combo.currentTextChanged.connect(self._update_preview)
+        self._schedule_edit.textChanged.connect(self._update_preview)
+        self._body_edit.textChanged.connect(self._update_preview)
+        self._comment_edit.textChanged.connect(self._update_preview)
+
+    def _update_preview(self) -> None:
+        ddl = self.get_ddl()
+        self._ddl_preview.setPlainText(ddl or "-- 编辑后自动生成 DDL --")
+
+    def get_ddl(self) -> str:
+        name = self._name_edit.text().strip()
+        schedule = self._schedule_edit.text().strip()
+        body = self._body_edit.toPlainText().strip()
+        if not name or not schedule or not body:
+            return ""
+        status = self._status_combo.currentText()
+        ddl = f"CREATE EVENT `{name}`\nON SCHEDULE {schedule}\n"
+        if status == "DISABLE":
+            ddl += "ON COMPLETION PRESERVE\nDISABLE\n"
+        comment = self._comment_edit.text().strip()
+        if comment:
+            ddl += f"COMMENT '{comment}'\n"
+        ddl += f"DO\n{body}"
+        return ddl
+
+
+class _TriggerDesignerTab(QWidget):
+    """Tab for editing MySQL triggers."""
+
+    TRIGGER_TIMING = ["BEFORE", "AFTER"]
+    TRIGGER_EVENTS = ["INSERT", "UPDATE", "DELETE"]
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        top = QHBoxLayout()
+        top.addWidget(QLabel("名称:", self))
+        self._name_edit = QLineEdit(self)
+        self._name_edit.setPlaceholderText("trigger_name")
+        top.addWidget(self._name_edit, 1)
+        top.addWidget(QLabel("时机:", self))
+        self._timing_combo = QComboBox(self)
+        self._timing_combo.addItems(self.TRIGGER_TIMING)
+        top.addWidget(self._timing_combo)
+        top.addWidget(QLabel("事件:", self))
+        self._event_combo = QComboBox(self)
+        self._event_combo.addItems(self.TRIGGER_EVENTS)
+        top.addWidget(self._event_combo)
+        top.addWidget(QLabel("表:", self))
+        self._table_edit = QLineEdit(self)
+        self._table_edit.setPlaceholderText("table_name")
+        top.addWidget(self._table_edit)
+        layout.addLayout(top)
+
+        layout.addWidget(QLabel("程序体:", self))
+        self._body_edit = QTextEdit(self)
+        self._body_edit.setPlaceholderText("BEGIN\n  INSERT INTO audit_log(table_name, action) VALUES ('table_name', 'INSERT');\nEND")
+        self._body_edit.setStyleSheet("background:#1e1e1e;color:#dcdcaa;font-family:Consolas;font-size:12px;border:1px solid #3c3c3c;padding:8px;")
+        layout.addWidget(self._body_edit, 1)
+
+        preview_group = QGroupBox("DDL 预览", self)
+        p_layout = QVBoxLayout(preview_group)
+        self._ddl_preview = QTextEdit(preview_group)
+        self._ddl_preview.setReadOnly(True)
+        self._ddl_preview.setObjectName("monospaceText")
+        self._ddl_preview.setMaximumHeight(100)
+        p_layout.addWidget(self._ddl_preview)
+        layout.addWidget(preview_group)
+
+        self._name_edit.textChanged.connect(self._update_preview)
+        self._timing_combo.currentTextChanged.connect(self._update_preview)
+        self._event_combo.currentTextChanged.connect(self._update_preview)
+        self._table_edit.textChanged.connect(self._update_preview)
+        self._body_edit.textChanged.connect(self._update_preview)
+
+    def _update_preview(self) -> None:
+        ddl = self.get_ddl()
+        self._ddl_preview.setPlainText(ddl or "-- 编辑后自动生成 DDL --")
+
+    def get_ddl(self) -> str:
+        name = self._name_edit.text().strip()
+        timing = self._timing_combo.currentText()
+        event = self._event_combo.currentText()
+        table = self._table_edit.text().strip()
+        body = self._body_edit.toPlainText().strip()
+        if not name or not table or not body:
+            return ""
+        return f"CREATE TRIGGER `{name}` {timing} {event} ON `{table}`\nFOR EACH ROW\n{body}"
+
+
 # ── Main Object Designer Widget ──────────────────────────────────────────
 
 
@@ -861,7 +1000,7 @@ class ObjectDesignerWidget(QWidget):
         t_layout.setContentsMargins(8, 4, 8, 4)
 
         self._obj_type_combo = QComboBox(toolbar)
-        self._obj_type_combo.addItems(["表 (TABLE)", "视图 (VIEW)", "存储过程/函数 (ROUTINE)"])
+        self._obj_type_combo.addItems(["表 (TABLE)", "视图 (VIEW)", "存储过程/函数 (ROUTINE)", "事件 (EVENT)", "触发器 (TRIGGER)"])
         self._obj_type_combo.currentIndexChanged.connect(self._switch_tab)
         t_layout.addWidget(self._obj_type_combo)
 
@@ -888,10 +1027,14 @@ class ObjectDesignerWidget(QWidget):
         self._table_tab = _TableDesignerTab(parent=self)
         self._view_tab = _ViewDesignerTab(connection_id=self._connection_id, parent=self)
         self._routine_tab = _RoutineDesignerTab(parent=self)
+        self._event_tab = _EventDesignerTab(parent=self)
+        self._trigger_tab = _TriggerDesignerTab(parent=self)
 
         self._tab_widget.addTab(self._table_tab, "表设计")
         self._tab_widget.addTab(self._view_tab, "视图设计")
         self._tab_widget.addTab(self._routine_tab, "程序设计")
+        self._tab_widget.addTab(self._event_tab, "事件设计")
+        self._tab_widget.addTab(self._trigger_tab, "触发器设计")
 
         layout.addWidget(self._tab_widget, 1)
 
@@ -928,6 +1071,10 @@ class ObjectDesignerWidget(QWidget):
             ddl = self._view_tab.get_create_view_sql()
         elif idx == 2:
             ddl = self._routine_tab.get_ddl()
+        elif idx == 3:
+            ddl = self._event_tab.get_ddl()
+        elif idx == 4:
+            ddl = self._trigger_tab.get_ddl()
 
         if not ddl:
             QMessageBox.information(self, "提示", "请先填写必要信息。")
@@ -981,5 +1128,7 @@ __all__ = [
     "_TableDesignerTab",
     "_ViewDesignerTab",
     "_RoutineDesignerTab",
+    "_EventDesignerTab",
+    "_TriggerDesignerTab",
     "SQL_TYPES",
 ]

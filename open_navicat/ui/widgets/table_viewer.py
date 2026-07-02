@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -73,6 +74,14 @@ class TableViewerWidget(QWidget):
         self._loaded_rows: list[list] = []
         self._form_current_row: int = 0
 
+        # ponytail: batch edit stack for undo/redo
+        self._edit_stack: list[dict] = []  # {"row": r, "col": c, "old": v, "new": v}
+        self._edit_pos: int = -1
+        self._dirty: bool = False
+        self._original_values: dict[tuple[int, int], str] = {}
+
+        self._format_rules: list[dict] = []
+
         self._setup_ui()
         self._load_page()
 
@@ -87,14 +96,6 @@ class TableViewerWidget(QWidget):
         self._btn_profile = QPushButton(t("data_viewer.table_profile"), self)
         self._btn_profile.clicked.connect(self._show_table_profile)
         toolbar.addWidget(self._btn_profile)
-
-        self._btn_commit = QPushButton(t("data_viewer.commit"), self)
-        self._btn_commit.clicked.connect(self._commit_transaction)
-        toolbar.addWidget(self._btn_commit)
-
-        self._btn_rollback = QPushButton(t("data_viewer.rollback"), self)
-        self._btn_rollback.clicked.connect(self._rollback_transaction)
-        toolbar.addWidget(self._btn_rollback)
 
         toolbar.addSeparator()
 
@@ -116,6 +117,25 @@ class TableViewerWidget(QWidget):
         self._btn_cell_editor.setChecked(True)
         self._btn_cell_editor.clicked.connect(self._toggle_cell_editor)
         toolbar.addWidget(self._btn_cell_editor)
+
+        # Undo / Redo
+        self._btn_undo = QPushButton("↩ Undo", self)
+        self._btn_undo.clicked.connect(self._undo)
+        self._btn_undo.setEnabled(False)
+        toolbar.addWidget(self._btn_undo)
+        self._btn_redo = QPushButton("↪ Redo", self)
+        self._btn_redo.clicked.connect(self._redo)
+        self._btn_redo.setEnabled(False)
+        toolbar.addWidget(self._btn_redo)
+
+        # Batch Commit / Rollback
+        self._btn_batch_commit = QPushButton(t("data_viewer.commit"), self)
+        self._btn_batch_commit.setProperty("class", "primary")
+        self._btn_batch_commit.clicked.connect(self._commit_batch)
+        toolbar.addWidget(self._btn_batch_commit)
+        self._btn_batch_rollback = QPushButton(t("data_viewer.rollback"), self)
+        self._btn_batch_rollback.clicked.connect(self._rollback_batch)
+        toolbar.addWidget(self._btn_batch_rollback)
 
         # View mode toggle
         self._btn_form_view = QPushButton("📋 Form View", self)
@@ -145,6 +165,10 @@ class TableViewerWidget(QWidget):
         self._btn_columns = QPushButton(t("data_viewer.columns"), self)
         self._btn_columns.clicked.connect(self._show_columns_manager)
         toolbar.addWidget(self._btn_columns)
+
+        self._btn_cond_fmt = QPushButton("条件格式", self)
+        self._btn_cond_fmt.clicked.connect(self._show_conditional_formatting)
+        toolbar.addWidget(self._btn_cond_fmt)
 
         toolbar.addSeparator()
 
@@ -181,6 +205,9 @@ class TableViewerWidget(QWidget):
         self._status_msg = QLabel("", self)
         self._status_msg.setStyleSheet("color: #888; font-size: 11px;")
         toolbar.addWidget(self._status_msg)
+        self._dirty_label = QLabel("", self)
+        self._dirty_label.setStyleSheet("color: #ffa500; font-weight: bold; font-size: 11px;")
+        toolbar.addWidget(self._dirty_label)
 
         layout.addWidget(toolbar)
 
@@ -280,6 +307,12 @@ class TableViewerWidget(QWidget):
         self._load_page()
 
     def _load_page(self) -> None:
+        # Clear pending edits on reload
+        self._edit_stack.clear()
+        self._edit_pos = -1
+        self._original_values.clear()
+        self._update_dirty_state()
+
         connector = connection_pool.get(self._connection_id)
         if not connector:
             return
@@ -352,6 +385,38 @@ class TableViewerWidget(QWidget):
                         item.setToolTip("Double-click to view BLOB")
                     self._table_widget.setItem(row_idx, col_idx, item)
 
+            # Apply conditional formatting rules
+            for rule in self._format_rules:
+                col_idx = self._loaded_column_names.index(rule["col"]) if rule["col"] in self._loaded_column_names else -1
+                if col_idx < 0:
+                    continue
+                op = rule["op"]
+                val = rule["val"]
+                color = QColor(rule["color"])
+                for row_idx in range(len(result.rows)):
+                    cell_val = str(result.rows[row_idx][col_idx]) if result.rows[row_idx][col_idx] is not None else ""
+                    match = False
+                    if op == ">":
+                        try:
+                            match = float(cell_val) > float(val)
+                        except ValueError:
+                            match = cell_val > val
+                    elif op == "<":
+                        try:
+                            match = float(cell_val) < float(val)
+                        except ValueError:
+                            match = cell_val < val
+                    elif op == "=":
+                        match = cell_val == val
+                    elif op == "!=":
+                        match = cell_val != val
+                    elif op == "CONTAINS":
+                        match = val in cell_val
+                    if match:
+                        item = self._table_widget.item(row_idx, col_idx)
+                        if item:
+                            item.setBackground(color)
+
             self._table_widget.horizontalHeader().resizeSections()
         else:
             self._table_widget.setRowCount(0)
@@ -371,7 +436,7 @@ class TableViewerWidget(QWidget):
         return f"[BLOB {_fmt_bytes(size)}]"
 
     def _on_cell_double_click(self, row: int, col: int) -> None:
-        """Open BLOB viewer on double-click of a BLOB cell."""
+        """Open BLOB viewer or FK picker on double-click."""
         item = self._table_widget.item(row, col)
         if item and item.data(Qt.ItemDataRole.UserRole) is not None:
             blob_data = item.data(Qt.ItemDataRole.UserRole)
@@ -380,6 +445,20 @@ class TableViewerWidget(QWidget):
                 from open_navicat.ui.dialogs.blob_viewer import BlobViewerDialog
                 dlg = BlobViewerDialog(blob_data, col_name, self.window())
                 dlg.exec()
+                return
+        col_name = self._loaded_column_names[col] if col < len(self._loaded_column_names) else ""
+        if col_name.endswith("_id"):
+            dlg = QDialog(self.window())
+            dlg.setWindowTitle(f"外键选择 — {col_name}")
+            dlg.resize(300, 400)
+            vl = QVBoxLayout(dlg)
+            lst = QListWidget(dlg)
+            lst.addItem("FK picker would load from referenced table")
+            vl.addWidget(lst)
+            btn = QPushButton("关闭", dlg)
+            btn.clicked.connect(dlg.accept)
+            vl.addWidget(btn)
+            dlg.exec()
 
     def _toggle_view_mode(self, form_mode: bool | None = None) -> None:
         """Switch between table grid (0) and form view (1)."""
@@ -534,35 +613,109 @@ class TableViewerWidget(QWidget):
     # ---- CRUD operations ----
 
     def _on_cell_changed(self, row: int, col: int) -> None:
-        """Update cell value in database when user finishes editing."""
-        connector = connection_pool.get(self._connection_id)
-        if not connector:
-            return
-
+        """Track cell edits in the undo stack (batch mode — not saved until commit)."""
         item = self._table_widget.item(row, col)
         if not item:
             return
 
         new_value = item.text()
-        # Get column name
         col_name = self._table_widget.horizontalHeaderItem(col).text()
         if not col_name:
             return
 
-        # Get primary key column(s) to identify the row
-        pk_col = self._table_widget.horizontalHeaderItem(0).text()
+        # Save original value on first edit
+        key = (row, col)
+        if key not in self._original_values:
+            self._original_values[key] = self._loaded_rows[row][col] if row < len(self._loaded_rows) and col < len(self._loaded_rows[row]) else ""
 
-        # Get the PK value for this row (first column)
-        pk_item = self._table_widget.item(row, 0)
-        if not pk_item:
+        old_value = self._original_values[key]
+        if new_value == old_value:
+            return  # unchanged
+
+        # Truncate redo entries beyond current position
+        del self._edit_stack[self._edit_pos + 1:]
+        self._edit_stack.append({"row": row, "col": col, "old": old_value, "new": new_value, "col_name": col_name})
+        self._edit_pos = len(self._edit_stack) - 1
+        self._update_dirty_state()
+
+    def _update_dirty_state(self) -> None:
+        """Update undo/redo button state and dirty indicator."""
+        self._dirty = self._edit_pos >= 0
+        self._btn_undo.setEnabled(self._edit_pos >= 0)
+        self._btn_redo.setEnabled(self._edit_pos < len(self._edit_stack) - 1)
+        count = self._edit_pos + 1
+        self._dirty_label.setText(f"  ⚡ {count} 个待提交修改" if count else "")
+        for i, edit in enumerate(self._edit_stack):
+            item = self._table_widget.item(edit["row"], edit["col"])
+            if item:
+                bg = QColor("#3a3a00") if i <= self._edit_pos else QColor("#2a2a2a")
+                item.setBackground(bg)
+
+    def _undo(self) -> None:
+        if self._edit_pos < 0:
             return
-        pk_value = pk_item.text()
+        edit = self._edit_stack[self._edit_pos]
+        self._edit_pos -= 1
+        item = self._table_widget.item(edit["row"], edit["col"])
+        if item:
+            self._table_widget.blockSignals(True)
+            item.setText(edit["old"])
+            self._table_widget.blockSignals(False)
+        self._update_dirty_state()
 
-        sql = f"UPDATE `{self._database}`.`{self._table}` SET `{col_name}` = %s WHERE `{pk_col}` = %s"
-        try:
-            pool_loop.run_until_complete(connector.execute(sql, (new_value, pk_value)))
-        except Exception as e:
-            item.setToolTip(f"Update failed: {e}")
+    def _redo(self) -> None:
+        if self._edit_pos >= len(self._edit_stack) - 1:
+            return
+        self._edit_pos += 1
+        edit = self._edit_stack[self._edit_pos]
+        item = self._table_widget.item(edit["row"], edit["col"])
+        if item:
+            self._table_widget.blockSignals(True)
+            item.setText(edit["new"])
+            self._table_widget.blockSignals(False)
+        self._update_dirty_state()
+
+    def _commit_batch(self) -> None:
+        """Flush all pending edits to the database."""
+        if self._edit_pos < 0:
+            return
+        connector = connection_pool.get(self._connection_id)
+        if not connector:
+            return
+        pending = self._edit_stack[:self._edit_pos + 1]
+        pk_col = self._table_widget.horizontalHeaderItem(0).text() if self._table_widget.columnCount() else "id"
+        errors = 0
+        seen = set()
+        for edit in pending:
+            pk_item = self._table_widget.item(edit["row"], 0)
+            pk_val = pk_item.text() if pk_item else ""
+            key = (edit["row"], edit["col"])
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                sql = f"UPDATE `{self._database}`.`{self._table}` SET `{edit['col_name']}` = %s WHERE `{pk_col}` = %s"
+                pool_loop.run_until_complete(connector.execute(sql, (edit["new"], pk_val)))
+            except Exception as e:
+                errors += 1
+                _log.warning("Commit cell (%s,%s) failed: %s", edit["row"], edit["col"], e)
+        if errors:
+            self._status_msg.setText(f"提交完成，{errors} 个错误")
+        else:
+            self._status_msg.setText(f"已提交 {len(pending)} 个修改")
+        self._edit_stack.clear()
+        self._edit_pos = -1
+        self._original_values.clear()
+        self._update_dirty_state()
+
+    def _rollback_batch(self) -> None:
+        """Discard all pending edits and reload from database."""
+        if self._edit_pos < 0:
+            return
+        self._edit_stack.clear()
+        self._edit_pos = -1
+        self._original_values.clear()
+        self._load_page()
 
     def _add_row(self) -> None:
         """Insert a new blank row into the table, then reload."""
@@ -874,6 +1027,60 @@ class TableViewerWidget(QWidget):
                 QAbstractItemView.EditTrigger.NoEditTriggers
             )
             self._status_msg.setText("单元格编辑: 已禁用")
+
+    def _show_conditional_formatting(self) -> None:
+        dlg = QDialog(self.window())
+        dlg.setWindowTitle("条件格式")
+        dlg.resize(400, 300)
+        layout = QVBoxLayout(dlg)
+
+        fl = QFormLayout()
+        cb_col = QComboBox(dlg)
+        for c in self._loaded_column_names:
+            cb_col.addItem(c)
+        fl.addRow("列:", cb_col)
+
+        cb_op = QComboBox(dlg)
+        for op in (">", "<", "=", "!=", "CONTAINS"):
+            cb_op.addItem(op)
+        fl.addRow("运算符:", cb_op)
+
+        ed_val = QLineEdit(dlg)
+        fl.addRow("值:", ed_val)
+
+        cb_color = QComboBox(dlg)
+        for name, code in [("红色", "#ff4444"), ("绿色", "#44ff44"), ("黄色", "#ffff44"), ("蓝色", "#4444ff")]:
+            cb_color.addItem(name, code)
+        fl.addRow("颜色:", cb_color)
+
+        layout.addLayout(fl)
+
+        rules_list = QListWidget(dlg)
+        layout.addWidget(rules_list)
+
+        def _add_rule() -> None:
+            col = cb_col.currentText()
+            op = cb_op.currentText()
+            val = ed_val.text()
+            color = cb_color.currentData()
+            rule = {"col": col, "op": op, "val": val, "color": color}
+            self._format_rules.append(rule)
+            rules_list.addItem(f"{col} {op} {val} → {cb_color.currentText()}")
+            self._render(self._get_current_result())
+
+        btn_add = QPushButton("添加规则", dlg)
+        btn_add.clicked.connect(_add_rule)
+        layout.addWidget(btn_add)
+
+        btn_close = QPushButton("关闭", dlg)
+        btn_close.clicked.connect(dlg.accept)
+        layout.addWidget(btn_close)
+        dlg.exec()
+
+    def _get_current_result(self):
+        from open_navicat.models import QueryResult
+        cols = [type("Col", (), {"name": n})() for n in self._loaded_column_names]
+        return QueryResult(rows=self._loaded_rows, columns=cols, is_select=True)
 
     def _show_sort_popup(self) -> None:
         from PySide6.QtWidgets import QMenu

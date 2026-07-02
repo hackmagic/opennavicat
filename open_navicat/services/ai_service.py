@@ -24,6 +24,7 @@ class AIService:
         self._model = config.get("ai.model") or os.environ.get("OPENNAVICAT_AI_MODEL", "gpt-4o-mini")
         self._chat_history: list[dict[str, str]] = []
         self._system_prompt = "You are a helpful database expert assistant."
+        self._schema_embeddings: dict[str, str] = {}
 
     def update_config(self, cfg: dict) -> None:
         """Update AI configuration at runtime from a config dict."""
@@ -341,6 +342,35 @@ class AIService:
         ]
         return self._call_llm_text(messages).strip()
 
+    def data_quality(self, table_name: str, schema_context: str, sample_data: str = "") -> str:
+        """Analyze data quality issues in a table."""
+        prompt = f"Analyze data quality issues for table `{table_name}`.\nSchema:\n{schema_context}\n"
+        if sample_data:
+            prompt += f"Sample data:\n{sample_data}\n"
+        prompt += "\nCheck for: NULL rates, duplicate values, format issues, outliers. Give specific findings."
+        messages = [{"role": "system", "content": "You are a data quality analyst."},
+                    {"role": "user", "content": prompt}]
+        return self._call_llm_text(messages)
+
+    def anomaly_detection(self, table_name: str, column: str, sql_sampling: str = "") -> str:
+        """Detect anomalies in table data."""
+        prompt = f"Suggest SQL queries to detect anomalies in table `{table_name}`, column `{column}`."
+        if sql_sampling:
+            prompt += f"\nAvailable via SQL:\n{sql_sampling}"
+        messages = [{"role": "system", "content": "You are an anomaly detection expert."},
+                    {"role": "user", "content": prompt}]
+        return self._call_llm_text(messages)
+
+    def sql_review(self, sql: str, schema_context: str = "") -> str:
+        """Review SQL for security and performance issues."""
+        prompt = f"Review this SQL query for security and performance issues:\n```sql\n{sql}\n```\n"
+        if schema_context:
+            prompt += f"\nSchema context:\n{schema_context}\n"
+        prompt += "\nCheck: SQL injection risks, missing WHERE on DELETE/UPDATE, N+1 queries, missing indexes, SELECT * in production."
+        messages = [{"role": "system", "content": "You are a SQL security and performance reviewer."},
+                    {"role": "user", "content": prompt}]
+        return self._call_llm_text(messages)
+
     def design_schema(self, description: str) -> str:
         """Design a database schema from a natural language description."""
         prompt = (
@@ -513,6 +543,32 @@ class AIService:
         """Answer a database question with schema RAG context."""
         schema = self.build_schema_context(connection_id, database)
         return self.ask(question, schema_context=schema)
+
+    # ---- Schema Embeddings (lightweight RAG) ----
+
+    def build_schema_embeddings(self, connection_id: str, database: str) -> None:
+        """Build in-memory text embeddings for schema tables."""
+        from open_navicat.services.metadata_service import metadata_service
+        tables = metadata_service.list_tables(connection_id, database)
+        self._schema_embeddings = {}
+        for t in tables:
+            info = metadata_service.get_table_info(connection_id, database, t)
+            if info:
+                text = f"Table {t}: " + ", ".join(f"{c.name} ({c.data_type})" for c in info.columns)
+                self._schema_embeddings[t] = text
+
+    def semantic_search_schema(self, query: str, top_k: int = 3) -> str:
+        """Simple keyword-based semantic search over schema embeddings (ponytail: uses keyword overlap instead of real vectors)."""
+        if not self._schema_embeddings:
+            return ""
+        query_words = set(query.lower().split())
+        scored = []
+        for name, text in self._schema_embeddings.items():
+            score = sum(1 for w in query_words if w in text.lower())
+            if score > 0:
+                scored.append((score, name, text))
+        scored.sort(reverse=True)
+        return "\n".join(text for _, _, text in scored[:top_k])
 
     # ---- ReAct Agent ----
 

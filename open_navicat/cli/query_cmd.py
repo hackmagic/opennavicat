@@ -57,6 +57,31 @@ def run_sql(
         console.print(f"[green]{msg}[/green]")
 
 
+@query_app.command("stream")
+def stream_results(
+    sql: str = typer.Argument(..., help="SQL statement to execute"),
+    conn: str = typer.Option("", "--conn", "-c", help="Connection name (omit for active)"),
+    chunk_size: int = typer.Option(1000, "--chunk-size", "-n", help="Rows per chunk"),
+) -> None:
+    """Execute a query and display results page by page (streaming for large datasets)."""
+    cid = _resolve_conn(conn)
+    from rich.table import Table
+    page = 0
+    for chunk in query_engine.execute_stream(cid, sql, chunk_size):
+        page += 1
+        table = Table(title=f"Page {page} ({len(chunk)} rows)", show_header=True, header_style="bold cyan")
+        if chunk:
+            keys = list(chunk[0].keys()) if isinstance(chunk[0], dict) else [f"col{i}" for i in range(len(chunk[0]))]
+            for k in keys:
+                table.add_column(str(k))
+            for row in chunk:
+                vals = [str(v) if v is not None else "" for v in (row.values() if isinstance(row, dict) else row)]
+                table.add_row(*vals)
+        console.print(table)
+        if page > 0:
+            input("Press Enter for next page...")
+
+
 @query_app.command("file")
 def run_sql_file(
     path: str = typer.Argument(..., help="Path to SQL file"),

@@ -39,7 +39,10 @@ class ConnectionPool:
             host = "127.0.0.1"
             port = tunnel.local_port
 
-        # Adjust connection info for the connector
+        # Adjust connection info for the connector — apply config pool overrides
+        from open_navicat.config import config as _cfg
+        pool_min = _cfg.get("pool.min_size", info.pool_min)
+        pool_max = _cfg.get("pool.max_size", info.pool_max)
         conn_info = ConnectionInfo(
             id=info.id,
             name=info.name,
@@ -51,8 +54,8 @@ class ConnectionPool:
             database=info.database,
             charset=info.charset,
             connect_timeout=info.connect_timeout,
-            pool_min=info.pool_min,
-            pool_max=info.pool_max,
+            pool_min=pool_min,
+            pool_max=pool_max,
             use_ssl=info.use_ssl,
             ssl_ca=info.ssl_ca,
             ssl_cert=info.ssl_cert,

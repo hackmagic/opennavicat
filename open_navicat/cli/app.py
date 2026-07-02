@@ -6,6 +6,7 @@ import typer
 
 from open_navicat.cli.ai_cmd import ai_app
 from open_navicat.cli.backup_cmd import backup_app
+from open_navicat.cli.cloud_cmd import cloud_app
 from open_navicat.cli.conn_cmd import conn_app
 from open_navicat.cli.data_cmd import data_app
 from open_navicat.cli.query_cmd import query_app
@@ -27,6 +28,7 @@ app.add_typer(data_app, name="data", help="Data browse, export, import & sync")
 app.add_typer(backup_app, name="backup", help="Backup, restore & scheduling")
 app.add_typer(ai_app, name="ai", help="AI-powered database assistant")
 app.add_typer(snippet_app, name="snippet", help="Manage reusable SQL snippets")
+app.add_typer(cloud_app, name="cloud", help="Cloud database discovery")
 
 # Also register as top-level aliases for common operations
 app.add_typer(ai_app, name="ask", help="Shortcut: AI ask (see 'ai' subcommand for full features)")

@@ -447,6 +447,14 @@ class AICopilotSidebar(QWidget):
 
         self._add_user_message(text)
 
+        # Handle special commands
+        if text.startswith("!sql "):
+            self._handle_sql_command(text[5:])
+            return
+        if text.strip() == "/schema":
+            self._handle_schema_command()
+            return
+
         # Build schema context
         schema_context = ""
         active_ids = connection_manager.active_ids
@@ -478,6 +486,54 @@ class AICopilotSidebar(QWidget):
         import threading
         thread = threading.Thread(target=self._async_ai_call, args=(text, schema_context, mode), daemon=True)
         thread.start()
+
+    def _handle_sql_command(self, sql: str) -> None:
+        """Execute raw SQL and display results."""
+        self._show_thinking()
+        QApplication.processEvents()
+        try:
+            active_ids = connection_manager.active_ids
+            if not active_ids:
+                self._show_ai_response("⚠️ 没有活跃连接，请先连接数据库。")
+                return
+            from open_navicat.services.query_engine import query_engine
+            result = query_engine.execute(active_ids[0], sql)
+            if not result.success:
+                self._show_ai_response(f"❌ SQL 错误:\n```\n{result.error_message}\n```")
+                return
+            if result.is_select:
+                rows = []
+                for row in result.rows[:50]:
+                    rows.append({c.name: str(v) if v is not None else "NULL" for c, v in zip(result.columns, row)})
+                import json
+                self._show_ai_response(f"✅ 查询成功 ({result.row_count} 行, {result.execution_time_ms:.1f}ms)\n```json\n{json.dumps(rows[:10], indent=2, ensure_ascii=False)}\n```")
+            else:
+                self._show_ai_response(f"✅ 执行成功, {result.affected_rows} 行受影响 ({result.execution_time_ms:.1f}ms)")
+        except Exception as e:
+            self._show_ai_response(f"⚠️ 执行错误: {e}")
+
+    def _handle_schema_command(self) -> None:
+        """Display current schema context."""
+        self._show_thinking()
+        QApplication.processEvents()
+        try:
+            active_ids = connection_manager.active_ids
+            if not active_ids:
+                self._show_ai_response("⚠️ 没有活跃连接。")
+                return
+            dbs = metadata_service.list_databases(active_ids[0])
+            lines = []
+            for db in dbs[:5]:
+                tables = metadata_service.list_tables(active_ids[0], db.name)
+                lines.append(f"📁 {db.name} ({len(tables)} 张表)")
+                for table in tables[:15]:
+                    info = metadata_service.get_table_info(active_ids[0], db.name, table)
+                    if info:
+                        cols = ", ".join(f"{c.name}({c.data_type})" for c in info.columns[:10])
+                        lines.append(f"  ├ {table}: {cols}")
+            self._show_ai_response("📋 **当前 Schema 上下文**\n```\n" + "\n".join(lines) + "\n```")
+        except Exception as e:
+            self._show_ai_response(f"⚠️ 获取 Schema 失败: {e}")
 
     def _async_ai_call(self, text: str, schema_context: str, mode: str) -> None:
         """Run AI call in background thread, then update UI via timer."""
