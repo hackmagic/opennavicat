@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from open_navicat.dal.connection_pool import connection_pool
+from open_navicat.i18n import t
 
 
 class CommandLineWidget(QWidget):
@@ -34,9 +35,9 @@ class CommandLineWidget(QWidget):
         header = QWidget()
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(8, 4, 8, 4)
-        h_layout.addWidget(QLabel("💻 命令列界面"))
+        h_layout.addWidget(QLabel(t("command_line.title")))
         h_layout.addStretch()
-        btn_clear = QPushButton("🗑️ 清除")
+        btn_clear = QPushButton(t("command_line.btn.clear"))
         btn_clear.clicked.connect(self._clear_output)
         h_layout.addWidget(btn_clear)
         layout.addWidget(header)
@@ -46,7 +47,6 @@ class CommandLineWidget(QWidget):
         self._output.setReadOnly(True)
         self._output.setObjectName("monospaceText")
         self._output.setFont(QFont("Consolas", 11))
-        self._output.setStyleSheet("background: #1e1e1e; color: #d4d4d4;")
         layout.addWidget(self._output, 1)
 
         # Input area
@@ -55,16 +55,15 @@ class CommandLineWidget(QWidget):
         input_layout.setContentsMargins(0, 0, 0, 0)
 
         self._prompt_label = QLabel("mysql> ")
-        self._prompt_label.setStyleSheet("color: #4EC9B0; font-weight: bold;")
+        self._prompt_label.setObjectName("accentLabel")
         input_layout.addWidget(self._prompt_label)
 
         self._input = QLineEdit()
         self._input.setFont(QFont("Consolas", 11))
-        self._input.setStyleSheet("background: #2d2d30; color: #d4d4d4; border: 1px solid #3c3c3c; padding: 4px;")
         self._input.returnPressed.connect(self._execute_command)
         input_layout.addWidget(self._input)
 
-        btn_send = QPushButton("▶ 执行")
+        btn_send = QPushButton(t("command_line.btn.execute"))
         btn_send.setObjectName("primaryBtn")
         btn_send.clicked.connect(self._execute_command)
         input_layout.addWidget(btn_send)
@@ -75,11 +74,11 @@ class CommandLineWidget(QWidget):
         self._history: list[str] = []
         self._history_index = -1
 
-        self._append_output("欢迎使用 OpenNavicat 命令列界面")
-        self._append_output(f"连接: {self._connection_id}")
+        self._append_output(t("command_line.welcome"))
+        self._append_output(t("command_line.info.connection", connection_id=self._connection_id))
         if self._database:
-            self._append_output(f"数据库: {self._database}")
-        self._append_output("输入 SQL 语句执行，支持所有 MySQL 命令。\n")
+            self._append_output(t("command_line.info.database", database=self._database))
+        self._append_output(t("command_line.info.hint"))
 
     def _execute_command(self) -> None:
         cmd = self._input.text().strip()
@@ -95,7 +94,7 @@ class CommandLineWidget(QWidget):
 
         # Handle special commands
         if cmd.lower() in ("quit", "exit", "q"):
-            self._append_output("再见！")
+            self._append_output(t("command_line.output.goodbye"))
             return
         if cmd.lower() == "clear":
             self._clear_output()
@@ -103,16 +102,16 @@ class CommandLineWidget(QWidget):
         if cmd.lower().startswith("use "):
             self._database = cmd.split()[1].strip().strip("`")
             self._prompt_label.setText(f"mysql({self._database})> ")
-            self._append_output(f"数据库已切换到 {self._database}")
+            self._append_output(t("command_line.output.db_switched", database=self._database))
             return
         if cmd.lower() in ("help", "?"):
-            self._append_output("可用命令:\n  use <db>  - 切换数据库\n  clear     - 清除屏幕\n  quit/exit - 退出\n  任何 SQL 语句")
+            self._append_output(t("command_line.help.text"))
             return
 
         # Execute SQL
         connector = connection_pool.get(self._connection_id)
         if not connector:
-            self._append_output("❌ 未连接到数据库")
+            self._append_output(t("command_line.error.not_connected"))
             return
 
         try:
@@ -130,8 +129,8 @@ class CommandLineWidget(QWidget):
                     for row in result.rows[:1000]:
                         self._append_output(" | ".join(str(v).ljust(w) if v is not None else "NULL".ljust(w) for v, w in zip(row, widths)))
                     if len(result.rows) > 1000:
-                        self._append_output(f"... ({len(result.rows)} 行，仅显示前 1000 行)")
-                    self._append_output(f"({len(result.rows)} 行)")
+                        self._append_output(t("command_line.output.truncated", count=len(result.rows)))
+                    self._append_output(t("command_line.output.rows", count=len(result.rows)))
                 elif result.affected_rows is not None:
                     self._append_output(f"Query OK, {result.affected_rows} row(s) affected")
                 else:

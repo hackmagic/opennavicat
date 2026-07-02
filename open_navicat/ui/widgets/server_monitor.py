@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from open_navicat.dal.connection_pool import _loop as pool_loop
 from open_navicat.dal.connection_pool import connection_pool
+from open_navicat.i18n import t
 
 _log = logging.getLogger(__name__)
 
@@ -42,13 +43,13 @@ class ServerMonitorWidget(QWidget):
         header = QWidget()
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(8, 4, 8, 4)
-        h_layout.addWidget(QLabel("🖥️ 服务器监控"))
+        h_layout.addWidget(QLabel(t("tab.server_monitor")))
         h_layout.addStretch()
-        self._auto_btn = QPushButton("🔄 自动刷新: 关")
+        self._auto_btn = QPushButton(t("server_monitor.auto_refresh.off"))
         self._auto_btn.setCheckable(True)
         self._auto_btn.toggled.connect(self._toggle_auto_refresh)
         h_layout.addWidget(self._auto_btn)
-        btn_refresh = QPushButton("🔄 刷新")
+        btn_refresh = QPushButton(t("server_monitor.btn.refresh"))
         btn_refresh.clicked.connect(self._refresh)
         h_layout.addWidget(btn_refresh)
         layout.addWidget(header)
@@ -59,29 +60,29 @@ class ServerMonitorWidget(QWidget):
         # Status tab
         self._status_table = QTableWidget()
         self._status_table.setColumnCount(2)
-        self._status_table.setHorizontalHeaderLabels(["变量", "值"])
+        self._status_table.setHorizontalHeaderLabels([t("server_monitor.column.variable"), t("server_monitor.column.value")])
         self._status_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._status_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._status_table.setAlternatingRowColors(True)
-        tabs.addTab(self._status_table, "📊 服务器状态")
+        tabs.addTab(self._status_table, t("server_monitor.section.status"))
 
         # Processes tab
         self._process_table = QTableWidget()
         self._process_table.setColumnCount(7)
-        self._process_table.setHorizontalHeaderLabels(["ID", "用户", "主机", "数据库", "命令", "时间", "SQL"])
+        self._process_table.setHorizontalHeaderLabels([t("server_monitor.column.id"), t("server_monitor.column.user"), t("server_monitor.column.host"), t("server_monitor.column.database"), t("server_monitor.column.command"), t("server_monitor.column.time"), t("server_monitor.column.sql")])
         self._process_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
         self._process_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._process_table.setAlternatingRowColors(True)
-        tabs.addTab(self._process_table, "⚙️ 进程列表")
+        tabs.addTab(self._process_table, t("server_monitor.section.processes"))
 
         # Variables tab
         self._vars_table = QTableWidget()
         self._vars_table.setColumnCount(2)
-        self._vars_table.setHorizontalHeaderLabels(["变量名", "值"])
+        self._vars_table.setHorizontalHeaderLabels([t("server_monitor.column.variable"), t("server_monitor.column.value")])
         self._vars_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._vars_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._vars_table.setAlternatingRowColors(True)
-        tabs.addTab(self._vars_table, "🔧 系统变量")
+        tabs.addTab(self._vars_table, t("server_monitor.section.variables"))
 
         layout.addWidget(tabs)
 
@@ -125,8 +126,8 @@ class ServerMonitorWidget(QWidget):
     def _toggle_auto_refresh(self, checked: bool) -> None:
         self._auto_refresh = checked
         if checked:
-            self._auto_btn.setText("🔄 自动刷新: 开")
+            self._auto_btn.setText(t("server_monitor.auto_refresh.on"))
             self._timer.start(5000)
         else:
-            self._auto_btn.setText("🔄 自动刷新: 关")
+            self._auto_btn.setText(t("server_monitor.auto_refresh.off"))
             self._timer.stop()

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from open_navicat.dal.local_config import local_db
+from open_navicat.i18n import t
 
 _log = logging.getLogger(__name__)
 
@@ -41,12 +42,12 @@ class HistoryLogWidget(QWidget):
         header = QWidget()
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(8, 4, 8, 4)
-        h_layout.addWidget(QLabel("📋 历史日志"))
+        h_layout.addWidget(QLabel(t("history_log.title")))
         h_layout.addStretch()
-        btn_refresh = QPushButton("🔄 刷新")
+        btn_refresh = QPushButton(t("history_log.btn.refresh"))
         btn_refresh.clicked.connect(self._load_history)
         h_layout.addWidget(btn_refresh)
-        btn_clear = QPushButton("🗑️ 清除全部")
+        btn_clear = QPushButton(t("history_log.btn.clear_all"))
         btn_clear.clicked.connect(self._clear_history)
         h_layout.addWidget(btn_clear)
         layout.addWidget(header)
@@ -57,7 +58,7 @@ class HistoryLogWidget(QWidget):
         # History table
         self._table = QTableWidget()
         self._table.setColumnCount(4)
-        self._table.setHorizontalHeaderLabels(["时间", "连接", "数据库", "SQL预览"])
+        self._table.setHorizontalHeaderLabels([t("history_log.column.time"), t("history_log.column.connection"), t("history_log.column.database"), t("history_log.column.sql_preview")])
         self._table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setAlternatingRowColors(True)
@@ -99,15 +100,15 @@ class HistoryLogWidget(QWidget):
         preview_item = self._table.item(row, 3)
         if time_item and preview_item:
             self._detail.setPlainText(
-                f"时间: {time_item.text()}\n"
-                f"数据库: {db_item.text() if db_item else ''}\n\n"
+                f"{t('history_log.column.time')}: {time_item.text()}\n"
+                f"{t('history_log.column.database')}: {db_item.text() if db_item else ''}\n\n"
                 f"SQL:\n{preview_item.text()}"
             )
 
     def _clear_history(self) -> None:
         reply = QMessageBox.question(
-            self, "确认清除",
-            "确定要清除所有历史记录吗？",
+            self, t("history_log.msg.confirm_clear"),
+            t("history_log.msg.confirm_clear_all"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:

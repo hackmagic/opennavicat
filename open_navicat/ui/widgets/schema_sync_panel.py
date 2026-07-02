@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from open_navicat.i18n import t
 from open_navicat.services.metadata_service import metadata_service
 from open_navicat.services.sync_engine import SyncDiff, sync_engine
 
@@ -44,8 +45,8 @@ class _ScriptPreviewDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             self,
         )
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("确认执行")
-        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("取消")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("schema_sync.msg.confirm"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(t("common.cancel"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -78,11 +79,11 @@ class SchemaSyncPanel(QWidget):
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(12, 8, 12, 8)
 
-        title = QLabel("结构同步", header)
+        title = QLabel(t("schema_sync.title"), header)
         h_layout.addWidget(title)
         h_layout.addStretch()
 
-        self._btn_compare = QPushButton("开始比较", header)
+        self._btn_compare = QPushButton(t("schema_sync.btn.compare"), header)
         self._btn_compare.setObjectName("primaryBtn")
         self._btn_compare.clicked.connect(self._compare)
         h_layout.addWidget(self._btn_compare)
@@ -94,7 +95,7 @@ class SchemaSyncPanel(QWidget):
         s_layout = QHBoxLayout(selector)
         s_layout.setContentsMargins(12, 8, 12, 8)
 
-        for label_text, attr in [("来源 (Source)", "_src_combo"), ("目标 (Target)", "_tgt_combo")]:
+        for label_text, attr in [(t("data_sync.label.source"), "_src_combo"), (t("data_sync.label.target"), "_tgt_combo")]:
             box = QWidget(selector)
             b_layout = QVBoxLayout(box)
             b_layout.setContentsMargins(0, 0, 0, 0)
@@ -115,7 +116,7 @@ class SchemaSyncPanel(QWidget):
         layout.addWidget(self._diff_tree, 1)
 
         # ── Status bar ──
-        self._status_label = QLabel("就绪 — 选择来源和目标数据库后点击「开始比较」", self)
+        self._status_label = QLabel(t("schema_sync.status.ready"), self)
         self._status_label.setVisible(False)
         layout.addWidget(self._status_label)
 
@@ -124,13 +125,13 @@ class SchemaSyncPanel(QWidget):
         a_layout = QHBoxLayout(actions)
         a_layout.setContentsMargins(12, 8, 12, 8)
 
-        self._btn_apply = QPushButton("应用更改", actions)
+        self._btn_apply = QPushButton(t("schema_sync.btn.apply"), actions)
         self._btn_apply.setObjectName("primaryBtn")
         self._btn_apply.clicked.connect(self._apply_changes)
         self._btn_apply.setEnabled(False)
         a_layout.addWidget(self._btn_apply)
 
-        self._btn_preview = QPushButton("预览脚本", actions)
+        self._btn_preview = QPushButton(t("schema_sync.btn.preview"), actions)
         self._btn_preview.clicked.connect(self._preview_script)
         self._btn_preview.setEnabled(False)
         a_layout.addWidget(self._btn_preview)
@@ -159,10 +160,10 @@ class SchemaSyncPanel(QWidget):
         target_db = self._tgt_combo.currentText()
 
         if not source_db or not target_db:
-            QMessageBox.warning(self, "提示", "请先选择来源和目标数据库。")
+            QMessageBox.warning(self, t("common.notice"), t("schema_sync.msg.select_db"))
             return
 
-        self._btn_compare.setText("比较中...")
+        self._btn_compare.setText(t("schema_sync.msg.comparing"))
         self._btn_compare.setEnabled(False)
         self._diff_tree.clear()
         self._btn_apply.setEnabled(False)
@@ -183,9 +184,9 @@ class SchemaSyncPanel(QWidget):
             self._diff_result = diff
             self._render_diff(diff, source_db, target_db)
         except Exception as exc:
-            QMessageBox.critical(self, "比较失败", f"无法完成结构比较:\n{exc}")
+            QMessageBox.critical(self, t("schema_sync.msg.compare_failed"), f"无法完成结构比较:\n{exc}")
         finally:
-            self._btn_compare.setText("重新比较")
+            self._btn_compare.setText(t("schema_sync.btn.recompare"))
             self._btn_compare.setEnabled(True)
 
     # ── Rendering ─────────────────────────────────────────────────────
@@ -195,13 +196,13 @@ class SchemaSyncPanel(QWidget):
 
         if not diff.has_changes:
             item = QTreeWidgetItem(self._diff_tree, [
-                "数据库结构完全一致",
-                f"{source_db} ↔ {target_db} 无差异",
+                t("schema_sync.msg.identical"),
+                f"{source_db} ↔ {target_db} {t('schema_sync.msg.no_diff')}",
             ])
             item.setForeground(0, _DiffColors.ADD)
             self._btn_apply.setEnabled(False)
             self._btn_preview.setEnabled(False)
-            self._summary_label.setText("无差异")
+            self._summary_label.setText(t("schema_sync.msg.no_diff"))
             return
 
         # Added tables
@@ -320,7 +321,7 @@ class SchemaSyncPanel(QWidget):
         target_db = self._tgt_combo.currentText()
         statements = sync_engine.generate_sync_script(self._diff_result, target_db)
         if not statements:
-            QMessageBox.information(self, "预览", "无变更需要执行。")
+            QMessageBox.information(self, t("schema_sync.btn.preview_script"), t("schema_sync.msg.no_changes"))
             return
 
         dialog = _ScriptPreviewDialog(statements, self)
@@ -335,11 +336,11 @@ class SchemaSyncPanel(QWidget):
         target_db = self._tgt_combo.currentText()
         statements = sync_engine.generate_sync_script(self._diff_result, target_db)
         if not statements:
-            QMessageBox.information(self, "提示", "无变更需要执行。")
+            QMessageBox.information(self, t("common.notice"), t("schema_sync.msg.no_changes"))
             return
 
         confirm = QMessageBox.question(
-            self, "确认执行",
+            self, t("schema_sync.msg.confirm"),
             f"即将对数据库「{target_db}」执行 {len(statements)} 条 DDL 语句。\n"
             "此操作不可撤销，是否继续？",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -357,13 +358,13 @@ class SchemaSyncPanel(QWidget):
 
         if errors:
             QMessageBox.critical(
-                self, "同步完成（有错误）",
+                self, t("schema_sync.msg.completed_with_errors"),
                 f"已执行 {len(statements) - len(errors)}/{len(statements)} 条语句。\n\n"
                 + "\n".join(errors[:5]),
             )
         else:
             QMessageBox.information(
-                self, "同步完成",
+                self, t("schema_sync.msg.completed"),
                 f"成功执行 {len(statements)} 条 DDL 语句，目标数据库「{target_db}」已与来源同步。",
             )
 

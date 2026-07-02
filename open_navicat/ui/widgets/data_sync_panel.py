@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from open_navicat.i18n import t
 from open_navicat.services.connection_manager import connection_manager
 from open_navicat.services.data_sync_engine import DataCompareResult, data_sync_engine
 from open_navicat.services.metadata_service import metadata_service
@@ -49,7 +50,7 @@ class DataSyncPanel(QWidget):
 
         # Source
         src_group = QVBoxLayout()
-        src_group.addWidget(QLabel("源 (Source)", sel_frame))
+        src_group.addWidget(QLabel(t("data_sync.label.source"), sel_frame))
         src_row = QHBoxLayout()
         self._src_conn = QComboBox(sel_frame)
         self._src_conn.setMinimumWidth(120)
@@ -71,7 +72,7 @@ class DataSyncPanel(QWidget):
 
         # Target
         tgt_group = QVBoxLayout()
-        tgt_group.addWidget(QLabel("目标 (Target)", sel_frame))
+        tgt_group.addWidget(QLabel(t("data_sync.label.target"), sel_frame))
         tgt_row = QHBoxLayout()
         self._tgt_conn = QComboBox(sel_frame)
         self._tgt_conn.setMinimumWidth(120)
@@ -91,19 +92,19 @@ class DataSyncPanel(QWidget):
 
         # ── Buttons ──
         btn_row = QHBoxLayout()
-        self._btn_compare = QPushButton("🔍 比较", self)
+        self._btn_compare = QPushButton(t("data_sync.btn.compare"), self)
         self._btn_compare.setObjectName("primaryBtn")
         self._btn_compare.clicked.connect(self._compare)
         btn_row.addWidget(self._btn_compare)
 
-        self._btn_sync = QPushButton("🚀 同步到目标", self)
+        self._btn_sync = QPushButton(t("data_sync.btn.sync"), self)
         self._btn_sync.setObjectName("primaryBtn")
         self._btn_sync.setEnabled(False)
         self._btn_sync.clicked.connect(self._sync)
         btn_row.addWidget(self._btn_sync)
 
         btn_row.addStretch()
-        self._status = QLabel("选择源和目标表后点击「比较」", self)
+        self._status = QLabel(t("data_sync.status.select_tables"), self)
         btn_row.addWidget(self._status)
         layout.addLayout(btn_row)
 
@@ -118,17 +119,17 @@ class DataSyncPanel(QWidget):
         self._tabs = QTabWidget(self)
 
         self._table_inserts = self._make_table(self._tabs)
-        self._tabs.addTab(self._table_inserts, "新增 (+)")
+        self._tabs.addTab(self._table_inserts, t("data_sync.tab.inserts"))
 
         self._table_updates = self._make_table(self._tabs)
-        self._tabs.addTab(self._table_updates, "修改 (~)")
+        self._tabs.addTab(self._table_updates, t("data_sync.tab.updates"))
 
         self._table_deletes = self._make_table(self._tabs)
-        self._tabs.addTab(self._table_deletes, "删除 (-)")
+        self._tabs.addTab(self._table_deletes, t("data_sync.tab.deletes"))
 
         self._summary_label = QLabel(self._tabs)
         self._summary_label.setWordWrap(True)
-        self._tabs.addTab(self._summary_label, "汇总")
+        self._tabs.addTab(self._summary_label, t("data_sync.tab.summary"))
 
         layout.addWidget(self._tabs, 1)
 
@@ -215,13 +216,13 @@ class DataSyncPanel(QWidget):
         tgt_tbl = self._tgt_table.currentText()
 
         if not all([src_conn, tgt_conn, src_db, tgt_db, src_tbl, tgt_tbl]):
-            QMessageBox.warning(self, "提示", "请选择源和目标的连接、数据库和表。")
+            QMessageBox.warning(self, t("common.notice"), t("data_sync.msg.select_source_target"))
             return
 
         self._progress.show()
         self._progress.setRange(0, 0)
         self._btn_compare.setEnabled(False)
-        self._status.setText("正在比较...")
+        self._status.setText(t("data_sync.msg.comparing"))
 
         try:
             self._result = data_sync_engine.compare_tables(
@@ -229,8 +230,8 @@ class DataSyncPanel(QWidget):
             )
             self._render_results()
         except Exception as e:
-            QMessageBox.critical(self, "比较失败", str(e))
-            self._status.setText("比较失败")
+            QMessageBox.critical(self, t("data_sync.msg.compare_failed"), str(e))
+            self._status.setText(t("data_sync.msg.compare_failed"))
         finally:
             self._progress.hide()
             self._btn_compare.setEnabled(True)
@@ -242,8 +243,9 @@ class DataSyncPanel(QWidget):
 
         self._btn_sync.setEnabled(r.total_diffs > 0)
         self._status.setText(
-            f"源: {r.source_rows} 行 | 目标: {r.target_rows} 行 | "
-            f"差异: +{len(r.inserts)} ~{len(r.updates)} -{len(r.deletes)}"
+            t("data_sync.msg.detail",
+              source_rows=r.source_rows, target_rows=r.target_rows,
+              inserts=len(r.inserts), updates=len(r.updates), deletes=len(r.deletes))
         )
 
         # Inserts
@@ -303,12 +305,12 @@ class DataSyncPanel(QWidget):
         n = self._result.total_diffs
 
         reply = QMessageBox.question(
-            self, "确认同步",
+            self, t("data_sync.msg.confirm_sync"),
             f"即将对目标表应用 {n} 处更改：\n"
             f"  +{len(self._result.inserts)} 新增\n"
             f"  ~{len(self._result.updates)} 修改\n"
             f"  -{len(self._result.deletes)} 删除\n\n"
-            f"确定执行？",
+            f"{t('data_sync.msg.confirm_execute')}",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -322,7 +324,7 @@ class DataSyncPanel(QWidget):
         from open_navicat.dal.connection_pool import connection_pool
         connector = connection_pool.get(tgt_conn)
         if not connector:
-            QMessageBox.warning(self, "错误", "目标连接不可用。")
+            QMessageBox.warning(self, t("common.error"), t("data_sync.msg.target_unavailable"))
             return
 
         self._progress.show()
@@ -342,8 +344,10 @@ class DataSyncPanel(QWidget):
 
         self._progress.hide()
         if errors:
-            QMessageBox.warning(self, "部分失败", f"{len(errors)} 条语句失败:\n" + "\n".join(errors[:5]))
+            QMessageBox.warning(self, t("data_sync.msg.partial_failure"),
+                                f"{len(errors)} 条语句失败:\n" + "\n".join(errors[:5]))
         else:
-            QMessageBox.information(self, "完成", f"成功同步 {n} 处更改到目标表。")
+            QMessageBox.information(self, t("data_sync.msg.complete"),
+                                    f"成功同步 {n} 处更改到目标表。")
 
         self._compare()

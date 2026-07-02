@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from open_navicat.i18n import t
 from open_navicat.dal.connection_pool import _loop as pool_loop
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.services.connection_manager import connection_manager
@@ -128,19 +129,19 @@ class DataTransferWidget(QWidget):
         header = QWidget()
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(0, 0, 0, 0)
-        h_layout.addWidget(QLabel("📦 数据传输"))
+        h_layout.addWidget(QLabel(t("data_transfer.title")))
         h_layout.addStretch()
         layout.addWidget(header)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
 
         # ── Source & Target selection ──
-        sel_frame = QGroupBox("源 / 目标")
+        sel_frame = QGroupBox(t("data_transfer.label.source_target"))
         sel_layout = QHBoxLayout(sel_frame)
 
         # Source
         src_col = QVBoxLayout()
-        src_col.addWidget(QLabel("源连接"))
+        src_col.addWidget(QLabel(t("data_transfer.label.source_conn")))
         self._src_conn = QComboBox()
         self._src_conn.currentIndexChanged.connect(self._load_src_dbs)
         src_col.addWidget(self._src_conn)
@@ -154,7 +155,7 @@ class DataTransferWidget(QWidget):
 
         # Target
         tgt_col = QVBoxLayout()
-        tgt_col.addWidget(QLabel("目标连接"))
+        tgt_col.addWidget(QLabel(t("data_transfer.label.target_conn")))
         self._tgt_conn = QComboBox()
         self._tgt_conn.currentIndexChanged.connect(self._load_tgt_dbs)
         tgt_col.addWidget(self._tgt_conn)
@@ -165,14 +166,14 @@ class DataTransferWidget(QWidget):
         splitter.addWidget(sel_frame)
 
         # ── Table list ──
-        tbl_frame = QGroupBox("表列表")
+        tbl_frame = QGroupBox(t("data_transfer.label.table_list"))
         tbl_layout = QVBoxLayout(tbl_frame)
 
         btn_row = QHBoxLayout()
-        btn_select_all = QPushButton("全选")
+        btn_select_all = QPushButton(t("data_transfer.btn.select_all"))
         btn_select_all.clicked.connect(lambda: self._toggle_all(True))
         btn_row.addWidget(btn_select_all)
-        btn_deselect_all = QPushButton("全不选")
+        btn_deselect_all = QPushButton(t("data_transfer.btn.deselect_all"))
         btn_deselect_all.clicked.connect(lambda: self._toggle_all(False))
         btn_row.addWidget(btn_deselect_all)
         btn_row.addStretch()
@@ -188,20 +189,20 @@ class DataTransferWidget(QWidget):
         splitter.addWidget(tbl_frame)
 
         # ── Options ──
-        opt_frame = QGroupBox("传输选项")
+        opt_frame = QGroupBox(t("data_transfer.label.options"))
         opt_layout = QHBoxLayout(opt_frame)
 
-        self._opt_structure = QCheckBox("结构 (CREATE TABLE)")
+        self._opt_structure = QCheckBox(t("data_transfer.checkbox.structure"))
         self._opt_structure.setChecked(True)
         opt_layout.addWidget(self._opt_structure)
-        self._opt_data = QCheckBox("数据 (INSERT)")
+        self._opt_data = QCheckBox(t("data_transfer.checkbox.data"))
         self._opt_data.setChecked(True)
         opt_layout.addWidget(self._opt_data)
         self._opt_drop = QCheckBox("DROP IF EXISTS")
         opt_layout.addWidget(self._opt_drop)
-        self._opt_truncate = QCheckBox("TRUNCATE 目标表")
+        self._opt_truncate = QCheckBox(t("data_transfer.checkbox.truncate"))
         opt_layout.addWidget(self._opt_truncate)
-        opt_layout.addWidget(QLabel("批量大小:"))
+        opt_layout.addWidget(QLabel(t("data_transfer.label.batch_size")))
         self._batch_size = QSpinBox()
         self._batch_size.setRange(1, 100000)
         self._batch_size.setValue(1000)
@@ -214,14 +215,14 @@ class DataTransferWidget(QWidget):
 
         # ── Bottom buttons ──
         bottom = QHBoxLayout()
-        self._btn_transfer = QPushButton("🚀 开始传输")
+        self._btn_transfer = QPushButton(t("data_transfer.btn.start"))
         self._btn_transfer.setObjectName("primaryBtn")
         self._btn_transfer.clicked.connect(self._start_transfer)
         bottom.addWidget(self._btn_transfer)
         self._progress = QProgressBar()
         self._progress.hide()
         bottom.addWidget(self._progress, 1)
-        self._status = QLabel("选择源和目标后点击「开始传输」")
+        self._status = QLabel(t("data_transfer.status.select_tables"))
         bottom.addWidget(self._status)
         layout.addLayout(bottom)
 
@@ -303,7 +304,7 @@ class DataTransferWidget(QWidget):
     def _start_transfer(self) -> None:
         tables = self._selected_tables()
         if not tables:
-            QMessageBox.warning(self, "提示", "请至少选择一张表。")
+            QMessageBox.warning(self, t("common.notice"), t("data_transfer.msg.no_tables"))
             return
 
         src_id = self._conn_map.get(self._src_conn.currentText(), "")
@@ -312,7 +313,7 @@ class DataTransferWidget(QWidget):
         tgt_db = self._tgt_db.currentText()
 
         if not all([src_id, tgt_id, src_db, tgt_db]):
-            QMessageBox.warning(self, "提示", "请选择完整的源和目标连接/数据库。")
+            QMessageBox.warning(self, t("common.notice"), t("data_transfer.msg.select_complete"))
             return
 
         opts = {
@@ -325,8 +326,8 @@ class DataTransferWidget(QWidget):
 
         tgt_conn_name = self._tgt_conn.currentText()
         reply = QMessageBox.question(
-            self, "确认传输",
-            f"即将传输 {len(tables)} 张表:\n" + "\n".join(f"  {t}" for t in tables[:10])
+            self, t("data_transfer.msg.confirm"),
+            f"即将传输 {len(tables)} 张表:\n" + "\n".join(f"  {tbl}" for tbl in tables[:10])
             + ("\n  ..." if len(tables) > 10 else "")
             + f"\n\n到 {tgt_conn_name}/{tgt_db}?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -338,7 +339,7 @@ class DataTransferWidget(QWidget):
         self._progress.show()
         self._progress.setRange(0, len(tables))
         self._progress.setValue(0)
-        self._status.setText("正在传输...")
+        self._status.setText(t("data_transfer.msg.transferring"))
 
         self._worker = _TransferWorker(src_id, tgt_id, src_db, tgt_db, tables, opts)
         self._worker.progress.connect(self._on_progress)
@@ -353,8 +354,10 @@ class DataTransferWidget(QWidget):
         self._progress.hide()
         self._btn_transfer.setEnabled(True)
         if errors:
-            QMessageBox.warning(self, "部分失败", f"{len(errors)}/{total} 张表传输失败:\n" + "\n".join(errors[:5]))
+            QMessageBox.warning(self, t("data_transfer.msg.partial_failure"),
+                                f"{len(errors)}/{total} 张表传输失败:\n" + "\n".join(errors[:5]))
             self._status.setText(f"完成，{len(errors)} 张表失败")
         else:
-            QMessageBox.information(self, "完成", f"成功传输 {total} 张表。")
+            QMessageBox.information(self, t("data_transfer.msg.complete"),
+                                    f"成功传输 {total} 张表。")
             self._status.setText(f"成功传输 {total} 张表")

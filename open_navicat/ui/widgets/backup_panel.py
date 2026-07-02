@@ -45,28 +45,28 @@ class _NewBackupDialog(QDialog):
 
     def __init__(self, connection_id: str, databases: list[str], parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("新建备份")
+        self.setWindowTitle(t("backup.dialog.new_backup"))
         self.resize(380, 250)
         layout = QFormLayout(self)
 
         self._db_combo = QComboBox(self)
         self._db_combo.addItems(databases)
         self._db_combo.setEditable(True)
-        layout.addRow("数据库:", self._db_combo)
+        layout.addRow(t("backup.label.database"), self._db_combo)
 
-        self._compress_check = QCheckBox("Gzip 压缩", self)
+        self._compress_check = QCheckBox(t("backup.checkbox.gzip"), self)
         self._compress_check.setChecked(True)
         layout.addRow(self._compress_check)
 
         self._out_edit = QLineEdit(self)
-        self._out_edit.setPlaceholderText("留空使用默认目录 (./backups)")
-        layout.addRow("输出路径:", self._out_edit)
+        self._out_edit.setPlaceholderText(t("backup.placeholder.output_path"))
+        layout.addRow(t("backup.label.output_path"), self._out_edit)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             self,
         )
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("开始备份")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("backup.btn.start_backup"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
@@ -84,24 +84,24 @@ class _RestoreDialog(QDialog):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("恢复数据库")
+        self.setWindowTitle(t("backup.dialog.restore"))
         self.resize(450, 200)
         layout = QFormLayout(self)
 
         self._file_edit = QLineEdit(self)
         self._file_edit.setReadOnly(True)
-        self._file_edit.setPlaceholderText("点击浏览选择 .sql / .sql.gz 文件")
-        layout.addRow("备份文件:", self._file_edit)
+        self._file_edit.setPlaceholderText(t("backup.placeholder.backup_file"))
+        layout.addRow(t("backup.label.backup_file"), self._file_edit)
 
-        browse_btn = QPushButton("浏览...", self)
+        browse_btn = QPushButton(t("backup.btn.browse"), self)
         browse_btn.clicked.connect(self._browse)
         layout.addRow("", browse_btn)
 
         self._db_edit = QLineEdit(self)
-        self._db_edit.setPlaceholderText("目标数据库名")
-        layout.addRow("目标数据库:", self._db_edit)
+        self._db_edit.setPlaceholderText(t("backup.placeholder.target_db"))
+        layout.addRow(t("backup.label.target_db"), self._db_edit)
 
-        self._create_db_check = QCheckBox("自动创建数据库（如不存在）", self)
+        self._create_db_check = QCheckBox(t("backup.checkbox.auto_create_db"), self)
         self._create_db_check.setChecked(True)
         layout.addRow(self._create_db_check)
 
@@ -109,14 +109,14 @@ class _RestoreDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             self,
         )
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("开始恢复")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("backup.btn.start_restore"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
 
     def _browse(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "选择备份文件", "", "备份文件 (*.sql *.sql.gz);;所有文件 (*)"
+            self, t("backup.file_dialog.title"), "", t("backup.file_dialog.filter")
         )
         if path:
             self._file_edit.setText(path)
@@ -135,15 +135,15 @@ class _ScheduleDialog(QDialog):
     def __init__(self, connection_id: str, databases: list[str],
                  job: Optional[dict] = None, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("定时备份" if not job else "编辑定时任务")
+        self.setWindowTitle(t("backup.dialog.scheduled_backup") if not job else t("backup.dialog.edit_scheduled"))
         self.resize(420, 300)
         self._connection_id = connection_id
         self._job = job
         layout = QFormLayout(self)
 
         self._name_edit = QLineEdit(job.get("name", "") if job else "", self)
-        self._name_edit.setPlaceholderText("如: 每日凌晨备份")
-        layout.addRow("任务名称:", self._name_edit)
+        self._name_edit.setPlaceholderText(t("backup.placeholder.task_name"))
+        layout.addRow(t("backup.label.task_name"), self._name_edit)
 
         self._db_combo = QComboBox(self)
         self._db_combo.addItems(databases)
@@ -152,28 +152,28 @@ class _ScheduleDialog(QDialog):
             idx = self._db_combo.findText(cfg.get("database", ""))
             if idx >= 0:
                 self._db_combo.setCurrentIndex(idx)
-        layout.addRow("数据库:", self._db_combo)
+        layout.addRow(t("backup.label.database"), self._db_combo)
 
         self._cron_edit = QLineEdit(
             job.get("cron_expr", "0 2 * * *") if job else "0 2 * * *", self
         )
-        self._cron_edit.setPlaceholderText("cron 表达式: 分 时 日 月 周")
-        layout.addRow("Cron 表达式:", self._cron_edit)
+        self._cron_edit.setPlaceholderText(t("backup.placeholder.cron"))
+        layout.addRow(t("backup.label.cron"), self._cron_edit)
 
         # Presets
         preset_layout = QHBoxLayout()
         for label, expr in [
-            ("每天 02:00", "0 2 * * *"),
-            ("每 6 小时", "0 */6 * * *"),
-            ("每周日 03:00", "0 3 * * 0"),
+            (t("backup.cron.daily"), "0 2 * * *"),
+            (t("backup.cron.6hours"), "0 */6 * * *"),
+            (t("backup.cron.weekly"), "0 3 * * 0"),
         ]:
             btn = QPushButton(label, self)
             btn.clicked.connect(lambda checked, e=expr: self._cron_edit.setText(e))
             preset_layout.addWidget(btn)
         preset_layout.addStretch()
-        layout.addRow("快速设置:", preset_layout)
+        layout.addRow(t("backup.label.quick_set"), preset_layout)
 
-        self._compress_check = QCheckBox("Gzip 压缩", self)
+        self._compress_check = QCheckBox(t("backup.checkbox.gzip"), self)
         self._compress_check.setChecked(
             job.get("config", {}).get("compress", True) if job else True
         )
@@ -183,7 +183,7 @@ class _ScheduleDialog(QDialog):
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             self,
         )
-        buttons.button(QDialogButtonBox.StandardButton.Ok).setText("保存")
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("common.save"))
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
@@ -227,9 +227,9 @@ class BackupPanel(QWidget):
         c_layout.setSpacing(12)
 
         for cfg in [
-            ("备份", "完整数据库导出", "立即备份", "primaryBtn", self._do_backup),
-            ("恢复", "从备份文件还原", "选择文件", "", self._do_restore),
-            ("定时", "设置自动备份计划", "新建计划", "successBtn", self._new_schedule),
+            (t("backup.card.backup"), t("backup.card.backup_desc"), t("backup.card.backup_action"), "primaryBtn", self._do_backup),
+            (t("backup.card.restore"), t("backup.card.restore_desc"), t("backup.card.restore_action"), "", self._do_restore),
+            (t("backup.card.scheduled"), t("backup.card.scheduled_desc"), t("backup.card.scheduled_action"), "successBtn", self._new_schedule),
         ]:
             card = QFrame(cards)
             cd_layout = QVBoxLayout(card)
@@ -258,16 +258,16 @@ class BackupPanel(QWidget):
 
         # Backup list tab
         self._backup_tab = self._create_backup_tab()
-        tabs.addTab(self._backup_tab, "备份列表")
+        tabs.addTab(self._backup_tab, t("backup.tab.backup_list"))
 
         # Schedule tab
         self._schedule_tab = self._create_schedule_tab()
-        tabs.addTab(self._schedule_tab, "定时计划")
+        tabs.addTab(self._schedule_tab, t("backup.tab.scheduled"))
 
         layout.addWidget(tabs, 1)
 
         # ── Status bar ──
-        self._status = QLabel("就绪", self)
+        self._status = QLabel(t("status.ready"), self)
         self._status.setStyleSheet(
             "background: #007acc; color: #fff; padding: 4px 12px; font-size: 11px;"
         )
@@ -281,9 +281,9 @@ class BackupPanel(QWidget):
         # Toolbar
         tb = QHBoxLayout()
         for text, cb in [
-            ("刷新", self._refresh_backups),
-            ("删除选中", self._delete_selected),
-            ("清理历史", self._clear_history),
+            (t("backup.btn.refresh"), self._refresh_backups),
+            (t("backup.btn.delete_selected"), self._delete_selected),
+            (t("backup.btn.cleanup_history"), self._clear_history),
         ]:
             btn = QPushButton(text, tab)
             btn.clicked.connect(cb)
@@ -293,7 +293,7 @@ class BackupPanel(QWidget):
 
         self._backup_table = QTableWidget(tab)
         self._backup_table.setColumnCount(5)
-        self._backup_table.setHorizontalHeaderLabels(["文件名", "大小", "数据库", "创建时间", "操作"])
+        self._backup_table.setHorizontalHeaderLabels([t("backup.column_backup.filename"), t("backup.column_backup.size"), t("backup.column_backup.database"), t("backup.column_backup.created_at"), t("backup.column_backup.operation")])
         self._backup_table.horizontalHeader().setStretchLastSection(True)
         self._backup_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         for col in range(4):
@@ -312,17 +312,17 @@ class BackupPanel(QWidget):
         # Toolbar
         tb = QHBoxLayout()
         for text, cb in [
-            ("+ 新建定时备份", self._new_schedule),
-            ("刷新", self._refresh_schedules),
-            ("启动调度器", self._start_scheduler),
-            ("停止调度器", self._stop_scheduler),
+            (t("backup.btn.new_scheduled"), self._new_schedule),
+            (t("backup.btn.refresh"), self._refresh_schedules),
+            (t("backup.btn.start_scheduler"), self._start_scheduler),
+            (t("backup.btn.stop_scheduler"), self._stop_scheduler),
         ]:
             btn = QPushButton(text, tab)
             btn.clicked.connect(cb)
             tb.addWidget(btn)
         tb.addStretch()
 
-        self._sched_status_lbl = QLabel("调度器: 未启动", tab)
+        self._sched_status_lbl = QLabel(t("backup.scheduler.stopped"), tab)
         tb.addWidget(self._sched_status_lbl)
 
         layout.addLayout(tb)
@@ -330,7 +330,7 @@ class BackupPanel(QWidget):
         self._schedule_table = QTableWidget(tab)
         self._schedule_table.setColumnCount(6)
         self._schedule_table.setHorizontalHeaderLabels([
-            "任务名", "类型", "数据库", "Cron 表达式", "状态", "上次运行"
+            t("backup.column_scheduled.task_name"), t("backup.column_scheduled.type"), t("backup.column_scheduled.database"), t("backup.column_scheduled.cron"), t("backup.column_scheduled.status"), t("backup.column_scheduled.last_run")
         ])
         self._schedule_table.horizontalHeader().setStretchLastSection(True)
         self._schedule_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -363,13 +363,13 @@ class BackupPanel(QWidget):
 
         params = dlg.get_params()
         if not params["database"]:
-            QMessageBox.warning(self, "提示", "请选择数据库。")
+            QMessageBox.warning(self, t("common.notice"), t("backup.msg.select_database"))
             return
 
         # Execute backup
         conn_info = local_db.get_connection(self._connection_id)
         if not conn_info:
-            QMessageBox.critical(self, "错误", "无法获取连接信息。")
+            QMessageBox.critical(self, t("common.error"), t("backup.msg.no_connection"))
             return
 
         try:
@@ -380,16 +380,14 @@ class BackupPanel(QWidget):
                 compress=params["compress"],
             )
             QMessageBox.information(
-                self, "备份完成",
-                f"数据库 {params['database']} 备份成功\n"
-                f"文件: {record.file_name}\n"
-                f"大小: {record.size_human}"
+                self, t("backup.msg.backup_complete"),
+                t("backup.msg.backup_success_detail", database=params['database'], file=record.file_name, size=record.size_human)
             )
             self._refresh_backups()
         except FileNotFoundError as e:
-            QMessageBox.critical(self, "错误", str(e))
+            QMessageBox.critical(self, t("common.error"), str(e))
         except RuntimeError as e:
-            QMessageBox.critical(self, "备份失败", str(e))
+            QMessageBox.critical(self, t("backup.msg.backup_failed"), str(e))
 
     def _do_restore(self) -> None:
         """Restore a database from backup file."""
@@ -399,16 +397,16 @@ class BackupPanel(QWidget):
 
         params = dlg.get_params()
         if not params["file"] or not params["database"]:
-            QMessageBox.warning(self, "提示", "请选择备份文件和目标数据库。")
+            QMessageBox.warning(self, t("common.notice"), t("backup.msg.select_file_and_db"))
             return
 
         if not Path(params["file"]).exists():
-            QMessageBox.warning(self, "提示", "备份文件不存在。")
+            QMessageBox.warning(self, t("common.notice"), t("backup.msg.file_not_exists"))
             return
 
         conn_info = local_db.get_connection(self._connection_id)
         if not conn_info:
-            QMessageBox.critical(self, "错误", "无法获取连接信息。")
+            QMessageBox.critical(self, t("common.error"), t("backup.msg.no_connection"))
             return
 
         try:
@@ -417,12 +415,12 @@ class BackupPanel(QWidget):
                 params["file"], create_db=params["create_db"],
             )
             QMessageBox.information(
-                self, "恢复完成",
-                f"数据库 {params['database']} 已从 {Path(params['file']).name} 恢复。"
+                self, t("backup.msg.restore_complete"),
+                t("backup.msg.restore_success_detail", database=params['database'], file=Path(params['file']).name)
             )
             self._refresh_backups()
         except Exception as e:
-            QMessageBox.critical(self, "恢复失败", str(e))
+            QMessageBox.critical(self, t("backup.msg.restore_failed"), str(e))
 
     def _delete_selected(self) -> None:
         """Delete selected backup files."""
@@ -431,12 +429,12 @@ class BackupPanel(QWidget):
             rows.add(item.row())
 
         if not rows:
-            QMessageBox.information(self, "提示", "请先选择要删除的备份。")
+            QMessageBox.information(self, t("common.notice"), t("backup.msg.select_to_delete"))
             return
 
         confirm = QMessageBox.question(
-            self, "确认删除",
-            f"确定要删除 {len(rows)} 个备份文件？此操作不可撤销。",
+            self, t("backup.msg.confirm_delete"),
+            t("backup.msg.confirm_delete_count", count=len(rows)),
         )
         if confirm != QMessageBox.StandardButton.Yes:
             return
@@ -456,7 +454,7 @@ class BackupPanel(QWidget):
         """Clear backup history from local config."""
         from open_navicat.dal.local_config import local_db
         local_db.set_setting("backup_history", [])
-        self._status.setText("已清除备份历史记录")
+        self._status.setText(t("backup.msg.history_cleared"))
 
     # ── Refresh backup list ───────────────────────────────────────────
 
@@ -477,13 +475,13 @@ class BackupPanel(QWidget):
             action_widget = QWidget()
             a_layout = QHBoxLayout(action_widget)
             a_layout.setContentsMargins(4, 2, 4, 2)
-            for text in ["恢复", "删除"]:
+            for text in [t("common.restore"), t("common.delete")]:
                 btn = QPushButton(text, action_widget)
                 btn.setStyleSheet(
                     "padding: 2px 8px; border: 1px solid #3c3c3c; "
                     "background: transparent; color: #ccc; font-size: 10px; cursor: pointer;"
                 )
-                if text == "恢复":
+                if text == t("common.restore"):
                     btn.clicked.connect(
                         lambda checked, f=rec.file_path,
                                db=rec.database: self._restore_single(f, db)
@@ -495,13 +493,13 @@ class BackupPanel(QWidget):
                 a_layout.addWidget(btn)
             self._backup_table.setCellWidget(i, 4, action_widget)
 
-        self._status.setText(f"找到 {len(records)} 个备份文件")
+        self._status.setText(t("backup.msg.found_count", count=len(records)))
 
     def _restore_single(self, file_path: str, database: str) -> None:
         """Restore a single backup file."""
         confirm = QMessageBox.question(
-            self, "确认恢复",
-            f"即将从 {Path(file_path).name} 恢复到数据库 {database}。\n继续吗？",
+            self, t("backup.msg.confirm_restore"),
+            t("backup.msg.confirm_restore_detail", file=Path(file_path).name, database=database),
         )
         if confirm != QMessageBox.StandardButton.Yes:
             return
@@ -512,15 +510,15 @@ class BackupPanel(QWidget):
 
         try:
             backup_service.restore_backup(conn_info, database, file_path)
-            QMessageBox.information(self, "恢复完成", f"已恢复 {database}")
+            QMessageBox.information(self, t("backup.msg.restore_complete"), t("backup.msg.restored_db", database=database))
             self._refresh_backups()
         except Exception as e:
-            QMessageBox.critical(self, "恢复失败", str(e))
+            QMessageBox.critical(self, t("backup.msg.restore_failed"), str(e))
 
     def _delete_single(self, file_path: str) -> None:
         """Delete a single backup file."""
         confirm = QMessageBox.question(
-            self, "确认删除", f"确定删除 {Path(file_path).name}？"
+            self, t("backup.msg.confirm_delete"), t("backup.msg.confirm_delete_file", file=Path(file_path).name)
         )
         if confirm == QMessageBox.StandardButton.Yes:
             backup_service.delete_backup(file_path)
@@ -544,7 +542,7 @@ class BackupPanel(QWidget):
 
         params = dlg.get_params()
         if not params["name"] or not params["database"]:
-            QMessageBox.warning(self, "提示", "请填写任务名称和选择数据库。")
+            QMessageBox.warning(self, t("common.notice"), t("backup.msg.fill_name_and_db"))
             return
 
         automation_service.add_backup_job(
@@ -555,10 +553,8 @@ class BackupPanel(QWidget):
             compress=params["compress"],
         )
         QMessageBox.information(
-            self, "已创建",
-            f"定时备份任务「{params['name']}」已创建。\n"
-            f"表达式: {params['cron_expr']}\n"
-            f"数据库: {params['database']}"
+            self, t("common.success"),
+            t("backup.msg.created_detail", name=params['name'], cron=params['cron_expr'], database=params['database'])
         )
         self._refresh_schedules()
 
@@ -577,7 +573,7 @@ class BackupPanel(QWidget):
             self._schedule_table.setItem(i, 3, QTableWidgetItem(job.get("cron_expr", "")))
             status = job.get("last_status", "")
             enabled = job.get("enabled", True)
-            status_text = "🟢 启用" if enabled else "🔴 禁用"
+            status_text = t("scheduler.status.enabled") if enabled else t("scheduler.status.disabled")
             if status:
                 status_text += f" ({status})"
             self._schedule_table.setItem(i, 4, QTableWidgetItem(status_text))
@@ -588,13 +584,13 @@ class BackupPanel(QWidget):
     def _start_scheduler(self) -> None:
         """Start the automation scheduler."""
         automation_service.start()
-        self._sched_status_lbl.setText("调度器: 运行中")
+        self._sched_status_lbl.setText(t("backup.scheduler.running"))
         self._sched_status_lbl.setStyleSheet("color: #4ec9b0; font-size: 11px;")
 
     def _stop_scheduler(self) -> None:
         """Stop the automation scheduler."""
         automation_service.stop()
-        self._sched_status_lbl.setText("调度器: 已停止")
+        self._sched_status_lbl.setText(t("backup.scheduler.stopped"))
         self._sched_status_lbl.setStyleSheet("color: #f44747; font-size: 11px;")
 
     def _schedule_context_menu(self, pos) -> None:

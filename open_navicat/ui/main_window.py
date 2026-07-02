@@ -79,7 +79,7 @@ class MainWindow(QMainWindow):
     def _setup_ui(self) -> None:
         central = QWidget(self)
         self.setCentralWidget(central)
-        main_layout = QVBoxLayout(central)
+        self._main_layout = main_layout = QVBoxLayout(central)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
@@ -87,8 +87,8 @@ class MainWindow(QMainWindow):
         self._setup_menubar()
 
         # Toolbar — 样式由 QSS 主题统一管理
-        toolbar = self._create_toolbar()
-        main_layout.addWidget(toolbar)
+        self._toolbar = self._create_toolbar()
+        main_layout.addWidget(self._toolbar)
 
         # Body: sidebar + content + AI copilot
         body = QWidget(central)
@@ -135,6 +135,17 @@ class MainWindow(QMainWindow):
         body_layout.addWidget(self._ai_copilot)
 
         main_layout.addWidget(body, 1)
+
+    def _refresh_ui(self) -> None:
+        """Rebuild toolbar and menubar to reflect config changes (e.g. ai.enabled)."""
+        # Rebuild menubar
+        self.menuBar().clear()
+        self._setup_menubar()
+        # Rebuild toolbar
+        self._main_layout.removeWidget(self._toolbar)
+        self._toolbar.deleteLater()
+        self._toolbar = self._create_toolbar()
+        self._main_layout.insertWidget(1, self._toolbar)
 
     def _setup_menubar(self) -> None:
         menubar = self.menuBar()
@@ -751,22 +762,18 @@ class MainWindow(QMainWindow):
         dlg = QDialog(self)
         dlg.setWindowTitle("高级查找")
         dlg.resize(500, 400)
-        dlg.setStyleSheet("background: #1e1e1e; color: #ccc;")
         layout = QVBoxLayout(dlg)
         search_row = QHBoxLayout()
         inp = QLineEdit(dlg)
         inp.setPlaceholderText("输入搜索关键词...")
-        inp.setStyleSheet("background: #1e1e1e; color: #ccc; border: 1px solid #3c3c3c; padding: 6px 8px;")
         search_row.addWidget(inp, 1)
         btn = QPushButton("搜索", dlg)
-        btn.setStyleSheet("background: #0078d4; color: #fff; border: none; border-radius: 3px; padding: 6px 16px;")
+        btn.setObjectName("primaryBtn")
         search_row.addWidget(btn)
         layout.addLayout(search_row)
         results = QListWidget(dlg)
-        results.setStyleSheet("background: #1e1e1e; color: #ccc; border: 1px solid #3c3c3c;")
         layout.addWidget(results, 1)
         status = QLabel("", dlg)
-        status.setStyleSheet("color: #888; padding: 2px 0;")
         layout.addWidget(status)
 
         def do_search() -> None:
@@ -796,7 +803,6 @@ class MainWindow(QMainWindow):
         btn.clicked.connect(do_search)
         inp.returnPressed.connect(do_search)
         close_btn = QPushButton("关闭", dlg)
-        close_btn.setStyleSheet("background: #3c3c3c; color: #ccc; border: 1px solid #555; border-radius: 3px; padding: 4px 16px;")
         close_btn.clicked.connect(dlg.accept)
         layout.addWidget(close_btn, 0, Qt.AlignmentFlag.AlignRight)
         dlg.exec()

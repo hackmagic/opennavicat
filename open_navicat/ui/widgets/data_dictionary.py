@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from open_navicat.dal.connection_pool import _loop as pool_loop
 from open_navicat.dal.connection_pool import connection_pool
+from open_navicat.i18n import t
 
 _log = logging.getLogger(__name__)
 
@@ -44,15 +45,15 @@ class DataDictionaryWidget(QWidget):
         header = QWidget()
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(8, 4, 8, 4)
-        h_layout.addWidget(QLabel(f"📖 数据字典 — {self._database}"))
+        h_layout.addWidget(QLabel(t("data_dictionary.title", database=self._database)))
         h_layout.addStretch()
-        btn_refresh = QPushButton("🔄 刷新")
+        btn_refresh = QPushButton(t("data_dictionary.btn.refresh"))
         btn_refresh.clicked.connect(self._load_tables)
         h_layout.addWidget(btn_refresh)
-        btn_export = QPushButton("📤 导出 HTML")
+        btn_export = QPushButton(t("data_dictionary.btn.export_html"))
         btn_export.clicked.connect(self._export_html)
         h_layout.addWidget(btn_export)
-        btn_export_pdf = QPushButton("📄 导出 PDF")
+        btn_export_pdf = QPushButton(t("data_dictionary.btn.export_pdf"))
         btn_export_pdf.clicked.connect(self._export_pdf)
         h_layout.addWidget(btn_export_pdf)
         layout.addWidget(header)
@@ -63,7 +64,7 @@ class DataDictionaryWidget(QWidget):
         # Table list
         self._table_list = QTableWidget()
         self._table_list.setColumnCount(4)
-        self._table_list.setHorizontalHeaderLabels(["表名", "引擎", "行数", "注释"])
+        self._table_list.setHorizontalHeaderLabels([t("data_dictionary.column.table_name"), t("data_dictionary.column.engine"), t("data_dictionary.column.row_count"), t("data_dictionary.column.comment")])
         self._table_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._table_list.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -76,13 +77,13 @@ class DataDictionaryWidget(QWidget):
         detail_layout = QVBoxLayout(detail)
         detail_layout.setContentsMargins(4, 4, 4, 4)
 
-        self._detail_title = QLabel("选择一个表查看详细信息")
+        self._detail_title = QLabel(t("data_dictionary.status.select_table"))
         self._detail_title.setStyleSheet("font-weight: bold; font-size: 14px;")
         detail_layout.addWidget(self._detail_title)
 
         self._col_table = QTableWidget()
         self._col_table.setColumnCount(7)
-        self._col_table.setHorizontalHeaderLabels(["字段名", "类型", "可空", "默认值", "主键", "自增", "注释"])
+        self._col_table.setHorizontalHeaderLabels([t("data_dictionary.column_detail.field_name"), t("data_dictionary.column_detail.type"), t("data_dictionary.column_detail.nullable"), t("data_dictionary.column_detail.default"), t("data_dictionary.column_detail.primary_key"), t("data_dictionary.column_detail.auto_increment"), t("data_dictionary.column_detail.comment")])
         self._col_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._col_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._col_table.setAlternatingRowColors(True)
@@ -150,7 +151,7 @@ class DataDictionaryWidget(QWidget):
 
     def _export_html(self) -> None:
         from PySide6.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getSaveFileName(self, "导出数据字典", f"{self._database}_dictionary.html", "HTML 文件 (*.html)")
+        path, _ = QFileDialog.getSaveFileName(self, t("data_dictionary.export.dialog"), f"{self._database}_dictionary.html", t("data_dictionary.export.html_filter"))
         if not path:
             return
 
@@ -188,7 +189,7 @@ class DataDictionaryWidget(QWidget):
 
     def _export_pdf(self) -> None:
         from PySide6.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getSaveFileName(self, "导出数据字典 PDF", f"{self._database}_dictionary.pdf", "PDF 文件 (*.pdf)")
+        path, _ = QFileDialog.getSaveFileName(self, t("data_dictionary.export.dialog_pdf"), f"{self._database}_dictionary.pdf", t("data_dictionary.export.pdf_filter"))
         if not path:
             return
         from PySide6.QtGui import QTextDocument
