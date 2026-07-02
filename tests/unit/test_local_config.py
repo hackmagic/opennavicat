@@ -52,6 +52,54 @@ class TestLocalConfigDB:
     def test_get_nonexistent(self, db: LocalConfigDB) -> None:
         assert db.get_connection("nonexistent") is None
 
+    def test_migrate_old_schema(self) -> None:
+        """Verify schema migration from old DB missing color/conn_group columns."""
+        import sqlite3
+        tmp = tempfile.mkdtemp()
+        old_db = Path(tmp) / "old_config.sqlite"
+        conn = sqlite3.connect(str(old_db))
+        conn.execute("""
+            CREATE TABLE connections (
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                host        TEXT NOT NULL,
+                port        INTEGER NOT NULL,
+                user        TEXT NOT NULL,
+                password    TEXT DEFAULT '',
+                database    TEXT DEFAULT '',
+                charset     TEXT DEFAULT 'utf8mb4',
+                use_ssh     INTEGER DEFAULT 0,
+                ssh_host    TEXT DEFAULT '',
+                ssh_port    INTEGER DEFAULT 22,
+                ssh_user    TEXT DEFAULT '',
+                ssh_password TEXT DEFAULT '',
+                ssh_key_file TEXT DEFAULT '',
+                use_ssl     INTEGER DEFAULT 0,
+                ssl_ca      TEXT DEFAULT '',
+                ssl_cert    TEXT DEFAULT '',
+                ssl_key     TEXT DEFAULT '',
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute(
+            "INSERT INTO connections (id, name, host, port, user) VALUES (?, ?, ?, ?, ?)",
+            ("old-1", "Legacy Server", "10.0.0.1", 3306, "admin"),
+        )
+        conn.commit()
+        conn.close()
+
+        migrated = LocalConfigDB(old_db)
+        # list_connections should work (migration added conn_group)
+        rows = migrated.list_connections()
+        assert len(rows) == 1
+        assert rows[0].name == "Legacy Server"
+        assert rows[0].group == ""
+        # save_connection should work too
+        new_info = ConnectionInfo(name="New", host="10.0.0.2")
+        migrated.save_connection(new_info)
+        assert len(migrated.list_connections()) == 2
+
     def test_settings(self, db: LocalConfigDB) -> None:
         db.set_setting("theme", "dark")
         assert db.get_setting("theme") == "dark"

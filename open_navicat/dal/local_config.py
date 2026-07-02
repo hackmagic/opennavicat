@@ -48,8 +48,6 @@ class LocalConfigDB:
                 ssl_ca      TEXT DEFAULT '',
                 ssl_cert    TEXT DEFAULT '',
                 ssl_key     TEXT DEFAULT '',
-                color       TEXT DEFAULT '#4A90D9',
-                conn_group  TEXT DEFAULT '',
                 created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -112,6 +110,12 @@ class LocalConfigDB:
                 created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        # Schema migrations for upgrades from older versions
+        for col in ['color', 'conn_group']:
+            try:
+                conn.execute(f"ALTER TABLE connections ADD COLUMN {col} TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass
         conn.commit()
 
     # ---- connection CRUD ----
