@@ -201,23 +201,23 @@ poetry build                    # 构建 sdist + wheel
 poetry publish --dry-run       # 发布测试
 ```
 
-### 5.2 构建 CLI 可执行文件
+### 5.2 构建单文件可执行文件
+
+项目提供两个 PyInstaller spec 文件，分别构建 CLI 和 GUI 包：
 
 ```bash
-# 使用 PyInstaller
 pip install pyinstaller
-pyinstaller --onefile --name opennavicat open_navicat/main.py
 
-# 使用 Nuitka (更小体积)
-pip install nuitka
-nuitka --standalone --onefile open_navicat/main.py
+# CLI 包 (~15MB，不含 Qt)
+pyinstaller opennavicat-cli.spec
+
+# GUI 包 (~120MB，含 PySide6)
+pyinstaller opennavicat-gui.spec
 ```
 
-### 5.3 构建 GUI 可执行文件
-
-```bash
-pyinstaller --onefile --windowed --name "OpenNavicat" open_navicat/main.py
-```
+产物在 `dist/` 目录：
+- `dist/opennavicat-cli` (或 `.exe`) — 纯 CLI
+- `dist/opennavicat` (或 `.exe`) — 完整 GUI
 
 ## 6. CI/CD
 

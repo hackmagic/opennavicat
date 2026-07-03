@@ -34,10 +34,20 @@ OpenNavicat is a full-featured database management tool inspired by [Navicat Pre
 
 ### Quick Start
 
-```bash
-# Install
-pip install open-navicat
+**Install via pip** (recommended — includes both CLI and GUI):
 
+```bash
+pip install open-navicat
+```
+
+**Or download standalone executables** from [Releases](https://github.com/hackmagic/OpenNavicat/releases):
+
+| Package | Platform | Description | Size |
+|---------|----------|-------------|------|
+| `opennavicat-cli-*` | Win/Mac/Linux | CLI only (no Qt) | ~15 MB |
+| `opennavicat-*` | Win/Mac/Linux | Full GUI with PySide6 | ~120 MB |
+
+```bash
 # Add a connection
 opennavicat conn add --name prod --host db.example.com --user root --test
 
@@ -150,8 +160,21 @@ OpenNavicat 是一款功能齐全的数据库管理工具，灵感来源于 [Nav
 
 ### 快速上手
 
+**pip 安装**（推荐，包含 CLI 和 GUI）：
+
 ```bash
-# 安装
+pip install open-navicat
+```
+
+**或下载独立可执行文件** — 从 [Releases](https://github.com/hackmagic/OpenNavicat/releases) 获取：
+
+| 包 | 平台 | 说明 | 体积 |
+|----|------|------|------|
+| `opennavicat-cli-*` | Win/Mac/Linux | 纯 CLI，不含 Qt | ~15 MB |
+| `opennavicat-*` | Win/Mac/Linux | 完整 GUI + PySide6 | ~120 MB |
+
+```bash
+# 添加连接
 pip install open-navicat
 
 # 添加连接

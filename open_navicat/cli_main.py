@@ -9,8 +9,12 @@ import sys
 def main() -> None:
     """CLI entry point. If first arg is 'gui', launch the PySide6 GUI."""
     if len(sys.argv) > 1 and sys.argv[1] == "gui":
-        sys.argv.pop(1)  # Remove "gui" from args
-        from open_navicat.gui_main import main as gui_main
+        sys.argv.pop(1)
+        try:
+            from open_navicat.gui_main import main as gui_main
+        except ImportError:
+            print("GUI mode requires PySide6. Use 'pip install open-navicat' or download the GUI package.")
+            return
         gui_main()
         return
 

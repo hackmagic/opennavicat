@@ -78,9 +78,18 @@ AI features include:
 
 ## Build (standalone binary)
 
+Two PyInstaller spec files for dual packaging:
+
 ```bash
 pip install pyinstaller
-pyinstaller --onefile --name opennavicat open_navicat/main.py
+
+# CLI package (~15 MB, no Qt)
+pyinstaller opennavicat-cli.spec
+
+# GUI package (~120 MB, with PySide6)
+pyinstaller opennavicat-gui.spec
 ```
 
-Multi-platform builds via GitHub Actions: Win x64, macOS ARM64, Linux x64.
+Version info is generated from `open_navicat/__init__.py` at build time — update only that file.
+
+Multi-platform builds via GitHub Actions (release.yml): Win x64, macOS ARM64, Linux x64 — CLI + GUI per platform.

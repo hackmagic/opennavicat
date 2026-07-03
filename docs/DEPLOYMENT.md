@@ -1,28 +1,26 @@
 # 部署与打包指南
 
-> 版本: 0.2.0 | 更新: 2026-06-24
+> 更新: 2026-07-03
 
 ## 1. 快速安装 (终端用户)
 
-### 1.1 通过 pip (推荐)
+### 1.1 通过 pip (推荐 — 包含 CLI 和 GUI)
 
 ```bash
-# 从 PyPI 安装
 pip install open-navicat
 
-# 验证
-opennavicat --version
+# CLI 模式
+opennavicat conn list
 
-# 配置 AI (可选)
-export OPENNAVICAT_AI_PROVIDER=openai
-export OPENNAVICAT_AI_API_KEY=sk-xxxx
+# GUI 模式
+opennavicat gui
 ```
 
 ### 1.2 通过 Poetry (开发版)
 
 ```bash
-git clone https://github.com/opennavicat/opennavicat.git
-cd opennavicat
+git clone https://github.com/hackmagic/OpenNavicat.git
+cd OpenNavicat
 pip install poetry
 poetry install
 
@@ -35,19 +33,18 @@ poetry run opennavicat gui
 
 ### 1.3 直接下载可执行文件
 
-从 GitHub Releases 下载最新版:
+从 [GitHub Releases](https://github.com/hackmagic/OpenNavicat/releases) 下载最新版。每个平台提供两个包：
 
-| 平台 | 文件 | CLI/GUI |
-|------|------|---------|
-| Windows x64 | `opennavicat-win64.exe` | 默认 CLI, `opennavicat-gui.exe` 为 GUI |
-| macOS x64 | `opennavicat-macos-x64` | 同上 |
-| macOS arm64 | `opennavicat-macos-arm64` | 同上 |
-| Linux x64 | `opennavicat-linux-x64` | 同上 |
+| 包 | 说明 | 体积 |
+|----|------|------|
+| `opennavicat-cli-*` | 纯 CLI，不含 Qt | ~15 MB |
+| `opennavicat-*` | 完整 GUI，含 PySide6 | ~120 MB |
 
 ```bash
-# 下载后
-chmod +x opennavicat-linux-x64
-./opennavicat-linux-x64 --version
+# 下载 CLI 版
+curl -LO https://github.com/hackmagic/OpenNavicat/releases/download/v0.7.0/opennavicat-cli-linux-x64
+chmod +x opennavicat-cli-linux-x64
+./opennavicat-cli-linux-x64 --version
 ```
 
 ## 2. 构建指南
@@ -57,55 +54,29 @@ chmod +x opennavicat-linux-x64
 ```bash
 poetry build
 ls dist/
-# open_navicat-0.1.0-py3-none-any.whl
-# open-navicat-0.1.0.tar.gz
+# open_navicat-0.7.0-py3-none-any.whl
+# open-navicat-0.7.0.tar.gz
 ```
 
-### 2.2 构建 CLI 单文件可执行文件
+### 2.2 构建单文件可执行文件
 
-#### Windows (PyInstaller)
+使用 PyInstaller spec 文件构建：
 
 ```bash
 pip install pyinstaller
-pyinstaller --onefile --name opennavicat open_navicat/main.py
-# dist/opennavicat.exe (约 30-50MB)
+
+# CLI 包 (不含 Qt，~15MB)
+pyinstaller opennavicat-cli.spec
+
+# GUI 包 (含 PySide6，~120MB)
+pyinstaller opennavicat-gui.spec
 ```
 
-#### Windows (Nuitka — 更小更快)
+产物在 `dist/` 目录：
+- `dist/opennavicat-cli` (或 `.exe`)
+- `dist/opennavicat` (或 `.exe`)
 
-```bash
-pip install nuitka
-nuitka --standalone --onefile --output-dir=dist --enable-plugin=pyside6 open_navicat/main.py
-# dist/opennavicat.exe (约 15-25MB)
-```
-
-#### macOS
-
-```bash
-pyinstaller --onefile --name opennavicat open_navicat/main.py
-# 或使用 nuitka (同上)
-# 签名:
-codesign --sign "Developer ID Application: YourName" dist/opennavicat
-```
-
-#### Linux
-
-```bash
-pyinstaller --onefile --name opennavicat open_navicat/main.py
-# AppImage 方式:
-# 使用 python-appimage 或 linuxdeploy
-```
-
-### 2.3 构建 GUI 可执行文件
-
-```bash
-pyinstaller --onefile --windowed --name "OpenNavicat-GUI" open_navicat/main.py
-
-# macOS 需要额外处理 .app 包
-pyinstaller --onefile --windowed --name "OpenNavicat" --icon=icon.icns open_navicat/main.py
-```
-
-### 2.4 Docker 镜像
+### 2.3 Docker 镜像
 
 ```dockerfile
 FROM python:3.11-slim
@@ -124,47 +95,18 @@ ENV OPENNAVICAT_AI_API_BASE=http://ollama:11434
 ```bash
 docker build -t opennavicat .
 docker run --rm opennavicat conn list
-docker run --rm opennavicat ai ask "What databases do I have?"
 ```
 
 ## 3. CI/CD 流水线
 
 ### GitHub Actions
 
-```yaml
-name: Build and Release
-on:
-  push:
-    tags: ["v*"]
+项目使用两个 workflow 文件：
 
-jobs:
-  build:
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: pip install poetry pyinstaller
-      - run: poetry install
-      - run: pyinstaller --onefile --name opennavicat open_navicat/main.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: opennavicat-${{ matrix.os }}
-          path: dist/opennavicat*
+- **`release.yml`** — 打 tag 时触发，构建 CLI + GUI 双包，上传到 GitHub Release
+- **`publish.yml`** — Release 发布后触发，自动发布到 PyPI
 
-  release:
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: opennavicat-*/
-```
+详见 [`.github/workflows/`](https://github.com/hackmagic/OpenNavicat/tree/master/.github/workflows)。
 
 ## 4. 配置指南
 
