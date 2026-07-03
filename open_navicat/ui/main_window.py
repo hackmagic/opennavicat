@@ -481,7 +481,7 @@ class MainWindow(QMainWindow):
         # ---- Help ----
         help_menu = menubar.addMenu(t("menu.help"))
         act_docs = QAction(t("menu.help.online_docs"), self)
-        act_docs.triggered.connect(lambda: _wb.open("https://opennavicat.dev/docs"))
+        act_docs.triggered.connect(lambda: _wb.open("https://github.com/hackmagic/OpenNavicat/tree/master/docs"))
         help_menu.addAction(act_docs)
         act_update = QAction(t("menu.help.check_update"), self)
         act_update.triggered.connect(self._check_for_updates)
@@ -946,7 +946,7 @@ class MainWindow(QMainWindow):
         import urllib.request
         try:
             req = urllib.request.Request(
-                "https://api.github.com/repos/opennavicat/opennavicat/releases/latest",
+                "https://api.github.com/repos/hackmagic/OpenNavicat/releases/latest",
                 headers={"User-Agent": "OpenNavicat"},
             )
             with urllib.request.urlopen(req, timeout=5) as resp:
@@ -956,7 +956,7 @@ class MainWindow(QMainWindow):
                     QMessageBox.information(
                         self, t("menu.help.check_update"),
                         f"New version available: v{latest}\nCurrent: v{__version__}\n\n"
-                        f"Download: {data.get('html_url', 'https://github.com/opennavicat/opennavicat/releases')}",
+                        f"Download: {data.get('html_url', 'https://github.com/hackmagic/OpenNavicat/releases')}",
                     )
                 else:
                     QMessageBox.information(self, t("menu.help.check_update"), t("main_window.msg.latest_version"))
