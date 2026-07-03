@@ -1,40 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for OpenNavicat GUI (with PySide6/Qt)."""
+"""
+PyInstaller spec for OpenNavicat GUI (with PySide6/Qt).
+Qt DLLs/plugins are collected automatically by PyInstaller's PySide6 hooks.
+Entry point (gui_main.py) must import PySide6 modules at top level.
+"""
 
 from pathlib import Path
 
 block_cipher = None
 src = Path(SPECPATH) / "open_navicat"
 
-# Collect PySide6 Python modules
-from PyInstaller.utils.hooks import collect_all
-pyside6_datas, _, pyside6_hiddenimports = collect_all("PySide6")
-
-# Collect Qt binaries (DLLs + plugins) via PyInstaller's Qt library info
-from PyInstaller.utils.hooks.qt import pyside6_library_info
-
-all_binaries = []
-all_hidden = set(pyside6_hiddenimports)
-
-for mod in ["PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
-            "PySide6.QtSvg", "PySide6.QtPrintSupport", "PySide6.QtSvgWidgets",
-            "PySide6.QtNetwork", "PySide6.QtSql"]:
-    try:
-        h, b, _ = pyside6_library_info.collect_module(mod)
-        all_hidden.update(h)
-        all_binaries.extend(b)
-    except Exception:
-        pass  # Module not available, skip
-
 a = Analysis(
     [str(src / "gui_main.py")],
     pathex=[SPECPATH],
-    binaries=all_binaries,
+    binaries=[],
     datas=[
         (str(src / "i18n"), "open_navicat/i18n"),
         (str(src / "ui" / "resources"), "open_navicat/ui/resources"),
-    ] + pyside6_datas,
-    hiddenimports=list(all_hidden),
+    ],
+    hiddenimports=[
+        "shiboken6",
+        "PySide6.support.deprecated",
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
