@@ -35,7 +35,7 @@ class ConnectionDialog(QDialog):
         self._load_info()
 
     def _setup_ui(self) -> None:
-        self.setWindowTitle("New Connection" if not self._info.name else f"Edit {self._info.name}")
+        self.setWindowTitle(t("connection.new") if not self._info.name else f"{t('connection.edit')} {self._info.name}")
         self.setMinimumWidth(520)
         layout = QVBoxLayout(self)
 
@@ -51,9 +51,9 @@ class ConnectionDialog(QDialog):
         general_layout.addRow(t("connection.name"), self._edit_name)
 
         self._combo_engine = QComboBox(self)
-        self._combo_engine.addItem("MySQL", "mysql")
-        self._combo_engine.addItem("PostgreSQL", "postgresql")
-        self._combo_engine.addItem("SQLite", "sqlite")
+        self._combo_engine.addItem(t("connection.engine_mysql"), "mysql")
+        self._combo_engine.addItem(t("connection.engine_postgresql"), "postgresql")
+        self._combo_engine.addItem(t("connection.engine_sqlite"), "sqlite")
         self._combo_engine.currentIndexChanged.connect(self._on_engine_changed)
         general_layout.addRow(t("connection.engine"), self._combo_engine)
 
@@ -81,17 +81,17 @@ class ConnectionDialog(QDialog):
 
         # Color picker
         self._combo_color = QComboBox(self)
-        colors = [("#4A90D9", "Blue"), ("#4ec9b0", "Green"), ("#dcdcaa", "Yellow"),
-                  ("#f44747", "Red"), ("#c586c0", "Purple"), ("#ce9178", "Orange")]
+        colors = [("#4A90D9", t("connection.color_blue")), ("#4ec9b0", t("connection.color_green")), ("#dcdcaa", t("connection.color_yellow")),
+                  ("#f44747", t("connection.color_red")), ("#c586c0", t("connection.color_purple")), ("#ce9178", t("connection.color_orange"))]
         for code, name in colors:
             self._combo_color.addItem(name, code)
         self._combo_color.setStyleSheet(
             "QComboBox { background: #1e1e1e; color: #ccc; border: 1px solid #3c3c3c; "
             "padding: 4px 8px; }"
         )
-        general_layout.addRow("Color:", self._combo_color)
+        general_layout.addRow(t("connection.color_label"), self._combo_color)
 
-        tabs.addTab(general, "General")
+        tabs.addTab(general, t("settings.general"))
 
         # ---- SSH tab ----
         ssh_tab = QWidget()
@@ -125,7 +125,7 @@ class ConnectionDialog(QDialog):
         self._edit_ssh_key.setPlaceholderText("Path to private key file")
         ssh_layout.addRow(t("connection.ssh.key_file"), self._edit_ssh_key)
 
-        tabs.addTab(ssh_tab, "SSH")
+        tabs.addTab(ssh_tab, t("connection.tab_ssh"))
 
         # ---- SSL tab ----
         ssl_tab = QWidget()

@@ -251,6 +251,8 @@ class SchedulerPanel(QWidget):
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, dlg)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("common.ok"))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(t("common.cancel"))
         buttons.accepted.connect(dlg.accept)
         buttons.rejected.connect(dlg.reject)
         layout.addRow(buttons)

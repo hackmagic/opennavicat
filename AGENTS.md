@@ -10,7 +10,7 @@ poetry install                                    # install dependencies
 poetry install --extras postgresql                # with PostgreSQL support
 poetry run opennavicat                            # CLI mode (40+ commands)
 poetry run opennavicat gui                        # GUI mode
-poetry run pytest tests/unit/ -v                  # unit tests (78)
+poetry run pytest tests/unit/ -v                  # unit tests (80)
 poetry run pytest tests/integration/ -v           # integration tests (16, needs Docker)
 ```
 
@@ -51,6 +51,8 @@ poetry build                                      # build sdist + wheel
 - Ruff config: line-length 100, select `E,F,I,N,W`, ignore `E501`
 - Async tests: no decorator needed — `pytest.ini` sets `asyncio_mode = auto`
 - i18n: custom JSON-based system (`open_navicat/i18n/`), call `t("key")` not gettext
+  - 1265 keys per language (zh_CN / en_US), verified symmetric after each change
+  - All UI-visible strings use `t()`, zero hardcoded Chinese/English
 - Optional deps: asyncpg is `[postgresql]` extra, not default install
 
 ## AI integration
@@ -69,7 +71,7 @@ AI features include:
 
 ## Testing
 
-- **78 unit tests**: services, DAL, models, CLI, i18n, GUI, utils (all mock-based)
+- **80 unit tests**: services, DAL, models, CLI, i18n, GUI, utils (all mock-based)
 - **16 integration tests**: MySQL 8.0 + PostgreSQL 16 via testcontainers (requires Docker)
 - Run integration tests: `pytest tests/integration/ -v` (auto-skips if Docker unavailable)
 - Password encryption tests need `cryptography` — safe to mock

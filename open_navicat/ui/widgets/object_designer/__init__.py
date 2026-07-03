@@ -179,7 +179,7 @@ class _ForeignKeyTable(QTableWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setColumnCount(6)
-        self.setHorizontalHeaderLabels([t("object_designer.fk_name"), t("object_designer.fk_column"), t("object_designer.fk_ref_table"), t("object_designer.fk_ref_column"), "ON DELETE", "ON UPDATE"])
+        self.setHorizontalHeaderLabels([t("object_designer.fk_name"), t("object_designer.fk_column"), t("object_designer.fk_ref_table"), t("object_designer.fk_ref_column"), t("table_designer.fk_header.on_delete"), t("table_designer.fk_header.on_update")])
         self.horizontalHeader().setStretchLastSection(True)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setStyleSheet(
@@ -401,7 +401,7 @@ class _TableDesignerTab(QWidget):
             ddl = generate_create_table(info)
             self._ddl_preview.setPlainText(beautify(ddl))
         else:
-            self._ddl_preview.setPlainText("-- 添加字段后自动生成 DDL --")
+            self._ddl_preview.setPlainText(t("object_designer.ddl_placeholder"))
 
     def get_table_info(self) -> TableInfo:
         return TableInfo(
@@ -550,7 +550,7 @@ class _ViewDesignerTab(QWidget):
             from open_navicat.utils.sql_formatter import beautify
             self._preview.setPlainText(beautify(sql))
         else:
-            self._preview.setPlainText("-- 勾选列后自动生成 SELECT --")
+            self._preview.setPlainText(t("object_designer.select_placeholder"))
 
     def _build_sql(self) -> str:
         """Build SELECT statement from checked items."""
@@ -825,7 +825,7 @@ class _RoutineDesignerTab(QWidget):
         if ddl:
             self._ddl_preview.setPlainText(beautify(ddl))
         else:
-            self._ddl_preview.setPlainText("-- 编辑程序体后自动生成 DDL --")
+            self._ddl_preview.setPlainText(t("object_designer.edit_placeholder"))
 
     def get_ddl(self) -> str:
         name = self._name_edit.text().strip()
@@ -896,7 +896,7 @@ class _EventDesignerTab(QWidget):
 
     def _update_preview(self) -> None:
         ddl = self.get_ddl()
-        self._ddl_preview.setPlainText(ddl or "-- 编辑后自动生成 DDL --")
+        self._ddl_preview.setPlainText(ddl or t("object_designer.edit_placeholder"))
 
     def get_ddl(self) -> str:
         name = self._name_edit.text().strip()
@@ -969,7 +969,7 @@ class _TriggerDesignerTab(QWidget):
 
     def _update_preview(self) -> None:
         ddl = self.get_ddl()
-        self._ddl_preview.setPlainText(ddl or "-- 编辑后自动生成 DDL --")
+        self._ddl_preview.setPlainText(ddl or t("object_designer.edit_placeholder"))
 
     def get_ddl(self) -> str:
         name = self._name_edit.text().strip()

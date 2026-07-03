@@ -265,13 +265,13 @@ class DataSyncPanel(QWidget):
 
         # Summary
         lines = [
-            f"<b>源表:</b> {r.source_table} ({r.source_rows} 行)",
-            f"<b>目标表:</b> {r.target_table} ({r.target_rows} 行)",
-            f"<b>主键:</b> {', '.join(r.pk_columns)}",
+            t("data_sync.source_detail", tbl=r.source_table, n=r.source_rows),
+            t("data_sync.target_detail", tbl=r.target_table, n=r.target_rows),
+            t("data_sync.pk_detail", cols=', '.join(r.pk_columns)),
             "",
-            f"<b>新增 (INSERT):</b> {len(r.inserts)} 行",
-            f"<b>修改 (UPDATE):</b> {len(r.updates)} 行",
-            f"<b>删除 (DELETE):</b> {len(r.deletes)} 行",
+            t("data_sync.diff_insert", n=len(r.inserts)),
+            t("data_sync.diff_update", n=len(r.updates)),
+            t("data_sync.diff_delete", n=len(r.deletes)),
         ]
         self._summary_label.setText("<br>".join(lines))
 
@@ -306,11 +306,8 @@ class DataSyncPanel(QWidget):
 
         reply = QMessageBox.question(
             self, t("data_sync.msg.confirm_sync"),
-            f"即将对目标表应用 {n} 处更改：\n"
-            f"  +{len(self._result.inserts)} 新增\n"
-            f"  ~{len(self._result.updates)} 修改\n"
-            f"  -{len(self._result.deletes)} 删除\n\n"
-            f"{t('data_sync.msg.confirm_execute')}",
+            t("data_sync.confirm_detail", n=n, inserts=len(self._result.inserts), updates=len(self._result.updates), deletes=len(self._result.deletes)) + "\n\n"
+            + t("data_sync.msg.confirm_execute"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -345,9 +342,9 @@ class DataSyncPanel(QWidget):
         self._progress.hide()
         if errors:
             QMessageBox.warning(self, t("data_sync.msg.partial_failure"),
-                                f"{len(errors)} 条语句失败:\n" + "\n".join(errors[:5]))
+                                t("data_sync.partial_failure_detail", n=len(errors)) + "\n" + "\n".join(errors[:5]))
         else:
             QMessageBox.information(self, t("data_sync.msg.complete"),
-                                    f"成功同步 {n} 处更改到目标表。")
+                                    t("data_sync.sync_complete", n=n))
 
         self._compare()

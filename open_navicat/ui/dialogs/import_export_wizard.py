@@ -302,7 +302,7 @@ class ImportWizard(QWizard):
 
             self._confirm_page.set_result(t("import_export.import_success", count=total))
         except Exception as e:
-            self._confirm_page.set_result(f"❌ 导入失败: {e}")
+            self._confirm_page.set_result(f"{t('import_export.msg.import_failed')}: {e}")
 
 
 class ExportWizard(QWizard):
@@ -421,4 +421,4 @@ class ExportWizard(QWizard):
 
             self._confirm_page.set_result(t("import_export.export_success", count=len(result.rows), path=path))
         except Exception as e:
-            self._confirm_page.set_result(f"❌ 导出失败: {e}")
+            self._confirm_page.set_result(f"{t('import_export.msg.export_failed')}: {e}")

@@ -56,13 +56,16 @@ jobs:
         include:
           - os: windows-latest
             arch: x64
-            artifact: opennavicat-windows-x64.exe
+            cli_artifact: opennavicat-cli-windows-x64.exe
+            gui_artifact: opennavicat-windows-x64.exe
           - os: macos-latest
             arch: arm64
-            artifact: opennavicat-macos-arm64
+            cli_artifact: opennavicat-cli-macos-arm64
+            gui_artifact: opennavicat-macos-arm64
           - os: ubuntu-latest
             arch: x64
-            artifact: opennavicat-linux-x64
+            cli_artifact: opennavicat-cli-linux-x64
+            gui_artifact: opennavicat-linux-x64
     steps:
       - uses: actions/checkout@v4
 
@@ -86,22 +89,35 @@ jobs:
       - name: Install PyInstaller
         run: pip install pyinstaller
 
-      - name: Build executable
-        run: pyinstaller --onefile --windowed --name opennavicat --hidden-import PySide6.QtCore --hidden-import PySide6.QtGui --hidden-import PySide6.QtWidgets --hidden-import PySide6.QtPrintSupport --hidden-import PySide6.QtSvg --hidden-import PySide6.QtSvgWidgets open_navicat/main.py
+      - name: Build CLI executable
+        run: pyinstaller opennavicat-cli.spec
 
-      - name: Rename artifact (Linux/macOS)
+      - name: Build GUI executable
+        run: pyinstaller opennavicat-gui.spec
+
+      - name: Rename artifacts (Linux/macOS)
         if: runner.os != 'Windows'
-        run: mv dist/opennavicat dist/${{ matrix.artifact }}
+        run: |
+          mv dist/opennavicat-cli dist/${{ matrix.cli_artifact }}
+          mv dist/opennavicat dist/${{ matrix.gui_artifact }}
 
-      - name: Rename artifact (Windows)
+      - name: Rename artifacts (Windows)
         if: runner.os == 'Windows'
-        run: Rename-Item -Path dist/opennavicat.exe -NewName ${{ matrix.artifact }}
+        run: |
+          Rename-Item -Path dist/opennavicat-cli.exe -NewName ${{ matrix.cli_artifact }}
+          Rename-Item -Path dist/opennavicat.exe -NewName ${{ matrix.gui_artifact }}
 
-      - name: Upload artifact
+      - name: Upload CLI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: dist/${{ matrix.artifact }}
+          name: ${{ matrix.cli_artifact }}
+          path: dist/${{ matrix.cli_artifact }}
+
+      - name: Upload GUI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.gui_artifact }}
+          path: dist/${{ matrix.gui_artifact }}
 
   release:
     name: Create GitHub Release
@@ -158,11 +174,13 @@ jobs:
 
             ## Executables
 
-            | Platform | Architecture | File |
-            |----------|-------------|------|
-            | Windows | x64 | `opennavicat-windows-x64.exe` |
-            | macOS | ARM64 (Apple Silicon) | `opennavicat-macos-arm64` |
-            | Linux | x64 | `opennavicat-linux-x64` |
+            Two packages are provided — CLI (lightweight, no Qt) and GUI (full with PySide6):
+
+            | Platform | Architecture | CLI | GUI |
+            |----------|-------------|-----|-----|
+            | Windows | x64 | `opennavicat-cli-windows-x64.exe` | `opennavicat-windows-x64.exe` |
+            | macOS | ARM64 (Apple Silicon) | `opennavicat-cli-macos-arm64` | `opennavicat-macos-arm64` |
+            | Linux | x64 | `opennavicat-cli-linux-x64` | `opennavicat-linux-x64` |
           files: |
             artifacts/**/*
           draft: false

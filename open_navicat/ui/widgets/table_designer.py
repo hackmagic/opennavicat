@@ -286,7 +286,8 @@ class TableDesignerWidget(QWidget):
             self._fk_table.setItem(i, 5, QTableWidgetItem(fk.on_update))
 
         self._ddl_preview.setPlainText(
-            f"CREATE TABLE `{self._table}` (\n  -- {len(info.columns)} 字段, {len(info.indexes)} 索引, {len(info.foreign_keys)} 外键\n);"
+            f"CREATE TABLE `{self._table}` (\n  "
+            f"{t('table_designer.ddl_summary', fields=len(info.columns), indexes=len(info.indexes), fks=len(info.foreign_keys))}\n);"
         )
         # Generate actual DDL preview
         self._update_preview()
@@ -301,16 +302,16 @@ class TableDesignerWidget(QWidget):
             from open_navicat.utils.sql_generator import generate_alter_table, generate_create_table
             new_info = self._collect_table_info()
             if not new_info or not new_info.columns:
-                self._ddl_preview.setPlainText("-- 添加字段后自动生成 DDL --")
+                self._ddl_preview.setPlainText(t("table_designer.ddl_placeholder"))
                 return
 
             if self._show_full_ddl or not self._original_info:
                 ddl = generate_create_table(new_info)
             else:
-                ddl = generate_alter_table(self._original_info, new_info) or "无变化"
+                ddl = generate_alter_table(self._original_info, new_info) or t("table_designer.no_changes")
             self._ddl_preview.setPlainText(ddl)
         except Exception as e:
-            self._ddl_preview.setPlainText(f"-- DDL 生成失败: {e} --")
+            self._ddl_preview.setPlainText(t("table_designer.ddl_generate_failed", error=e))
 
     def _toggle_ddl_mode(self, checked: bool) -> None:
         """Toggle between ALTER diff (default) and full CREATE TABLE."""

@@ -120,7 +120,7 @@ class DataDictionaryWidget(QWidget):
         if row < 0 or row >= len(self._tables):
             return
         table_name = self._tables[row]["name"]
-        self._detail_title.setText(f"📋 {table_name}")
+        self._detail_title.setText(t("data_dictionary.detail_title", table=table_name))
 
         connector = connection_pool.get(self._connection_id)
         if not connector:
@@ -155,17 +155,27 @@ class DataDictionaryWidget(QWidget):
         if not path:
             return
 
+        title = t("data_dictionary.page_title", database=self._database)
         lines = [
             "<!DOCTYPE html><html><head><meta charset='utf-8'>",
-            f"<title>数据字典 - {self._database}</title>",
+            f"<title>{title}</title>",
             "<style>body{font-family:sans-serif;margin:20px}table{border-collapse:collapse;width:100%;margin:10px 0}th,td{border:1px solid #ccc;padding:6px 10px;text-align:left}th{background:#f0f0f0}h2{color:#333}h3{color:#555}</style>",
-            f"</head><body><h1>数据字典 — {self._database}</h1>",
+            f"</head><body><h1>{title}</h1>",
         ]
 
         for info in self._tables:
             lines.append(f"<h2>{info['name']}</h2>")
-            lines.append(f"<p>引擎: {info.get('engine', '')}</p>")
-            lines.append("<table><tr><th>字段名</th><th>类型</th><th>可空</th><th>默认值</th><th>主键</th><th>自增</th><th>注释</th></tr>")
+            lines.append(f"<p>{t('data_dictionary.column.engine')}: {info.get('engine', '')}</p>")
+            ths = "</th><th>".join([
+                t("data_dictionary.column_detail.field_name"),
+                t("data_dictionary.column_detail.type"),
+                t("data_dictionary.column_detail.nullable"),
+                t("data_dictionary.column_detail.default"),
+                t("data_dictionary.column_detail.primary_key"),
+                t("data_dictionary.column_detail.auto_increment"),
+                t("data_dictionary.column_detail.comment"),
+            ])
+            lines.append(f"<table><tr><th>{ths}</th></tr>")
 
             try:
                 connector = connection_pool.get(self._connection_id)
@@ -201,11 +211,20 @@ class DataDictionaryWidget(QWidget):
             "th,td{border:1px solid #555;padding:4px 8px;text-align:left}"
             "th{background:#e0e0e0}h2{color:#333}"
             "</style></head><body>",
-            f"<h1>数据字典 — {self._database}</h1>",
+            f"<h1>{t('data_dictionary.page_title', database=self._database)}</h1>",
         ]
         for info in self._tables:
             html_lines.append(f"<h2>{info['name']}</h2>")
-            html_lines.append("<table><tr><th>字段名</th><th>类型</th><th>可空</th><th>默认值</th><th>主键</th><th>自增</th><th>注释</th></tr>")
+            ths = "</th><th>".join([
+                t("data_dictionary.column_detail.field_name"),
+                t("data_dictionary.column_detail.type"),
+                t("data_dictionary.column_detail.nullable"),
+                t("data_dictionary.column_detail.default"),
+                t("data_dictionary.column_detail.primary_key"),
+                t("data_dictionary.column_detail.auto_increment"),
+                t("data_dictionary.column_detail.comment"),
+            ])
+            html_lines.append(f"<table><tr><th>{ths}</th></tr>")
             try:
                 connector = connection_pool.get(self._connection_id)
                 table_info = pool_loop.run_until_complete(connector.get_table_info(self._database, info["name"]))

@@ -468,8 +468,8 @@ class SQLEditorWidget(QWidget):
         btn_simplify.clicked.connect(self._simplify)
         m_layout.addWidget(btn_simplify)
 
-        btn_compare = QPushButton("对比当前查询", mini_bar)
-        btn_compare.setToolTip("Compare current SQL with another query side by side")
+        btn_compare = QPushButton(t("sql_editor.compare_query"), mini_bar)
+        btn_compare.setToolTip(t("sql_editor.compare_query_tip"))
         btn_compare.clicked.connect(self._open_compare_dialog)
         m_layout.addWidget(btn_compare)
 

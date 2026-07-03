@@ -49,7 +49,7 @@ class ChatBubble(QFrame):
         layout.setContentsMargins(8, 4, 8, 4)
 
         # Role label
-        role = QLabel("你" if self._is_user else "🤖 AI", self)
+        role = QLabel(t("ai_copilot.role.user") if self._is_user else t("ai_copilot.role.ai"), self)
         role.setStyleSheet(
             f"font-size: 10px; color: {TEXT_MUTED};" if self._is_user
             else f"font-size: 10px; color: {TEXT_ACCENT};"
@@ -130,7 +130,7 @@ class AICopilotSidebar(QWidget):
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(12, 10, 12, 10)
 
-        title = QLabel("🤖 AI Copilot", header)
+        title = QLabel(t("ai_copilot.title"), header)
         title.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {TEXT_PRIMARY};")
         h_layout.addWidget(title)
 
@@ -139,7 +139,7 @@ class AICopilotSidebar(QWidget):
         # Settings button
         self._settings_btn = QPushButton("⚙️", header)
         self._settings_btn.setFixedSize(24, 24)
-        self._settings_btn.setToolTip("AI 配置")
+        self._settings_btn.setToolTip(t("ai_copilot.tooltip.config"))
         self._settings_btn.setStyleSheet(
             "background: transparent; color: rgba(255,255,255,0.7); "
             "border: none; font-size: 14px;"
@@ -149,7 +149,7 @@ class AICopilotSidebar(QWidget):
 
         self._save_btn = QPushButton("💾", header)
         self._save_btn.setFixedSize(24, 24)
-        self._save_btn.setToolTip("保存对话")
+        self._save_btn.setToolTip(t("ai_copilot.tooltip.save"))
         self._save_btn.setStyleSheet(
             "background: transparent; color: rgba(255,255,255,0.7); "
             "border: none; font-size: 14px;"
@@ -159,7 +159,7 @@ class AICopilotSidebar(QWidget):
 
         self._load_btn = QPushButton("📂", header)
         self._load_btn.setFixedSize(24, 24)
-        self._load_btn.setToolTip("加载对话")
+        self._load_btn.setToolTip(t("ai_copilot.tooltip.load"))
         self._load_btn.setStyleSheet(
             "background: transparent; color: rgba(255,255,255,0.7); "
             "border: none; font-size: 14px;"
@@ -186,13 +186,9 @@ class AICopilotSidebar(QWidget):
         m_layout.setSpacing(4)
 
         self._mode_btns: dict[str, QPushButton] = {}
-        for mode_id, icon, label in [
-            ("ask", "💬", "问答"),
-            ("optimize", "⚡", "优化"),
-            ("design", "📐", "设计"),
-            ("generate", "🧪", "生成"),
-        ]:
-            btn = QPushButton(f"{icon} {label}", modes)
+        for mode_id in ("ask", "optimize", "design", "generate"):
+            label = t(f"ai_copilot.tab.{mode_id}")
+            btn = QPushButton(label, modes)
             btn.setCheckable(True)
             btn.setChecked(mode_id == "ask")
             btn.setStyleSheet(self._mode_style(mode_id == "ask"))
@@ -247,12 +243,14 @@ class AICopilotSidebar(QWidget):
         q_layout.setContentsMargins(0, 0, 0, 0)
         q_layout.setSpacing(4)
 
-        for text, tip in [
-            ("📊 最近注册", "查询最近7天注册用户数"),
-            ("⚡ SQL 优化", "优化当前 SQL"),
-            ("📐 设计 Schema", "设计数据库表结构"),
-            ("💡 SQL 教学", "SQL 概念解释"),
+        for key, tip_key in [
+            ("suggestion.recent_reg", "suggestion.recent_reg_tip"),
+            ("suggestion.sql_optimize", "suggestion.sql_optimize_tip"),
+            ("suggestion.design_schema", "suggestion.design_schema_tip"),
+            ("suggestion.sql_teach", "suggestion.sql_teach_tip"),
         ]:
+            text = t(f"ai_copilot.{key}")
+            tip = t(f"ai_copilot.{tip_key}")
             btn = QPushButton(text, quick)
             btn.setFixedHeight(22)
             btn.setStyleSheet(f"""
@@ -288,13 +286,14 @@ class AICopilotSidebar(QWidget):
             btn.setStyleSheet(self._mode_style(active))
 
         hints = {
-            "ask": "💬 问我任何关于数据库的问题",
-            "optimize": "⚡ 粘贴 SQL，我会分析性能问题",
-            "design": "📐 描述业务需求，设计表结构",
-            "generate": "🧪 选择表，生成测试数据",
+            "ask": t("ai_copilot.hint.ask"),
+            "optimize": t("ai_copilot.hint.optimize"),
+            "design": t("ai_copilot.hint.design"),
+            "generate": t("ai_copilot.hint.generate"),
         }
+        mode_name = t(f"ai_copilot.mode_name.{mode_id}")
         self._clear_messages()
-        self._add_system_message(f"切换到 <b>{['问答','优化','设计','生成'][['ask','optimize','design','generate'].index(mode_id)]}</b> 模式<br><br>{hints[mode_id]}")
+        self._add_system_message(t("ai_copilot.mode_switched", mode=mode_name, hint=hints[mode_id]))
 
     def _mode_style(self, active: bool) -> str:
         if active:
@@ -323,8 +322,8 @@ class AICopilotSidebar(QWidget):
         from PySide6.QtWidgets import QLineEdit
 
         from open_navicat.config import config
-        name, ok = QInputDialog.getText(self, "保存对话", "对话名称:", QLineEdit.EchoMode.Normal,
-                                        f"对话 {len(self._conversation_history)} 条")
+        name, ok = QInputDialog.getText(self, t("ai_copilot.save_dialog.title"), t("ai_copilot.save_dialog.prompt"), QLineEdit.EchoMode.Normal,
+                                        t("ai_copilot.save_dialog.default_name", n=len(self._conversation_history)))
         if ok and name:
             saved = config.get("ai_conversations", [])
             saved.append({"name": name.strip(), "messages": self._conversation_history})
@@ -339,16 +338,18 @@ class AICopilotSidebar(QWidget):
             return
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QListWidget, QVBoxLayout
         dlg = QDialog(self.window())
-        dlg.setWindowTitle("加载对话")
+        dlg.setWindowTitle(t("ai_copilot.load_dialog.title"))
         dlg.setMinimumWidth(350)
         layout = QVBoxLayout(dlg)
-        layout.addWidget(QLabel("选择要加载的对话："))
+        layout.addWidget(QLabel(t("ai_copilot.load_dialog.prompt")))
         lst = QListWidget(dlg)
         for s in saved:
-            lst.addItem(f"{s['name']} ({len(s['messages'])} 条)")
+            lst.addItem(t("ai_copilot.load_dialog.item", name=s['name'], count=len(s['messages'])))
         lst.setCurrentRow(0)
         layout.addWidget(lst)
         btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, dlg)
+        btns.button(QDialogButtonBox.StandardButton.Ok).setText(t("common.ok"))
+        btns.button(QDialogButtonBox.StandardButton.Cancel).setText(t("common.cancel"))
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
         layout.addWidget(btns)
@@ -425,7 +426,7 @@ class AICopilotSidebar(QWidget):
 
     def _show_thinking(self) -> None:
         self._thinking = QLabel(self._messages_widget)
-        self._thinking.setText("🤔 AI 思考中...")
+        self._thinking.setText(t("ai_copilot.thinking"))
         self._thinking.setStyleSheet(
             "font-size: 12px; color: #888; padding: 8px 12px;"
         )
@@ -476,7 +477,7 @@ class AICopilotSidebar(QWidget):
                 schema_context = "\n".join(lines)
             except Exception as e:
                 _log.warning("Failed to load schema context: %s", e)
-                schema_context = "(无法加载 Schema)"
+                schema_context = t("ai_copilot.schema_load_failed")
 
         self._show_thinking()
         QApplication.processEvents()
@@ -494,23 +495,23 @@ class AICopilotSidebar(QWidget):
         try:
             active_ids = connection_manager.active_ids
             if not active_ids:
-                self._show_ai_response("⚠️ 没有活跃连接，请先连接数据库。")
+                self._show_ai_response(t("ai_copilot.no_connection"))
                 return
             from open_navicat.services.query_engine import query_engine
             result = query_engine.execute(active_ids[0], sql)
             if not result.success:
-                self._show_ai_response(f"❌ SQL 错误:\n```\n{result.error_message}\n```")
+                self._show_ai_response(f"{t('ai_copilot.sql_error')}:\n```\n{result.error_message}\n```")
                 return
             if result.is_select:
                 rows = []
                 for row in result.rows[:50]:
-                    rows.append({c.name: str(v) if v is not None else "NULL" for c, v in zip(result.columns, row)})
+                    rows.append({c.name: str(v) if v is not None else t("common.null") for c, v in zip(result.columns, row)})
                 import json
-                self._show_ai_response(f"✅ 查询成功 ({result.row_count} 行, {result.execution_time_ms:.1f}ms)\n```json\n{json.dumps(rows[:10], indent=2, ensure_ascii=False)}\n```")
+                self._show_ai_response(f"{t('ai_copilot.query_success', rows=result.row_count, ms=f'{result.execution_time_ms:.1f}')}\n```json\n{json.dumps(rows[:10], indent=2, ensure_ascii=False)}\n```")
             else:
-                self._show_ai_response(f"✅ 执行成功, {result.affected_rows} 行受影响 ({result.execution_time_ms:.1f}ms)")
+                self._show_ai_response(t("ai_copilot.execute_success", rows=result.affected_rows, ms=f'{result.execution_time_ms:.1f}'))
         except Exception as e:
-            self._show_ai_response(f"⚠️ 执行错误: {e}")
+            self._show_ai_response(t("ai_copilot.execute_error", error=e))
 
     def _handle_schema_command(self) -> None:
         """Display current schema context."""
@@ -519,21 +520,21 @@ class AICopilotSidebar(QWidget):
         try:
             active_ids = connection_manager.active_ids
             if not active_ids:
-                self._show_ai_response("⚠️ 没有活跃连接。")
+                self._show_ai_response(t("ai_copilot.no_active_connection"))
                 return
             dbs = metadata_service.list_databases(active_ids[0])
             lines = []
             for db in dbs[:5]:
                 tables = metadata_service.list_tables(active_ids[0], db.name)
-                lines.append(f"📁 {db.name} ({len(tables)} 张表)")
+                lines.append(t("ai_copilot.schema_db_entry", name=db.name, count=len(tables)))
                 for table in tables[:15]:
                     info = metadata_service.get_table_info(active_ids[0], db.name, table)
                     if info:
                         cols = ", ".join(f"{c.name}({c.data_type})" for c in info.columns[:10])
                         lines.append(f"  ├ {table}: {cols}")
-            self._show_ai_response("📋 **当前 Schema 上下文**\n```\n" + "\n".join(lines) + "\n```")
+            self._show_ai_response(t("ai_copilot.schema_context_title") + "\n```\n" + "\n".join(lines) + "\n```")
         except Exception as e:
-            self._show_ai_response(f"⚠️ 获取 Schema 失败: {e}")
+            self._show_ai_response(t("ai_copilot.schema_fetch_failed", error=e))
 
     def _async_ai_call(self, text: str, schema_context: str, mode: str) -> None:
         """Run AI call in background thread, then update UI via timer."""
@@ -541,21 +542,21 @@ class AICopilotSidebar(QWidget):
         try:
             if mode == "optimize":
                 result = ai_service.optimize(text)
-                response = result if result else "无法分析该 SQL。"
+                response = result if result else t("ai_copilot.analysis_failed")
             elif mode == "design":
                 result = ai_service.design_schema(text)
-                response = f"📐 AI 设计的 Schema：\n\n```sql\n{result}\n```" if result else "无法生成 Schema。"
+                response = f"{t('ai_copilot.design_result')}\n\n```sql\n{result}\n```" if result else t("ai_copilot.analysis_failed")
             elif mode == "generate":
                 result = ai_service.generate_data(None, 10, text)
-                response = f"🧪 生成 {len(result)} 条测试数据。\n```json\n{str(result[:3])}\n```"
+                response = f"{t('ai_copilot.generate_result', count=len(result))}\n```json\n{str(result[:3])}\n```"
             else:
                 result = ai_service.nl2sql(text, schema_context)
                 if result:
-                    response = f"✅ 生成的 SQL：\n\n```sql\n{result}\n```\n\n点「▶ 执行」运行此查询。"
+                    response = f"{t('ai_copilot.sql_result')}\n\n```sql\n{result}\n```\n\n{t('ai_copilot.sql_result_tip')}"
                 else:
-                    response = "抱歉，我无法理解这个请求。请换个方式描述。"
+                    response = t("ai_copilot.cant_understand")
         except Exception as e:
-            response = f"⚠️ AI 服务错误: {e}"
+            response = t("ai_copilot.service_error", error=e)
 
         # Update UI on main thread
         QTimer.singleShot(0, lambda r=response: self._show_ai_response(r))

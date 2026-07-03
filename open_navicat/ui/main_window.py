@@ -137,6 +137,7 @@ class MainWindow(QMainWindow):
         self._object_browser = ObjectBrowser(self._sidebar_stack)
         self._object_browser.setObjectName("objectBrowser")
         self._sidebar_stack.addWidget(self._object_browser)
+        self._connect_browser_menu_actions()
 
         # Page 1: Favorites panel
         self._favorites_panel = self._create_favorites_panel()
@@ -204,11 +205,11 @@ class MainWindow(QMainWindow):
 
         btn_layout = QHBoxLayout()
         btn_refresh = QPushButton("🔄", panel)
-        btn_refresh.setToolTip("Refresh favorites")
+        btn_refresh.setToolTip(t("main_window.refresh_favorites"))
         btn_refresh.clicked.connect(lambda: self._refresh_favorites_list())
-        btn_open = QPushButton("Open", panel)
+        btn_open = QPushButton(t("common.open"), panel)
         btn_open.clicked.connect(self._open_selected_favorite)
-        btn_remove = QPushButton("Remove", panel)
+        btn_remove = QPushButton(t("common.remove"), panel)
         btn_remove.clicked.connect(self._remove_selected_favorite)
         btn_layout.addWidget(btn_refresh)
         btn_layout.addWidget(btn_open)
@@ -325,34 +326,27 @@ class MainWindow(QMainWindow):
         act_info.triggered.connect(self._toggle_info_pane)
         view_menu.addAction(act_info)
         view_menu.addSeparator()
-        act_list = QAction(t("menu.view.list"), self)
-        act_list.setCheckable(True)
-        act_list.setChecked(True)
-        act_list.triggered.connect(lambda: self._object_browser.set_view_mode("list"))
-        view_menu.addAction(act_list)
-        act_detail = QAction(t("menu.view.detail"), self)
-        act_detail.setCheckable(True)
-        act_detail.triggered.connect(lambda: self._object_browser.set_view_mode("detail"))
-        view_menu.addAction(act_detail)
-        act_er = QAction(t("menu.view.er_diagram"), self)
-        act_er.setCheckable(True)
-        act_er.triggered.connect(lambda: self._object_browser.set_view_mode("er"))
-        view_menu.addAction(act_er)
+        self._view_act_list = QAction(t("menu.view.list"), self)
+        self._view_act_list.setCheckable(True)
+        self._view_act_list.setChecked(True)
+        view_menu.addAction(self._view_act_list)
+        self._view_act_detail = QAction(t("menu.view.detail"), self)
+        self._view_act_detail.setCheckable(True)
+        view_menu.addAction(self._view_act_detail)
+        self._view_act_er = QAction(t("menu.view.er_diagram"), self)
+        self._view_act_er.setCheckable(True)
+        view_menu.addAction(self._view_act_er)
         view_menu.addSeparator()
-        act_hide = QAction(t("menu.view.hide_groups"), self)
-        act_hide.setCheckable(True)
-        act_hide.triggered.connect(lambda: self._object_browser.set_groups_visible(not act_hide.isChecked()))
-        view_menu.addAction(act_hide)
-        act_sort = QAction(t("menu.view.sort"), self)
-        act_sort.triggered.connect(self._object_browser.show_sort_menu)
-        view_menu.addAction(act_sort)
-        act_cols = QAction(t("menu.view.select_columns"), self)
-        act_cols.triggered.connect(self._object_browser.show_column_selector)
-        view_menu.addAction(act_cols)
-        act_hidden = QAction(t("menu.view.show_hidden"), self)
-        act_hidden.setCheckable(True)
-        act_hidden.triggered.connect(lambda: self._object_browser.set_system_objects_visible(act_hidden.isChecked()))
-        view_menu.addAction(act_hidden)
+        self._view_act_hide = QAction(t("menu.view.hide_groups"), self)
+        self._view_act_hide.setCheckable(True)
+        view_menu.addAction(self._view_act_hide)
+        self._view_act_sort = QAction(t("menu.view.sort"), self)
+        view_menu.addAction(self._view_act_sort)
+        self._view_act_cols = QAction(t("menu.view.select_columns"), self)
+        view_menu.addAction(self._view_act_cols)
+        self._view_act_hidden = QAction(t("menu.view.show_hidden"), self)
+        self._view_act_hidden.setCheckable(True)
+        view_menu.addAction(self._view_act_hidden)
         view_menu.addSeparator()
         act_focus = QAction(t("menu.view.focus_mode"), self)
         act_focus.setCheckable(True)
@@ -519,6 +513,15 @@ class MainWindow(QMainWindow):
             )
         elif hasattr(w, method):
             getattr(w, method)()
+
+    def _connect_browser_menu_actions(self) -> None:
+        self._view_act_list.triggered.connect(lambda: self._object_browser.set_view_mode("list"))
+        self._view_act_detail.triggered.connect(lambda: self._object_browser.set_view_mode("detail"))
+        self._view_act_er.triggered.connect(lambda: self._object_browser.set_view_mode("er"))
+        self._view_act_hide.triggered.connect(lambda: self._object_browser.set_groups_visible(not self._view_act_hide.isChecked()))
+        self._view_act_sort.triggered.connect(self._object_browser.show_sort_menu)
+        self._view_act_cols.triggered.connect(self._object_browser.show_column_selector)
+        self._view_act_hidden.triggered.connect(lambda: self._object_browser.set_system_objects_visible(self._view_act_hidden.isChecked()))
 
     def _create_toolbar(self) -> QWidget:
         bar = QWidget(self)
@@ -777,7 +780,7 @@ class MainWindow(QMainWindow):
             return
         menu = QMenu(self)
         is_pinned = index in self._pinned_tabs
-        act_pin = QAction("📌 取消固定" if is_pinned else "📌 固定标签页", self)
+        act_pin = QAction(t("main_window.unpin_tab") if is_pinned else t("main_window.pin_tab"), self)
         act_pin.triggered.connect(lambda: self._toggle_pin_tab(index))
         menu.addAction(act_pin)
         menu.exec(self._workspace.tabBar().mapToGlobal(pos))
@@ -867,7 +870,7 @@ class MainWindow(QMainWindow):
         from open_navicat.dal.local_config import local_db
         item = self._object_browser.currentItem()
         if not item:
-            QMessageBox.information(self, t("common.notice"), "Please select an item in the object browser first.")
+            QMessageBox.information(self, t("common.notice"), t("main_window.msg.select_item_first"))
             return
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data:
@@ -877,7 +880,7 @@ class MainWindow(QMainWindow):
         obj_type = data.get("type", "connection")
         obj_name = data.get("name", "")
         if local_db.is_favorite(conn_id, db_name, obj_type, obj_name):
-            QMessageBox.information(self, t("common.notice"), "Already in favorites.")
+            QMessageBox.information(self, t("common.notice"), t("main_window.msg.already_in_favorites"))
             return
         local_db.add_favorite(conn_id, db_name, obj_type, obj_name)
         if not item.text(0).startswith("⭐ "):
@@ -886,8 +889,9 @@ class MainWindow(QMainWindow):
     @Slot()
     def _manage_favorites(self) -> None:
         """Open a dialog to view / remove favorites."""
-        from open_navicat.dal.local_config import local_db
         from PySide6.QtWidgets import QDialog, QHBoxLayout, QListWidget, QPushButton, QVBoxLayout
+
+        from open_navicat.dal.local_config import local_db
 
         dlg = QDialog(self)
         dlg.setWindowTitle(t("menu.favorites.manage"))
@@ -898,8 +902,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._fav_list)
 
         btn_layout = QHBoxLayout()
-        btn_open = QPushButton("Open", dlg)
-        btn_remove = QPushButton("Remove", dlg)
+        btn_open = QPushButton(t("common.open"), dlg)
+        btn_remove = QPushButton(t("common.remove"), dlg)
         btn_close = QPushButton(t("common.close"), dlg)
         btn_layout.addWidget(btn_open)
         btn_layout.addWidget(btn_remove)
@@ -938,8 +942,8 @@ class MainWindow(QMainWindow):
     @Slot()
     def _check_for_updates(self) -> None:
         """Check GitHub for newer releases."""
-        import urllib.request
         import json as _json
+        import urllib.request
         try:
             req = urllib.request.Request(
                 "https://api.github.com/repos/opennavicat/opennavicat/releases/latest",
@@ -955,7 +959,7 @@ class MainWindow(QMainWindow):
                         f"Download: {data.get('html_url', 'https://github.com/opennavicat/opennavicat/releases')}",
                     )
                 else:
-                    QMessageBox.information(self, t("menu.help.check_update"), "You have the latest version.")
+                    QMessageBox.information(self, t("menu.help.check_update"), t("main_window.msg.latest_version"))
         except Exception as exc:
             QMessageBox.warning(self, t("menu.help.check_update"), f"Could not check for updates:\n{exc}")
 

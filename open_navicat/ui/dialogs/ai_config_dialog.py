@@ -191,7 +191,7 @@ class AIConfigDialog(QDialog):
         # Validate
         if not cfg["api_key"] and cfg["provider"] != "ollama":
             ret = QMessageBox.question(
-                self, t("common.ok"), f"{t('ai.config.no_key_warning')}。继续？",
+                self, t("common.ok"), f"{t('ai.config.no_key_warning')}{t('ai.config.continue_prompt')}",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if ret != QMessageBox.StandardButton.Yes:

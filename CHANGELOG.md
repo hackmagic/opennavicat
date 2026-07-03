@@ -4,6 +4,50 @@ All notable changes to OpenNavicat will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-07-03
+
+### Added
+
+#### i18n Complete Coverage
+- 1265 keys in both zh_CN.json and en_US.json (was 1115)
+- All hardcoded UI strings replaced with `t()` calls across 15+ Python files
+- New domains added: `blob_viewer.`, `ai_copilot.*` (46 keys)
+- All `QDialogButtonBox` buttons now use `t("common.ok")` / `t("common.cancel")`
+
+#### Table List Context Menu
+- Right-click context menu on the table list panel (QTableWidget)
+- Operations: Open, Design, New, Drop, Truncate, Rename, Data Dictionary, Generate Data, Refresh
+- 8 new helper methods in `object_browser.py`
+
+#### Table Tree Context Menu Enhancements
+- Added "Data Dictionary" and "Generate Data" items to table right-click menu
+
+#### PyInstaller Packaging (CLI + GUI Split)
+- Split into two packages: `opennavicat-cli` (lightweight, no Qt) and `opennavicat` (full GUI with PySide6)
+- GUI spec uses `pyside6_library_info.collect_module()` to properly collect Qt DLLs and plugins
+- CLI spec excludes PySide6 entirely for smaller binary size
+- Separate entry points: `open_navicat/cli_main.py` (CLI) and `open_navicat/gui_main.py` (GUI)
+
+### Fixed
+
+#### Main Window Crash
+- `_setup_menubar()` connected View menu actions to `self._object_browser` before it was created
+- Extracted browser action connections into `_connect_browser_menu_actions()`, called after `_object_browser` initialization
+
+#### Theme Consistency
+- 5 widget files: removed hardcoded dark/light colors, using `theme_colors.py` helper
+- User manager, advanced find dialog, scheduler panel, command line, query compare dialog
+
+#### Window Geometry Restoration
+- `_restore_geometry()` now restores x/y/width/height with IDEA-style boundary validation
+- Multi-monitor aware, handles disconnected monitors
+
+### Changed
+
+#### i18n Key Parity
+- zh_CN.json and en_US.json verified symmetric after each change
+- Automated parity check in CI workflow
+
 ## [0.5.0] - 2026-07-01
 
 ### Added

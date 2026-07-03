@@ -117,7 +117,7 @@ class QueryManagerWidget(QWidget):
         """Open SQL editor with SELECT template for visual query design."""
         mw = self.window()
         if hasattr(mw, 'open_query_tab'):
-            template = "-- 设计查询\nSELECT \n  \nFROM `\nWHERE \nLIMIT 100;"
+            template = t("query_manager.new_query_template")
             mw.open_query_tab(self._connection_id, self._database, template)
 
     def _open_selected(self) -> None:

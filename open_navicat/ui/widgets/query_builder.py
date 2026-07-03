@@ -201,7 +201,7 @@ class QueryBuilderWidget(QWidget):
         right_layout.addWidget(grp_group)
 
         # HAVING
-        grp_having = QGroupBox("HAVING")
+        grp_having = QGroupBox(t("query_builder.having"))
         having_layout = QVBoxLayout(grp_having)
         self._having_edit = QLineEdit()
         self._having_edit.setPlaceholderText(t("query_builder.having_hint"))

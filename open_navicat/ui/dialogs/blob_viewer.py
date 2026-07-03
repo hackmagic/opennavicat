@@ -13,6 +13,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from open_navicat.i18n import t
+
 
 def _detect_blob_type(data: bytes) -> str:
     """Detect BLOB type: image, text, or binary."""
@@ -43,12 +45,12 @@ class BlobViewerDialog(QDialog):
     def __init__(self, data: bytes, column_name: str = "", parent=None) -> None:
         super().__init__(parent)
         self._data = data
-        self.setWindowTitle(f"BLOB Viewer — {column_name}" if column_name else "BLOB Viewer")
+        self.setWindowTitle(t("blob_viewer.title", column=column_name))
         self.resize(700, 500)
 
         layout = QVBoxLayout(self)
         blob_type = _detect_blob_type(data)
-        size_lbl = QLabel(f"Size: {len(data):,} bytes  |  Type: {blob_type}", self)
+        size_lbl = QLabel(t("blob_viewer.size_info", size=f"{len(data):,}", type=blob_type), self)
         layout.addWidget(size_lbl)
 
         tabs = QTabWidget(self)
@@ -62,9 +64,9 @@ class BlobViewerDialog(QDialog):
                     Qt.TransformationMode.SmoothTransformation,
                 ))
                 img_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                tabs.addTab(img_lbl, "Image")
+                tabs.addTab(img_lbl, t("blob_viewer.tab_image"))
             else:
-                tabs.addTab(QLabel("Failed to decode image", self), "Image")
+                tabs.addTab(QLabel(t("blob_viewer.decode_failed"), self), t("blob_viewer.tab_image"))
 
         if blob_type == "text":
             text_edit = QPlainTextEdit(self)
@@ -74,14 +76,14 @@ class BlobViewerDialog(QDialog):
                 text_edit.setPlainText(data.decode("latin-1", errors="replace"))
             text_edit.setReadOnly(True)
             text_edit.setFont(QFont("Consolas", 10))
-            tabs.addTab(text_edit, "Text")
+            tabs.addTab(text_edit, t("blob_viewer.tab_text"))
 
         # Hex dump tab (always shown)
         hex_edit = QPlainTextEdit(self)
         hex_edit.setPlainText(_hex_dump(data))
         hex_edit.setReadOnly(True)
         hex_edit.setFont(QFont("Consolas", 10))
-        tabs.addTab(hex_edit, "Hex")
+        tabs.addTab(hex_edit, t("blob_viewer.tab_hex"))
 
         layout.addWidget(tabs, 1)
 

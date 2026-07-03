@@ -80,7 +80,7 @@ main.py
 | 组件 | 职责 | 调用服务 |
 |------|------|----------|
 | `MainWindow` | 主窗口框架、菜单、Tab 工作区 | — |
-| `ObjectBrowser` | 连接树（分组/搜索/拖放）、数据库对象浏览 | `MetadataService`, `local_db` |
+| `ObjectBrowser` | 连接树（分组/搜索/拖放）、数据库对象浏览、右键菜单（表/视图/存储过程/查询 + 表列表面板） | `MetadataService`, `local_db` |
 | `SQLEditorWidget` | SQL 编辑、执行、结果查看 | `QueryEngine` |
 | `TableViewerWidget` | 数据网格/表单视图、分页、编辑、筛选、BLOB 查看 | `QueryEngine` |
 | `ConnectionDialog` | 连接编辑表单 | `ConnectionManager` |

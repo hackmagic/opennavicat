@@ -59,8 +59,9 @@ pre-commit = "^3.6.0"
 testcontainers = {extras = ["mysql", "postgres"], version = "^4.4.0"}
 
 [tool.poetry.scripts]
-opennavicat = "open_navicat.main:cli_main"
-opennavicat-gui = "open_navicat.main:main"
+opennavicat = "open_navicat.cli_main:main"
+opennavicat-cli = "open_navicat.cli_main:main"
+opennavicat-gui = "open_navicat.gui_main:main"
 
 [build-system]
 requires = ["poetry-core"]

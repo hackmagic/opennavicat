@@ -56,7 +56,7 @@ class _TransferWorker(QThread):
         total = len(self._tables)
 
         for i, table in enumerate(self._tables):
-            self.progress.emit(i, f"传输 {table}...")
+            self.progress.emit(i, t("data_transfer.transferring_table", table=table))
             try:
                 self._transfer_table(src, tgt, table, errors)
             except Exception as e:
@@ -181,7 +181,7 @@ class DataTransferWidget(QWidget):
 
         self._table = QTableWidget()
         self._table.setColumnCount(2)
-        self._table.setHorizontalHeaderLabels(["", "表名"])
+        self._table.setHorizontalHeaderLabels([t("data_transfer.table_header_empty"), t("data_transfer.table_header_name")])
         self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         tbl_layout.addWidget(self._table)
@@ -327,9 +327,9 @@ class DataTransferWidget(QWidget):
         tgt_conn_name = self._tgt_conn.currentText()
         reply = QMessageBox.question(
             self, t("data_transfer.msg.confirm"),
-            f"即将传输 {len(tables)} 张表:\n" + "\n".join(f"  {tbl}" for tbl in tables[:10])
+            t("data_transfer.confirm_detail", n=len(tables)) + "\n" + "\n".join(f"  {tbl}" for tbl in tables[:10])
             + ("\n  ..." if len(tables) > 10 else "")
-            + f"\n\n到 {tgt_conn_name}/{tgt_db}?",
+            + t("data_transfer.confirm_to", conn=tgt_conn_name, db=tgt_db),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
@@ -355,9 +355,9 @@ class DataTransferWidget(QWidget):
         self._btn_transfer.setEnabled(True)
         if errors:
             QMessageBox.warning(self, t("data_transfer.msg.partial_failure"),
-                                f"{len(errors)}/{total} 张表传输失败:\n" + "\n".join(errors[:5]))
-            self._status.setText(f"完成，{len(errors)} 张表失败")
+                                t("data_transfer.partial_failure_detail", errors=len(errors), total=total) + "\n" + "\n".join(errors[:5]))
+            self._status.setText(t("data_transfer.status_partial_failure", n=len(errors)))
         else:
             QMessageBox.information(self, t("data_transfer.msg.complete"),
-                                    f"成功传输 {total} 张表。")
-            self._status.setText(f"成功传输 {total} 张表")
+                                    t("data_transfer.transfer_complete", total=total))
+            self._status.setText(t("data_transfer.status_complete", total=total))

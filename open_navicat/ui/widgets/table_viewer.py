@@ -121,11 +121,11 @@ class TableViewerWidget(QWidget):
         toolbar.addWidget(self._btn_cell_editor)
 
         # Undo / Redo
-        self._btn_undo = QPushButton("↩ Undo", self)
+        self._btn_undo = QPushButton(t("table_viewer.undo"), self)
         self._btn_undo.clicked.connect(self._undo)
         self._btn_undo.setEnabled(False)
         toolbar.addWidget(self._btn_undo)
-        self._btn_redo = QPushButton("↪ Redo", self)
+        self._btn_redo = QPushButton(t("table_viewer.redo"), self)
         self._btn_redo.clicked.connect(self._redo)
         self._btn_redo.setEnabled(False)
         toolbar.addWidget(self._btn_redo)
@@ -140,7 +140,7 @@ class TableViewerWidget(QWidget):
         toolbar.addWidget(self._btn_batch_rollback)
 
         # View mode toggle
-        self._btn_form_view = QPushButton("📋 Form View", self)
+        self._btn_form_view = QPushButton(t("table_viewer.form_view"), self)
         self._btn_form_view.setCheckable(True)
         self._btn_form_view.clicked.connect(self._toggle_view_mode)
         toolbar.addWidget(self._btn_form_view)
@@ -150,7 +150,7 @@ class TableViewerWidget(QWidget):
         # Group 3: Filter, Sort, Columns
         toolbar.addWidget(QLabel(t("data_viewer.filter") + ":", self))
         self._filter_input = QLineEdit(self)
-        self._filter_input.setPlaceholderText("column = value  (SQL WHERE clause)")
+        self._filter_input.setPlaceholderText(t("table_viewer.filter_placeholder"))
         self._filter_input.setMinimumWidth(260)
         self._filter_input.returnPressed.connect(self._apply_filter)
         toolbar.addWidget(self._filter_input)
@@ -250,17 +250,17 @@ class TableViewerWidget(QWidget):
         self._form_layout.addWidget(self._form_fields)
         # Form nav bar
         form_nav = QHBoxLayout()
-        self._form_prev = QPushButton("◀ Prev", self)
+        self._form_prev = QPushButton(t("table_viewer.form_prev"), self)
         self._form_prev.clicked.connect(self._form_prev_row)
-        self._form_next = QPushButton("Next ▶", self)
+        self._form_next = QPushButton(t("table_viewer.form_next"), self)
         self._form_next.clicked.connect(self._form_next_row)
-        self._form_row_label = QLabel("Row 0 of 0", self)
+        self._form_row_label = QLabel(t("table_viewer.form_row_info", current=0, total=0), self)
         self._form_row_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         form_nav.addWidget(self._form_prev)
         form_nav.addWidget(self._form_row_label)
         form_nav.addWidget(self._form_next)
         form_nav.addStretch()
-        self._form_close = QPushButton("Back to Table", self)
+        self._form_close = QPushButton(t("table_viewer.back_to_table"), self)
         self._form_close.clicked.connect(lambda: self._toggle_view_mode(False))
         form_nav.addWidget(self._form_close)
         self._form_layout.addLayout(form_nav)
@@ -273,22 +273,22 @@ class TableViewerWidget(QWidget):
 
         # -- Pagination bar --
         pagination = QHBoxLayout()
-        self._btn_first = QPushButton("⏮ First", self)
+        self._btn_first = QPushButton(t("data_viewer.first_page"), self)
         self._btn_first.clicked.connect(lambda: self._go_to_page(0))
         pagination.addWidget(self._btn_first)
 
-        self._btn_prev = QPushButton("◀ Prev", self)
+        self._btn_prev = QPushButton(t("data_viewer.prev_page"), self)
         self._btn_prev.clicked.connect(self._prev_page)
         pagination.addWidget(self._btn_prev)
 
-        self._page_info = QLabel("Page 0 of 0", self)
+        self._page_info = QLabel(t("data_viewer.page", page=0, total=0), self)
         pagination.addWidget(self._page_info)
 
-        self._btn_next = QPushButton("Next ▶", self)
+        self._btn_next = QPushButton(t("data_viewer.next_page"), self)
         self._btn_next.clicked.connect(self._next_page)
         pagination.addWidget(self._btn_next)
 
-        self._btn_last = QPushButton("Last ⏭", self)
+        self._btn_last = QPushButton(t("data_viewer.last_page"), self)
         self._btn_last.clicked.connect(self._go_to_last_page)
         pagination.addWidget(self._btn_last)
 
@@ -390,7 +390,7 @@ class TableViewerWidget(QWidget):
                         item.setForeground(QColor("#808080"))
                     elif isinstance(val, bytes):
                         item.setData(Qt.ItemDataRole.UserRole, val)
-                        item.setToolTip("Double-click to view BLOB")
+                        item.setToolTip(t("table_viewer.view_blob_tooltip"))
                     self._table_widget.setItem(row_idx, col_idx, item)
 
             # Apply conditional formatting rules
@@ -493,19 +493,19 @@ class TableViewerWidget(QWidget):
 
         rows = self._loaded_rows
         if not rows or self._form_current_row >= len(rows):
-            self._form_row_label.setText("No data")
+            self._form_row_label.setText(t("table_viewer.no_data"))
             return
 
         row = rows[self._form_current_row]
         cols = self._loaded_column_names
-        self._form_row_label.setText(f"Row {self._form_current_row + 1} of {len(rows)}")
+        self._form_row_label.setText(t("table_viewer.form_row_info", current=self._form_current_row + 1, total=len(rows)))
         self._form_prev.setEnabled(self._form_current_row > 0)
         self._form_next.setEnabled(self._form_current_row < len(rows) - 1)
 
         for col_idx, col_name in enumerate(cols):
             val = row[col_idx] if col_idx < len(row) else None
             if val is None:
-                widget = QLabel("(NULL)", self._form_fields)
+                widget = QLabel(t("common.null"), self._form_fields)
                 widget.setStyleSheet("color: #808080;")
             elif isinstance(val, bytes):
                 widget = self._blob_form_widget(val, col_name)
@@ -526,7 +526,7 @@ class TableViewerWidget(QWidget):
         hl.setContentsMargins(0, 0, 0, 0)
         size_str = _fmt_bytes(len(data))
         hl.addWidget(QLabel(f"[{size_str}]", container))
-        btn = QPushButton("View BLOB", container)
+        btn = QPushButton(t("table_viewer.view_blob"), container)
         btn.clicked.connect(lambda: self._open_blob_viewer(data, col_name))
         hl.addWidget(btn)
         hl.addStretch()
@@ -550,9 +550,9 @@ class TableViewerWidget(QWidget):
     def _update_pagination(self) -> None:
         total_pages = max(1, (self._total_rows + self._page_size - 1) // self._page_size)
         self._page_info.setText(
-            f"Page {self._current_page + 1} of {total_pages}"
+            t("data_viewer.page", page=self._current_page + 1, total=total_pages)
         )
-        self._row_count_label.setText(f"Total rows: {self._total_rows}")
+        self._row_count_label.setText(t("data_viewer.total_rows", count=self._total_rows))
 
         self._btn_first.setEnabled(self._current_page > 0)
         self._btn_prev.setEnabled(self._current_page > 0)
@@ -736,7 +736,7 @@ class TableViewerWidget(QWidget):
         try:
             result = pool_loop.run_until_complete(connector.execute(sql))
             if result.insert_id:
-                self._status_msg.setText(f"Inserted row id={result.insert_id}")
+                self._status_msg.setText(t("table_viewer.inserted_row", id=result.insert_id))
             # Reload to show the new row
             self._current_page = 0
             self._load_page()
@@ -760,7 +760,7 @@ class TableViewerWidget(QWidget):
                 self._current_page = 0
                 self._load_page()
             except Exception as e2:
-                self._status_msg.setText(f"Add row failed: {e2}")
+                self._status_msg.setText(t("table_viewer.add_row_failed", error=e2))
 
     def _delete_selected(self) -> None:
         """Delete selected rows from the table."""
@@ -800,9 +800,9 @@ class TableViewerWidget(QWidget):
                 result = pool_loop.run_until_complete(connector.execute(sql, (pk_val,)))
                 deleted += result.affected_rows
             except Exception as e:
-                self._status_msg.setText(f"Delete failed: {e}")
+                self._status_msg.setText(t("table_viewer.delete_failed", error=e))
 
-        self._status_msg.setText(f"Deleted {deleted} row(s)")
+        self._status_msg.setText(t("table_viewer.deleted_rows", count=deleted))
         self._load_page()
 
     # ---- export / import ----
@@ -1297,7 +1297,7 @@ class TableViewerWidget(QWidget):
                 lambda: self._copy_where_in(rows_data))
             menu.addAction(t("context.copy_as_select")).triggered.connect(lambda: self._copy_select(rows_data))
             menu.addSeparator()
-            menu.addAction("🔗 Copy as WHERE").triggered.connect(lambda: self._copy_where(rows_data))
+            menu.addAction(t("context.copy_as_where")).triggered.connect(lambda: self._copy_where(rows_data))
         menu.addSeparator()
 
         menu.addAction(t("context.copy_as_csv")).triggered.connect(lambda: self._copy_csv(rows_data))

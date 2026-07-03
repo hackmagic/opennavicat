@@ -31,7 +31,7 @@ class _ScriptPreviewDialog(QDialog):
 
     def __init__(self, statements: list[str], parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("同步脚本预览")
+        self.setWindowTitle(t("schema_sync.preview_title"))
         self.resize(700, 500)
         layout = QVBoxLayout(self)
 
@@ -110,7 +110,7 @@ class SchemaSyncPanel(QWidget):
 
         # ── Diff result tree ──
         self._diff_tree = QTreeWidget(self)
-        self._diff_tree.setHeaderLabels(["差异项", "说明"])
+        self._diff_tree.setHeaderLabels([t("schema_sync.diff_tree_header_1"), t("schema_sync.diff_tree_header_2")])
         self._diff_tree.setColumnWidth(0, 350)
         self._diff_tree.setAlternatingRowColors(False)
         layout.addWidget(self._diff_tree, 1)
@@ -184,7 +184,7 @@ class SchemaSyncPanel(QWidget):
             self._diff_result = diff
             self._render_diff(diff, source_db, target_db)
         except Exception as exc:
-            QMessageBox.critical(self, t("schema_sync.msg.compare_failed"), f"无法完成结构比较:\n{exc}")
+            QMessageBox.critical(self, t("schema_sync.msg.compare_failed"), t("schema_sync.compare_error_detail", error=str(exc)))
         finally:
             self._btn_compare.setText(t("schema_sync.btn.recompare"))
             self._btn_compare.setEnabled(True)
@@ -208,7 +208,7 @@ class SchemaSyncPanel(QWidget):
         # Added tables
         if diff.added_tables:
             parent = QTreeWidgetItem(self._diff_tree, [
-                f"新增表 ({len(diff.added_tables)})", ""
+                t("schema_sync.diff_label.added_tables", count=len(diff.added_tables)), ""
             ])
             parent.setForeground(0, _DiffColors.ADD)
             parent.setExpanded(True)
@@ -218,14 +218,14 @@ class SchemaSyncPanel(QWidget):
             for t in diff.added_tables:
                 child = QTreeWidgetItem(parent, [
                     f"  {t.name}",
-                    f"CREATE TABLE ({len(t.columns)} 列, {len(t.indexes)} 索引)",
+                    t("schema_sync.diff_label.create_table_detail", columns=len(t.columns), indexes=len(t.indexes)),
                 ])
                 child.setForeground(0, _DiffColors.ADD)
 
         # Removed tables
         if diff.removed_tables:
             parent = QTreeWidgetItem(self._diff_tree, [
-                f"删除表 ({len(diff.removed_tables)})", ""
+                t("schema_sync.diff_label.removed_tables", count=len(diff.removed_tables)), ""
             ])
             parent.setForeground(0, _DiffColors.REMOVE)
             parent.setExpanded(True)
@@ -239,7 +239,7 @@ class SchemaSyncPanel(QWidget):
         # Modified tables
         if diff.modified_tables:
             parent = QTreeWidgetItem(self._diff_tree, [
-                f"修改的表 ({len(diff.modified_tables)})", ""
+                t("schema_sync.diff_label.modified_tables", count=len(diff.modified_tables)), ""
             ])
             parent.setForeground(0, _DiffColors.MODIFY)
             parent.setExpanded(True)
@@ -254,44 +254,44 @@ class SchemaSyncPanel(QWidget):
 
                 for col in td.added_columns:
                     QTreeWidgetItem(table_item, [
-                        f"    + 列: {col.name} {col.data_type}",
+                        t("schema_sync.diff_label.added_column", name=col.name, type=col.data_type),
                         "ADD COLUMN",
                     ]).setForeground(0, _DiffColors.ADD)
 
                 for col_name in td.removed_columns:
                     QTreeWidgetItem(table_item, [
-                        f"    - 列: {col_name}",
+                        t("schema_sync.diff_label.removed_column", name=col_name),
                         "DROP COLUMN",
                     ]).setForeground(0, _DiffColors.REMOVE)
 
                 for cd in td.modified_columns:
                     QTreeWidgetItem(table_item, [
-                        f"    ~ 列: {cd.column_name}  {cd.old_type} → {cd.new_type}",
+                        t("schema_sync.diff_label.modified_column", name=cd.column_name, old=cd.old_type, new=cd.new_type),
                         "MODIFY COLUMN",
                     ]).setForeground(0, _DiffColors.MODIFY)
 
                 for idx in td.added_indexes:
                     cols = ", ".join(idx.columns)
                     QTreeWidgetItem(table_item, [
-                        f"    + 索引: {idx.name} ({cols})",
+                        t("schema_sync.diff_label.added_index", name=idx.name, columns=cols),
                         "ADD INDEX",
                     ]).setForeground(0, _DiffColors.ADD)
 
                 for idx_name in td.removed_indexes:
                     QTreeWidgetItem(table_item, [
-                        f"    - 索引: {idx_name}",
+                        t("schema_sync.diff_label.removed_index", name=idx_name),
                         "DROP INDEX",
                     ]).setForeground(0, _DiffColors.REMOVE)
 
                 for fk in td.added_foreign_keys:
                     QTreeWidgetItem(table_item, [
-                        f"    + 外键: {fk.name}  {fk.column} → {fk.ref_table}({fk.ref_column})",
+                        t("schema_sync.diff_label.added_foreign_key", name=fk.name, column=fk.column, ref_table=fk.ref_table, ref_column=fk.ref_column),
                         "ADD FOREIGN KEY",
                     ]).setForeground(0, _DiffColors.ADD)
 
                 for fk_name in td.removed_foreign_keys:
                     QTreeWidgetItem(table_item, [
-                        f"    - 外键: {fk_name}",
+                        t("schema_sync.diff_label.removed_foreign_key", name=fk_name),
                         "DROP FOREIGN KEY",
                     ]).setForeground(0, _DiffColors.REMOVE)
 
@@ -300,15 +300,16 @@ class SchemaSyncPanel(QWidget):
         self._btn_preview.setEnabled(True)
         changes = diff.total_changes
         self._summary_label.setText(
-            f"共 {changes} 处差异  "
-            f"(+{sum(1 for _ in diff.added_tables)}表 "
-            f"-{len(diff.removed_tables)}表 "
-            f"~{len(diff.modified_tables)}表)"
+            t("schema_sync.diff_summary",
+              changes=changes,
+              added=len(diff.added_tables),
+              removed=len(diff.removed_tables),
+              modified=len(diff.modified_tables))
         )
 
         # Status
         self._status_label.setText(
-            f"来源: {diff.source_db}  →  目标: {diff.target_db}"
+            t("schema_sync.source_target_status", source=diff.source_db, target=diff.target_db)
         )
         self._status_label.setVisible(True)
 
@@ -341,8 +342,7 @@ class SchemaSyncPanel(QWidget):
 
         confirm = QMessageBox.question(
             self, t("schema_sync.msg.confirm"),
-            f"即将对数据库「{target_db}」执行 {len(statements)} 条 DDL 语句。\n"
-            "此操作不可撤销，是否继续？",
+            t("schema_sync.confirm_execute_detail", db=target_db, n=len(statements)) + "\n" + t("schema_sync.irreversible_warning"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if confirm != QMessageBox.StandardButton.Yes:
@@ -359,13 +359,13 @@ class SchemaSyncPanel(QWidget):
         if errors:
             QMessageBox.critical(
                 self, t("schema_sync.msg.completed_with_errors"),
-                f"已执行 {len(statements) - len(errors)}/{len(statements)} 条语句。\n\n"
+                t("schema_sync.executed_partial", n=len(statements) - len(errors), total=len(statements)) + "\n\n"
                 + "\n".join(errors[:5]),
             )
         else:
             QMessageBox.information(
                 self, t("schema_sync.msg.completed"),
-                f"成功执行 {len(statements)} 条 DDL 语句，目标数据库「{target_db}」已与来源同步。",
+                t("schema_sync.executed_complete", n=len(statements), target=target_db),
             )
 
         # Refresh diff view

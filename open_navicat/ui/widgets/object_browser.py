@@ -292,10 +292,15 @@ class ObjectBrowser(QTreeWidget):
             act_rename = menu.addAction(t("browser.rename"))
             act_rename.triggered.connect(lambda: self._rename_table(item))
             menu.addSeparator()
-            act_import = menu.addAction(t("menu.file.import"))
+            act_import = menu.addAction(t("browser.import_wizard"))
             act_import.triggered.connect(lambda: self._wizard_import(item))
-            act_export = menu.addAction(t("menu.file.export"))
+            act_export = menu.addAction(t("browser.export_wizard"))
             act_export.triggered.connect(lambda: self._wizard_export(item))
+            menu.addSeparator()
+            act_dict = menu.addAction(t("browser.data_dictionary"))
+            act_dict.triggered.connect(lambda: self._open_data_dictionary(item))
+            act_gen = menu.addAction(t("browser.generate_data"))
+            act_gen.triggered.connect(lambda: self._open_data_generate(item))
             menu.addSeparator()
             act_dump = menu.addAction(t("browser.dump_sql"))
             act_dump.triggered.connect(lambda: self._dump_table_sql(item))
@@ -447,6 +452,8 @@ class ObjectBrowser(QTreeWidget):
         table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table_widget.setAlternatingRowColors(True)
         table_widget.doubleClicked.connect(lambda idx: self._open_table_from_list(table_widget, idx, conn_id, db_name))
+        table_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        table_widget.customContextMenuRequested.connect(lambda pos: self._show_table_list_context_menu(pos, table_widget, conn_id, db_name))
 
         self._populate_table_list(table_widget, tables)
         layout.addWidget(table_widget)
@@ -476,6 +483,125 @@ class ObjectBrowser(QTreeWidget):
             self._populate_table_list(table_widget, tables)
         except Exception as e:
             logger.warning("_reload_table_list failed: %s", e)
+
+    def _show_table_list_context_menu(self, pos, table_widget: QTableWidget, conn_id: str, db_name: str) -> None:
+        """Right-click context menu for the table list panel."""
+        row = table_widget.rowAt(pos.y())
+        if row < 0:
+            return
+        name_item = table_widget.item(row, 0)
+        if not name_item:
+            return
+        table_name = name_item.text()
+
+        menu = QMenu(self)
+        act_open = menu.addAction(t("browser.open_table"))
+        act_open.triggered.connect(lambda: self._open_table_from_list(table_widget, table_widget.model().index(row, 0), conn_id, db_name))
+        act_design = menu.addAction(t("browser.design_table"))
+        act_design.triggered.connect(lambda: self._design_table_from_list(table_name, conn_id, db_name))
+        menu.addSeparator()
+        act_new = menu.addAction(t("browser.new_table"))
+        act_new.triggered.connect(lambda: self._new_table_in_db(conn_id, db_name))
+        act_drop = menu.addAction(t("browser.drop_table"))
+        act_drop.triggered.connect(lambda: self._drop_table_from_list(table_name, conn_id, db_name, table_widget))
+        act_truncate = menu.addAction(t("browser.truncate_table"))
+        act_truncate.triggered.connect(lambda: self._truncate_table_from_list(table_name, conn_id, db_name))
+        menu.addSeparator()
+        act_rename = menu.addAction(t("browser.rename"))
+        act_rename.triggered.connect(lambda: self._rename_table_from_list(table_name, conn_id, db_name, table_widget))
+        menu.addSeparator()
+        act_dict = menu.addAction(t("browser.data_dictionary"))
+        act_dict.triggered.connect(lambda: self._open_data_dictionary_from_list(conn_id, db_name))
+        act_gen = menu.addAction(t("browser.generate_data"))
+        act_gen.triggered.connect(lambda: self._open_table_tab_from_list(table_name, conn_id, db_name))
+        menu.addSeparator()
+        act_refresh = menu.addAction(t("browser.refresh"))
+        act_refresh.triggered.connect(lambda: self._reload_table_list(conn_id, db_name, table_widget))
+
+        menu.exec(table_widget.viewport().mapToGlobal(pos))
+
+    def _design_table_from_list(self, table_name: str, conn_id: str, db_name: str) -> None:
+        mw = self.window()
+        from open_navicat.ui.widgets.table_designer import TableDesignerWidget
+        designer = TableDesignerWidget(conn_id, db_name, table_name, parent=mw._workspace)
+        idx = mw._workspace.addTab(designer, f"📐 {table_name}")
+        mw._workspace.setCurrentIndex(idx)
+
+    def _new_table_in_db(self, conn_id: str, db_name: str) -> None:
+        mw = self.window()
+        from open_navicat.ui.widgets.table_designer import TableDesignerWidget
+        designer = TableDesignerWidget(conn_id, db_name, "", parent=mw._workspace)
+        idx = mw._workspace.addTab(designer, t("design_table.default_title"))
+        mw._workspace.setCurrentIndex(idx)
+
+    def _drop_table_from_list(self, table_name: str, conn_id: str, db_name: str, table_widget: QTableWidget) -> None:
+        from PySide6.QtWidgets import QMessageBox
+        ret = QMessageBox.warning(
+            self.window(), t("browser.drop_table"),
+            t("browser.drop_confirm", name=table_name),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if ret != QMessageBox.StandardButton.Yes:
+            return
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
+        connector = connection_pool.get(conn_id)
+        if not connector:
+            return
+        try:
+            pool_loop.run_until_complete(connector.execute(f"DROP TABLE `{table_name}`"))
+            self._reload_table_list(conn_id, db_name, table_widget)
+        except Exception as e:
+            logger.warning("drop table failed: %s", e)
+
+    def _truncate_table_from_list(self, table_name: str, conn_id: str, db_name: str) -> None:
+        from PySide6.QtWidgets import QCheckBox, QMessageBox
+        dlg = QMessageBox(self.window())
+        dlg.setWindowTitle(t("browser.truncate_table"))
+        dlg.setText(t("browser.truncate_confirm", name=table_name))
+        cb = QCheckBox(t("browser.irreversible_confirm"), dlg)
+        dlg.setCheckBox(cb)
+        dlg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        dlg.setDefaultButton(QMessageBox.StandardButton.No)
+        if dlg.exec() != QMessageBox.DialogCode.Accepted or not cb.isChecked():
+            return
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
+        connector = connection_pool.get(conn_id)
+        if not connector:
+            return
+        try:
+            pool_loop.run_until_complete(connector.execute(f"TRUNCATE TABLE `{table_name}`"))
+        except Exception as e:
+            logger.warning("truncate table failed: %s", e)
+
+    def _rename_table_from_list(self, old_name: str, conn_id: str, db_name: str, table_widget: QTableWidget) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        new_name, ok = QInputDialog.getText(self.window(), t("browser.rename_table"), t("browser.new_table_name"), text=old_name)
+        if not ok or not new_name.strip() or new_name.strip() == old_name:
+            return
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
+        connector = connection_pool.get(conn_id)
+        if not connector:
+            return
+        try:
+            pool_loop.run_until_complete(connector.execute(f"RENAME TABLE `{old_name}` TO `{new_name.strip()}`"))
+            self._reload_table_list(conn_id, db_name, table_widget)
+        except Exception as e:
+            logger.warning("rename table failed: %s", e)
+
+    def _open_data_dictionary_from_list(self, conn_id: str, db_name: str) -> None:
+        mw = self.window()
+        from open_navicat.ui.widgets.data_dictionary import DataDictionaryWidget
+        panel = DataDictionaryWidget(conn_id, db_name, parent=mw._workspace)
+        idx = mw._workspace.addTab(panel, t("tab.data_dictionary", db=db_name))
+        mw._workspace.setCurrentIndex(idx)
+
+    def _open_table_tab_from_list(self, table_name: str, conn_id: str, db_name: str) -> None:
+        mw = self.window()
+        if hasattr(mw, 'open_table_tab'):
+            mw.open_table_tab(conn_id, db_name, table_name)
 
     def _open_table_from_list(self, table_widget: QTableWidget, idx, conn_id: str, db_name: str) -> None:
         """Double-click a row in table list to open the table data view."""
@@ -879,6 +1005,30 @@ class ObjectBrowser(QTreeWidget):
         designer = TableDesignerWidget(data["connection_id"], data["database"], data["name"], parent=mw._workspace)
         idx = mw._workspace.addTab(designer, f"📐 {data['name']}")
         mw._workspace.setCurrentIndex(idx)
+
+    def _open_data_dictionary(self, item: QTreeWidgetItem) -> None:
+        """Open data dictionary for the table's database."""
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        mw = self.window()
+        from open_navicat.ui.widgets.data_dictionary import DataDictionaryWidget
+        conn_id = data.get("connection_id", "")
+        db = data.get("database", "")
+        if not conn_id or not db:
+            return
+        panel = DataDictionaryWidget(conn_id, db, parent=mw._workspace)
+        idx = mw._workspace.addTab(panel, t("tab.data_dictionary", db=db))
+        mw._workspace.setCurrentIndex(idx)
+
+    def _open_data_generate(self, item: QTreeWidgetItem) -> None:
+        """Open table viewer on the selected table for data generation."""
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        mw = self.window()
+        if hasattr(mw, 'open_table_tab'):
+            mw.open_table_tab(data["connection_id"], data["database"], data["name"])
 
     def _truncate_table(self, item: QTreeWidgetItem) -> None:
         """Truncate the selected table with confirmation."""
@@ -1486,7 +1636,7 @@ class ObjectBrowser(QTreeWidget):
         """Select and expand to a favorited object in the tree."""
         conn_id = fav.get("connection_id", "")
         obj_name = fav.get("name", "")
-        from PySide6.QtWidgets import QTreeWidgetItemIterator, QMessageBox
+        from PySide6.QtWidgets import QMessageBox, QTreeWidgetItemIterator
         it = QTreeWidgetItemIterator(self)
         while it.value():
             item = it.value()
