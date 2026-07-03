@@ -200,6 +200,9 @@ opennavicat gui
 | 定时任务 | APScheduler |
 | 打包 | PyInstaller |
 
+> **⚠️ Windows 用户请注意**
+> OpenNavicat 是开源免费软件，暂未购买 EV 代码签名证书。首次运行 GUI 时 Windows SmartScreen 可能弹出 **"Windows 已保护你的电脑"** 警告。请点击 **"更多信息" → "仍要运行"** 放行。源码完全公开，请放心使用。
+
 ### 贡献
 
 欢迎贡献！请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)（贡献指南）。
