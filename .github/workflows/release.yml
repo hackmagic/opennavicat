@@ -87,13 +87,13 @@ jobs:
         run: poetry install
 
       - name: Install PyInstaller
-        run: pip install pyinstaller
+        run: poetry run pip install pyinstaller
 
       - name: Build CLI executable
-        run: pyinstaller --clean opennavicat-cli.spec
+        run: poetry run pyinstaller --clean opennavicat-cli.spec
 
       - name: Build GUI executable
-        run: pyinstaller --clean opennavicat-gui.spec
+        run: poetry run pyinstaller --clean opennavicat-gui.spec
 
       - name: Rename artifacts (Linux/macOS)
         if: runner.os != 'Windows'
