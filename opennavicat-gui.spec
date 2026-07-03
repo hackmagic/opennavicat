@@ -14,7 +14,9 @@ src = Path(SPECPATH) / "open_navicat"
 
 # Collect all PySide6 submodules (walks directory, works on 6.11+)
 all_hidden = set(collect_submodules("PySide6"))
-all_hidden.update(["shiboken6", "inspect", "PySide6.support.deprecated"])
+all_hidden.update(["shiboken6", "inspect", "PySide6.support.deprecated",
+                    "open_navicat.ui.themes.pro_dark",
+                    "open_navicat.ui.themes.pro_light"])
 
 # Collect Qt DLLs/plugins via link-time .pyd scanning (avoids package-structure issues)
 all_binaries = []
