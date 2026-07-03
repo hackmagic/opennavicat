@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "open-navicat"
-version = "0.3.0"
+version = "0.7.0rc6"
 description = "CLI-First, AI-Native database management tool — open-source Navicat alternative"
 authors = ["hackmagic"]
 license = "MIT"
