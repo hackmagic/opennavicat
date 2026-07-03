@@ -1,37 +1,48 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec for OpenNavicat GUI (with PySide6/Qt).
-Uses pyside6_library_info.collect_module() for DLL collection
-(based on .pyd binary scanning, not Python package introspection).
+PyInstaller spec for OpenNavicat GUI — optimized for size.
+Only includes Qt modules actually used by the app.
 """
 
 from pathlib import Path
-from PyInstaller.utils.hooks import collect_submodules
 from PyInstaller.utils.hooks.qt import pyside6_library_info
 
 block_cipher = None
 src = Path(SPECPATH) / "open_navicat"
 
-# Collect all PySide6 submodules (walks directory, works on 6.11+)
-all_hidden = set(collect_submodules("PySide6"))
-all_hidden.update(["shiboken6", "inspect", "PySide6.support.deprecated",
-                    "open_navicat.ui.themes.pro_dark",
-                    "open_navicat.ui.themes.pro_light"])
+# ── Qt modules we actually need ──────────────────────────────────────────────
+NEEDED = [
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtWidgets",
+    "PySide6.QtPrintSupport",
+    "PySide6.QtSvg",
+    "PySide6.QtSvgWidgets",
+    "PySide6.QtNetwork",
+    "PySide6.QtXml",
+    "PySide6.QtConcurrent",
+    "PySide6.QtDBus",   # needed on Linux for Qt internal IPC
+]
 
-# Collect Qt DLLs/plugins via link-time .pyd scanning (avoids package-structure issues)
 all_binaries = []
-for mod in [
-    "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
-    "PySide6.QtSvg", "PySide6.QtPrintSupport", "PySide6.QtSvgWidgets",
-    "PySide6.QtNetwork", "PySide6.QtSql",
-    "PySide6.QtDBus", "PySide6.QtConcurrent",
-]:
+all_hidden = set()
+
+for mod in NEEDED:
     try:
         h, b, _ = pyside6_library_info.collect_module(mod)
         all_hidden.update(h)
         all_binaries.extend(b)
     except Exception:
         pass
+
+# Theme modules (dynamically imported via importlib, invisible to scanner)
+all_hidden.update([
+    "open_navicat.ui.themes.pro_dark",
+    "open_navicat.ui.themes.pro_light",
+    "shiboken6",
+    "inspect",
+    "PySide6.support.deprecated",
+])
 
 a = Analysis(
     [str(src / "gui_main.py")],
@@ -66,7 +77,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
+    upx_exclude=["Qt6*.dll", "shiboken6*.dll"],   # Qt DLLs: don't compress (may crash)
     runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
