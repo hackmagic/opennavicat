@@ -20,7 +20,7 @@ VSVersionInfo(
         StringStruct(u'FileVersion', u'0.3.0.0'),
         StringStruct(u'InternalName', u'opennavicat'),
         StringStruct(u'LegalCopyright', u'Copyright (C) 2026 OpenNavicat Contributors'),
-        StringStruct(u'OriginalFilename', u'opennavicat.exe'),
+        StringStruct(u'OriginalFilename', u'opennavicat-cli.exe'),
         StringStruct(u'ProductName', u'OpenNavicat'),
         StringStruct(u'ProductVersion', u'0.3.0.0')])
       ]),

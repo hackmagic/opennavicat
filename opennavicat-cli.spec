@@ -62,7 +62,7 @@ exe = EXE(
     a.datas,
     [],
     name="opennavicat-cli",
-    version='version_info.txt',
+    version='version_info_cli.txt',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
