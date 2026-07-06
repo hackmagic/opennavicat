@@ -6,7 +6,9 @@ import sys
 from unittest.mock import MagicMock
 
 # ── PySide6 ────────────────────────────────────────────────────────────────
-sys.modules.setdefault("PySide6", MagicMock())
+_pyside6 = MagicMock()
+_pyside6.__version__ = "6.11.0"  # pytest-qt needs this for report header
+sys.modules.setdefault("PySide6", _pyside6)
 sys.modules.setdefault("PySide6.QtCore", MagicMock())
 sys.modules.setdefault("PySide6.QtWidgets", MagicMock())
 sys.modules.setdefault("PySide6.QtGui", MagicMock())
