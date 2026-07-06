@@ -306,6 +306,22 @@ class ObjectBrowser(QTreeWidget):
             act_dump.triggered.connect(lambda: self._dump_table_sql(item))
             act_perms = menu.addAction(t("browser.set_permissions"))
             act_perms.triggered.connect(lambda: self._set_table_permissions(item))
+            # Profile submenu (ponytail: inline, no separate class)
+            profile_menu = menu.addMenu(t("browser.open_with_profile"))
+            act_save = profile_menu.addAction(t("browser.save_profile"))
+            act_save.triggered.connect(lambda: self._save_table_profile(item))
+            profile_menu.addSeparator()
+            profiles = local_db.list_profiles(f"{data['connection_id']}/{data['database']}/{data['name']}")
+            if profiles:
+                for p in profiles:
+                    act = profile_menu.addAction(p["name"])
+                    act.triggered.connect(lambda checked, pd=p: self._open_table_profile(item, pd))
+            else:
+                profile_menu.addAction(t("browser.profile_no_saved")).setEnabled(False)
+            act_share = menu.addAction(t("browser.share"))
+            act_share.triggered.connect(lambda: self._share_table(item))
+            act_shortcut = menu.addAction(t("browser.create_shortcut"))
+            act_shortcut.triggered.connect(lambda: self._create_table_shortcut(item))
             menu.addSeparator()
             maint_menu = menu.addMenu(t("browser.maintenance"))
             for label_key, meth in [
@@ -1351,7 +1367,60 @@ class ObjectBrowser(QTreeWidget):
                 QMessageBox.warning(self.window(), t("common.error"), str(e))
 
     def _set_table_permissions(self, item: QTreeWidgetItem) -> None:
-        pass  # ponytail: permissions UI not yet implemented
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QTextEdit, QVBoxLayout
+
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+
+        dlg = QDialog(self.window())
+        dlg.setWindowTitle(t("browser.permissions_title"))
+        dlg.resize(600, 400)
+        layout = QVBoxLayout(dlg)
+        text_area = QTextEdit()
+        text_area.setReadOnly(True)
+        layout.addWidget(text_area)
+        sql_input = QLineEdit()
+        sql_input.setPlaceholderText(t("browser.permissions_sql_placeholder"))
+        layout.addWidget(sql_input)
+        btn_layout = QHBoxLayout()
+        btn_refresh = QPushButton(t("browser.permissions_refresh"))
+        btn_exec = QPushButton(t("browser.permissions_execute"))
+        btn_close = QPushButton(t("common.close"))
+        btn_layout.addWidget(btn_refresh)
+        btn_layout.addWidget(btn_exec)
+        btn_layout.addWidget(btn_close)
+        layout.addLayout(btn_layout)
+
+        conn_id = data.get("connection_id", "")
+        connector = connection_pool.get(conn_id)
+
+        def refresh() -> None:
+            if not connector:
+                return
+            try:
+                result = pool_loop.run_until_complete(connector.execute("SHOW GRANTS FOR CURRENT_USER"))
+                text_area.setText("\n".join(str(r[0]) for r in (result.rows or [])))
+            except Exception as e:
+                text_area.setText(str(e))
+
+        def execute_sql() -> None:
+            sql = sql_input.text().strip()
+            if not sql or not connector:
+                return
+            try:
+                pool_loop.run_until_complete(connector.execute(sql))
+                QMessageBox.information(dlg, t("common.success"), t("browser.permissions_executed"))
+                refresh()
+            except Exception as e:
+                QMessageBox.warning(dlg, t("common.error"), str(e))
+
+        btn_refresh.clicked.connect(refresh)
+        btn_exec.clicked.connect(execute_sql)
+        btn_close.clicked.connect(dlg.accept)
+        refresh()
+        dlg.exec()
 
     def _reverse_to_model(self, item: QTreeWidgetItem) -> None:
         data = item.data(0, Qt.ItemDataRole.UserRole)
@@ -1364,6 +1433,60 @@ class ObjectBrowser(QTreeWidget):
         mw = self.window()
         if hasattr(mw, '_show_bi_dashboard') and data:
             mw._show_bi_dashboard()
+
+    def _save_table_profile(self, item: QTreeWidgetItem) -> None:
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        from PySide6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(self.window(), t("browser.save_profile"), t("browser.profile_save_hint"))
+        if ok and name.strip():
+            local_db.save_profile({
+                "name": name.strip(),
+                "conn_id": data["connection_id"],
+                "database": data["database"],
+                "table": data["name"],
+                "columns": [],
+                "sort": [],
+                "filter": "",
+            })
+            QMessageBox.information(self.window(), t("common.success"), t("browser.profile_saved"))
+
+    def _open_table_profile(self, item: QTreeWidgetItem, profile: dict) -> None:
+        mw = self.window()
+        if hasattr(mw, 'open_table_tab'):
+            mw.open_table_tab(profile["conn_id"], profile["database"], profile["table"])
+
+    def _share_table(self, item: QTreeWidgetItem) -> None:
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        from PySide6.QtWidgets import QApplication
+        uri = f"opennavicat://{data['connection_id']}/{data['database']}/{data['name']}"
+        QApplication.clipboard().setText(uri)
+        QMessageBox.information(self.window(), t("browser.share"), t("browser.share_copied"))
+
+    def _create_table_shortcut(self, item: QTreeWidgetItem) -> None:
+        import os
+        import platform
+        import sys
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        table = data["name"]
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        exe = sys.executable or "opennavicat"
+        args = f"data browse {data['connection_id']}.{data['database']}.{table}"
+        if platform.system() == "Windows":
+            path = os.path.join(desktop, f"opennavicat_{table}.bat")
+            with open(path, "w") as f:
+                f.write(f'@echo off\n"{exe}" {args}\n')
+        else:
+            path = os.path.join(desktop, f"opennavicat_{table}.desktop")
+            with open(path, "w") as f:
+                f.write(f"[Desktop Entry]\nType=Application\nName=OpenNavicat - {table}\nExec={exe} {args}\n")
+            os.chmod(path, 0o755)
+        QMessageBox.information(self.window(), t("browser.create_shortcut"), t("browser.shortcut_created"))
 
     def open_table_tab(self, conn_id: str, database: str, table: str) -> None:
         """Open a data viewer tab for a table."""

@@ -109,6 +109,17 @@ class LocalConfigDB:
                 status        TEXT DEFAULT 'success',
                 created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS table_profiles (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                name          TEXT NOT NULL,
+                conn_id       TEXT NOT NULL,
+                database      TEXT NOT NULL,
+                table_name    TEXT NOT NULL,
+                columns       TEXT DEFAULT '[]',
+                sort_col      TEXT DEFAULT '[]',
+                filter_sql    TEXT DEFAULT ''
+            );
         """)
         # Schema migrations for upgrades from older versions
         for col in ['color', 'conn_group']:
@@ -423,6 +434,42 @@ class LocalConfigDB:
     def clear_query_history(self) -> None:
         self._connect().execute("DELETE FROM query_history")
         self._conn.commit()
+
+    # ---- table profiles ----
+
+    def save_profile(self, profile: dict) -> None:
+        self._connect().execute(
+            "INSERT OR REPLACE INTO table_profiles (name, conn_id, database, table_name, columns, sort_col, filter_sql) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (profile["name"], profile.get("conn_id", ""), profile.get("database", ""),
+             profile.get("table", ""), json.dumps(profile.get("columns", [])),
+             json.dumps(profile.get("sort", [])), profile.get("filter", "")),
+        )
+        self._conn.commit()
+
+    def list_profiles(self, table_ref: str = "") -> list[dict]:
+        if table_ref and "/" in table_ref:
+            parts = table_ref.split("/", 2)
+            rows = self._connect().execute(
+                "SELECT * FROM table_profiles WHERE conn_id = ? AND database = ? AND table_name = ? ORDER BY name",
+                (parts[0], parts[1], parts[2]),
+            ).fetchall()
+        else:
+            rows = self._connect().execute("SELECT * FROM table_profiles ORDER BY name").fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["columns"] = json.loads(d["columns"]) if isinstance(d["columns"], str) else d["columns"]
+            except (json.JSONDecodeError, TypeError):
+                d["columns"] = []
+            try:
+                d["sort"] = json.loads(d["sort_col"]) if isinstance(d["sort_col"], str) else d.get("sort", [])
+            except (json.JSONDecodeError, TypeError):
+                d["sort"] = []
+            d["table"] = d.pop("table_name")
+            result.append(d)
+        return result
 
 
 # Module-level singleton

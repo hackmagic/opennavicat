@@ -1263,5 +1263,20 @@
   "query_builder.having": "HAVING",
   "data_dictionary.detail_title": "📋 {table}",
   "browser.data_dictionary": "数据字典...",
-  "browser.generate_data": "数据生成..."
+  "browser.generate_data": "数据生成...",
+  "browser.open_with_profile": "通过配置文件打开表",
+  "browser.save_profile": "保存当前配置",
+  "browser.profile_name": "配置名称",
+  "browser.profile_saved": "配置已保存",
+  "browser.profile_save_hint": "输入配置名称：",
+  "browser.share": "共享...",
+  "browser.share_copied": "连接信息已复制到剪贴板",
+  "browser.create_shortcut": "创建打开表快捷方式",
+  "browser.shortcut_created": "快捷方式已创建到桌面",
+  "browser.permissions_title": "权限管理",
+  "browser.permissions_refresh": "刷新",
+  "browser.permissions_execute": "执行 SQL",
+  "browser.permissions_sql_placeholder": "输入 GRANT/REVOKE 语句",
+  "browser.permissions_executed": "SQL 已执行",
+  "browser.profile_no_saved": "(无保存的配置)"
 }

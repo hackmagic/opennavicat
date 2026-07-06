@@ -1263,5 +1263,20 @@
   "query_builder.having": "HAVING",
   "data_dictionary.detail_title": "📋 {table}",
   "browser.data_dictionary": "Data Dictionary...",
-  "browser.generate_data": "Generate Data..."
+  "browser.generate_data": "Generate Data...",
+  "browser.open_with_profile": "Open with Profile",
+  "browser.save_profile": "Save Current Profile",
+  "browser.profile_name": "Profile Name",
+  "browser.profile_saved": "Profile Saved",
+  "browser.profile_save_hint": "Enter profile name:",
+  "browser.share": "Share...",
+  "browser.share_copied": "Connection info copied to clipboard",
+  "browser.create_shortcut": "Create Table Shortcut",
+  "browser.shortcut_created": "Shortcut created on desktop",
+  "browser.permissions_title": "Permissions",
+  "browser.permissions_refresh": "Refresh",
+  "browser.permissions_execute": "Execute SQL",
+  "browser.permissions_sql_placeholder": "Enter GRANT/REVOKE statement",
+  "browser.permissions_executed": "SQL Executed",
+  "browser.profile_no_saved": "(No saved profiles)"
 }
