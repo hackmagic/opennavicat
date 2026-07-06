@@ -1,4 +1,4 @@
-"""Global conftest — mock PySide6 and problematic sub-packages for all UI import tests."""
+"""Global conftest — mock PySide6 only when not installed (for CI without Qt)."""
 
 from __future__ import annotations
 
@@ -6,25 +6,30 @@ import sys
 from unittest.mock import MagicMock
 
 
-def _mock_module(name: str) -> MagicMock:
-    m = MagicMock()
-    m.__version__ = "6.11.0"  # pytest-qt needs __version__ on all Qt modules
-    sys.modules.setdefault(name, m)
-    return m
+# ── Only mock PySide6 when it's not actually installed ──────────────────
+try:
+    import PySide6  # noqa: F401
+except ImportError:
+    def _mock_module(name: str) -> MagicMock:
+        m = MagicMock()
+        m.__version__ = "6.11.0"  # pytest-qt needs __version__ on all Qt modules
+        sys.modules[name] = m
+        return m
 
+    _pyside6 = MagicMock()
+    _pyside6.__version__ = "6.11.0"
+    sys.modules["PySide6"] = _pyside6
 
-# ── PySide6 ────────────────────────────────────────────────────────────────
-_pyside6 = MagicMock()
-_pyside6.__version__ = "6.11.0"
-sys.modules.setdefault("PySide6", _pyside6)
+    # pytest-qt does `from PySide6 import QtCore` which goes through
+    # attribute access, NOT sys.modules. Set as attrs on the parent mock.
+    for _sub in ("QtCore", "QtWidgets", "QtGui", "QtNetwork", "QtSvg",
+                 "QtSvgWidgets", "QtPrintSupport", "QtConcurrent", "QtDBus", "QtXml"):
+        m = _mock_module(f"PySide6.{_sub}")
+        setattr(_pyside6, _sub, m)
 
-# All Qt submodules need __version__ for pytest-qt
-for _sub in ("QtCore", "QtWidgets", "QtGui", "QtNetwork", "QtSvg",
-             "QtSvgWidgets", "QtPrintSupport", "QtConcurrent", "QtDBus", "QtXml"):
-    _mock_module(f"PySide6.{_sub}")
-
-# ── Sub-packages that fail to import with mocked PySide6 ──────────────────
-# model_designer & object_designer subclass PySide6 classes at module level,
-# which returns a MagicMock instead of a real class, losing class attributes.
-sys.modules.setdefault("open_navicat.ui.widgets.model_designer", MagicMock())
-sys.modules.setdefault("open_navicat.ui.widgets.object_designer", MagicMock())
+    # Sub-packages that fail to import with mocked PySide6
+    sys.modules.setdefault("open_navicat.ui.widgets.model_designer", MagicMock())
+    sys.modules.setdefault("open_navicat.ui.widgets.object_designer", MagicMock())
+else:
+    # PySide6 is installed — skip all mocking, use real modules
+    pass
