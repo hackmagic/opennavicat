@@ -1045,7 +1045,7 @@ class MainWindow(QMainWindow):
 
     @Slot()
     def _toggle_info_pane(self) -> None:
-        pass  # ponytail: info pane not yet implemented
+        self._status.setVisible(not self._status.isVisible())
 
     @Slot()
     def _toggle_focus_mode(self) -> None:

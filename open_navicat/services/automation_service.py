@@ -11,10 +11,13 @@ Supported job types:
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any, Callable
 
 from open_navicat.dal.local_config import local_db
+
+_log = logging.getLogger(__name__)
 
 # ── Automation Service ────────────────────────────────────────────────────
 
@@ -169,7 +172,7 @@ class AutomationService:
             try:
                 self._scheduler.remove_job(job_id)
             except Exception:
-                pass
+                _log.warning("Failed to remove scheduler job %s", job_id)
         local_db.delete_job(job_id)
 
     def enable_job(self, job_id: str, enabled: bool) -> None:
@@ -187,7 +190,7 @@ class AutomationService:
                 try:
                     self._scheduler.remove_job(job_id)
                 except Exception:
-                    pass
+                    _log.warning("Failed to remove scheduler job %s", job_id)
 
     def list_jobs(self) -> list[dict]:
         """List all persisted automation jobs."""
@@ -224,7 +227,7 @@ class AutomationService:
                     misfire_grace_time=300,
                 )
         except Exception:
-            pass  # Invalid cron expression, skip
+            _log.warning("Invalid cron expression for job %s: %s", job_id, cron_expr)
 
     # ── Job runners ───────────────────────────────────────────────────
 

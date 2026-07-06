@@ -518,6 +518,7 @@ def ai_review(
     console.print(Panel(Markdown(result), title="🛡️ SQL Review", border_style="yellow"))
 
 
+@ai_app.command("test")
 def ai_test(
     provider: str = typer.Option("", "--provider", "-p", help="Provider to test"),
     api_key: str = typer.Option("", "--api-key", "-k", help="API key"),
