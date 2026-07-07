@@ -141,11 +141,10 @@ class DataDictionaryWidget(QWidget):
                 self._col_table.setItem(i, 6, QTableWidgetItem(col.comment))
 
             # DDL
-            result = pool_loop.run_until_complete(
-                connector.execute(f"SHOW CREATE TABLE `{self._database}`.`{table_name}`")
-            )
-            if result.rows:
-                self._ddl_text.setPlainText(str(result.rows[0][1]) if len(result.rows[0]) > 1 else "")
+            from open_navicat.services.metadata_service import metadata_service
+            ddl = metadata_service.get_create_table_sql(self._connection_id, self._database, table_name)
+            if ddl:
+                self._ddl_text.setPlainText(ddl)
         except Exception as e:
             _log.debug("Failed to load column details: %s", e)
 

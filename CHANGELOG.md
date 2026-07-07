@@ -1,230 +1,85 @@
 # Changelog
 
-All notable changes to OpenNavicat will be documented in this file.
+All notable changes to OpenNavicat are documented here.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/), and this project adheres to [Semantic Versioning](https://semver.org/).
+The format follows [Keep a Changelog](https://keepachangelog.com/) and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [0.7.0] - 2026-07-03
+---
+
+## [0.7.0] — 2026-07-06
 
 ### Added
-
-#### i18n Complete Coverage
-- 1265 keys in both zh_CN.json and en_US.json (was 1115)
-- All hardcoded UI strings replaced with `t()` calls across 15+ Python files
-- New domains added: `blob_viewer.`, `ai_copilot.*` (46 keys)
-- All `QDialogButtonBox` buttons now use `t("common.ok")` / `t("common.cancel")`
-
-#### Table List Context Menu
-- Right-click context menu on the table list panel (QTableWidget)
-- Operations: Open, Design, New, Drop, Truncate, Rename, Data Dictionary, Generate Data, Refresh
-- 8 new helper methods in `object_browser.py`
-
-#### Table Tree Context Menu Enhancements
-- Added "Data Dictionary" and "Generate Data" items to table right-click menu
-
-#### PyInstaller Packaging (CLI + GUI Split)
-- Split into two packages: `opennavicat-cli` (lightweight, no Qt) and `opennavicat` (full GUI with PySide6)
-- GUI spec uses `pyside6_library_info.collect_module()` to properly collect Qt DLLs and plugins
-- CLI spec excludes PySide6 entirely for smaller binary size
-- Separate entry points: `open_navicat/cli_main.py` (CLI) and `open_navicat/gui_main.py` (GUI)
-
-### Fixed
-
-#### Main Window Crash
-- `_setup_menubar()` connected View menu actions to `self._object_browser` before it was created
-- Extracted browser action connections into `_connect_browser_menu_actions()`, called after `_object_browser` initialization
-
-#### Theme Consistency
-- 5 widget files: removed hardcoded dark/light colors, using `theme_colors.py` helper
-- User manager, advanced find dialog, scheduler panel, command line, query compare dialog
-
-#### Window Geometry Restoration
-- `_restore_geometry()` now restores x/y/width/height with IDEA-style boundary validation
-- Multi-monitor aware, handles disconnected monitors
+- Connection grouping/folders with display colors
+- Table right-click menu: profile, share URI, desktop shortcut, permissions
+- SQL autocomplete (information_schema-based)
+- BI Dashboard with self-drawn charts (no external libs)
+- ER Model Designer (conceptual/logical/physical levels)
+- Object Designer (table/view/procedure/event/trigger)
+- AICopilot sidebar with `!sql` execution and schema viewing
+- QueryBuilder widget (visual drag-and-drop)
+- Data dictionary with HTML/PDF export
+- Condition formatting & foreign key picker in TableViewer
+- Cloud database discovery (scan local connections)
+- Backup history persistence (SQLite)
+- i18n: zh_CN + en_US (1282 keys, zero hardcoded strings)
+- 30 UI module import tests + 6 service module tests
+- Multi-platform PyInstaller builds (Win/Mac/Linux, CLI + GUI)
 
 ### Changed
+- Unified entry point: `opennavicat` (CLI) / `opennavicat gui` (GUI)
+- Version metadata centralized in `__init__.py`
+- AsyncPG made optional (`[postgresql]` extra)
+- PySide6 packaging: precise Qt module selection (~120 MB → smaller)
 
-#### i18n Key Parity
-- zh_CN.json and en_US.json verified symmetric after each change
-- Automated parity check in CI workflow
+### Fixed
+- conftest.py: conditional PySide6 mock for pytest-qt compatibility
+- Dropped Python 3.10 from CI (EOL, PySide6 6.11+ no longer ships for it)
+- All stub implementations completed (4 items)
+- Window geometry restore, theme selector, dialog i18n
+- Packaging: hidden-imports for theme modules, Qt DLL collection
 
-## [0.5.0] - 2026-07-01
+## [0.3.1] — 2026-07-02
 
-### Added
+### Fixed
+- aiomysql 0.3.0, cryptography 48.0.0, paramiko 5.0.0 CVE fixes
+- PyInstaller --windowed for headless EXE
+- Schema migration for conn_group column
 
-#### Snippet Management
-- SnippetManagerDialog: CRUD + preview + variable substitution (`{{var}}`)
-- Dynamic snippet menu in SQL editor (DB-backed + built-in templates)
-- Right-click "Save as snippet" from editor
-- CLI: `snippet list|add|remove|show`
-
-#### Multi-Round Schema Design
-- `AIService.design_schema_iterative()` method for incremental schema changes
-- CLI `ai schema` — interactive session with `/deploy` `/show` `/done`
-
-#### Conversational Query Builder
-- CLI `ai build` — focused query-building mode with `/run` to execute
-- Iterative refinement: "add filter", "join with orders" etc.
-
-#### CI/CD Dependency Scanning
-- `pip-audit` step in CI workflow
-- Dedicated `security-audit.yml` (weekly schedule + manual trigger, pip-audit + safety)
-- `ConnectionInfo.group` field + `conn_group` DB column
-- ObjectBrowser search bar with real-time filtering
-- Connection folder groups in tree view with drag-drop support
-- Connection display colors
-- CLI: `conn group list|rename|delete`
-- CLI: `conn export <name>`, `conn import <file>`
-- i18n: `browser.search_connections`
-
-#### AI Function Calling
-- Native LLM tool calls (`search_schema`, `list_tables`, `execute_sql`)
-- All 4 backends support tools parameter (OpenAI/DeepSeek/Ollama/Custom)
-- Backward-compatible `_call_llm_text()` wrapper
-- Agent rewritten to use native `tool_calls` instead of fragile text JSON parsing
-
-#### Data Viewer Enhancements
-- Form view mode (single record, vertical layout, Prev/Next navigation)
-- BLOB viewer dialog (image/text/hex dump)
-- BLOB auto-detection and truncated display in table grid
-- BLOB double-click to open viewer
-
-#### Query Result Cache
-- LRU cache with TTL (default 60s, max 256 entries)
-- Auto-caches SELECT/WITH queries
-- Pluggable: injects into QueryEngine
-
-## [0.4.0] - 2026-07-01
+## [0.3.0] — 2026-07-01
 
 ### Added
+- AI features: NL2SQL, query optimization, explain, fix, data generation
+- AI ReAct agent with Schema RAG and chat history (SQLite)
+- AI: data quality analysis, anomaly detection, SQL review
+- Model Designer with conceptual/logical/physical levels
+- Schema sync & data sync (MySQL ↔ PostgreSQL)
+- AutomationService (APScheduler: backup/query/sync)
+- Snippet service with variable substitution
+- SQL formatter/generator utilities
+- Full i18n framework (JSON-based)
+- 16 integration tests (MySQL 8.0 + PostgreSQL 16 via testcontainers)
 
-#### SQL Autocomplete Enhancement
-- Intelligent column name autocomplete from `information_schema`
-- Support `table.column`, `` `table`.`column` ``, and bare column names
-- Column names refresh when switching databases
+### Changed
+- AsyncPG moved to optional `[postgresql]` extra
+- Refactored backup commands to use BackupService
+- Removed open_navicat_rs (Tauri version) — forked separately
 
-#### Automation Service Extension
-- Scheduled query execution (`add_query_job`)
-- Scheduled schema/data sync (`add_sync_job`)
-- Scheduler panel: run now for query/sync/backup jobs
-
-#### Backup History Persistence
-- Backup records stored in SQLite (survives restarts)
-- Last 100 backup records retained
-
-## [0.3.0] - 2026-07-01
-
-### Added
-
-#### SQLite Support
-- Full SQLite connector via aiosqlite (WAL mode, foreign keys)
-- Complete metadata: tables, views, columns, indexes, foreign keys
-- Full CRUD: execute, fetch_page, batch_insert, update_row, delete_row
-- Connection dialog: SQLite option with file path input
-- `aiosqlite` added as default dependency
-
-## [0.2.0] - 2026-07-01
+## [0.2.0] — 2026-06-30
 
 ### Added
+- SQLite connector (aiosqlite)
+- MySQL/PostgreSQL integration tests
+- Documentation: architecture, data flow, AI module, development guide
 
-#### PostgreSQL Support
-- Full PostgreSQL connector via asyncpg (optional dependency)
-- `open-navicat[postgresql]` extras for pip install
-- Backup/restore with pg_dump/psql (PGPASSWORD auto-set)
-- Schema sync generates PostgreSQL-compatible DDL (double-quote quoting, CREATE INDEX, DROP CONSTRAINT)
-- Data sync with PostgreSQL metadata queries (pg_catalog, information_schema)
-
-#### AI Enhancements
-- ReAct Agent mode (`ai agent`) — multi-step reasoning with search_schema/generate_sql/execute_sql actions
-- Schema RAG (`nl2sql_with_rag`, `ask_with_rag`) — auto-inject table structure into prompts
-- Chat history persistence (`save_chat_history`, `load_chat_history`) via SQLite
-
-#### CLI Fixes
-- Refactored `backup_cmd` to delegate to BackupService (was reimplementing inline)
-- Added `conn close` — disconnect active connection
-- Added `schema databases` — list all databases on server
-- Added `ai config` — configure AI provider at runtime
-- Added `ai test` — test AI connection
-- Added `backup delete`, `backup history`, `backup jobs`, `backup job-remove`, `backup job-toggle`
-
-#### Testing
-- Integration tests with testcontainers (MySQL 8.0 + PostgreSQL 16)
-- 16 integration tests (8 MySQL, 8 PostgreSQL)
-- Run with: `poetry run pytest tests/integration/ -v -m integration`
-
-### Removed
-- `open_navicat_rs/` (Tauri/Rust version) — may be forked as separate project
-
-[0.2.0]: https://github.com/hackmagic/OpenNavicat/releases/tag/v0.2.0
-
-## [0.1.0] - 2026-07-01
+## [0.1.0] — 2026-06-29
 
 ### Added
-
-#### Core
-- CLI framework with 31 commands (conn, query, schema, data, backup, ai)
-- Async MySQL/MariaDB connector with connection pooling
-- SSH tunnel support via paramiko
-- AES-GCM password encryption
-- Platform-specific config persistence (JSON + SQLite)
-
-#### AI Integration
-- Natural language to SQL (`query nl`)
-- SQL optimization analysis (`ai optimize`)
-- SQL explanation (`ai explain`)
-- SQL fix (`ai fix`)
-- Interactive data analysis chat (`ai chat`)
-- AI schema design (`schema design`)
-- Intelligent test data generation (`data generate`)
-- Multi-backend support: OpenAI, DeepSeek, Ollama, Custom
-
-#### GUI (PySide6/Qt)
-- Object browser with tree navigation and 30+ context menu items
-- SQL editor with syntax highlighting, autocomplete, code snippets
-- Data viewer with pagination, sorting, filtering, import/export
-- Table designer with 8 tabs (fields, indexes, FKs, options, comments, checks, triggers, DDL)
-- AI copilot sidebar with multi-mode support
-- Backup/restore panel with scheduling
-- Schema sync panel with diff visualization
-- Data sync panel for row-level synchronization
-- BI dashboard with chart rendering
-- Model designer with ER diagram (React Flow)
-- Object designer for tables/views/routines
-- Query manager with save/design functionality
-- Scheduler panel for automation jobs
-- Data dictionary with HTML export
-- Built-in MySQL command line terminal
-- Server monitor with auto-refresh
-- Query history log
-- Data transfer wizard for cross-database copy
-
-#### Settings
-- 8-tab settings dialog (General, Tabs, Code Completion, Editor, Records, AI, Auto Recovery, Advanced)
-- Editor color customization (6 color schemes)
-- AI temperature control with slider
-- Auto-recovery settings for queries, models, BI
-
-#### Import/Export
-- 7 export formats: CSV, JSON, XML, HTML, SQL, TXT, Excel
-- 7 import formats: CSV, JSON, XML, HTML, SQL, TXT, Excel
-- Connection import/export via JSON
-
-#### i18n
-- Chinese (zh_CN) and English (en_US) support
-
-#### Testing
-- 78 unit tests covering AI service, models, config, sync engine, metadata cache, SQL utils
-
-#### Documentation
-- Bilingual README (English / 简体中文)
-- Contributing guide
-- CLI reference manual
-- Architecture documentation
-- AI module documentation
-- Security documentation
-- Development guide
-- Data flow diagrams
-- Deployment guide
-- 7 module-specific documentation files
-
-[0.1.0]: https://github.com/hackmagic/OpenNavicat/releases/tag/v0.1.0
+- Initial release
+- MySQL/MariaDB + PostgreSQL connectors
+- CLI: connection management, query, schema, data, backup
+- Basic GUI (PySide6) with object browser, SQL editor, table viewer
+- SSH tunnel support (asyncssh)
+- Connection pooling, metadata caching
+- Output formatting (table/json/csv/markdown)
+- CI/CD: GitHub Actions, multi-platform builds
+- 80 unit tests

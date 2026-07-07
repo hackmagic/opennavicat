@@ -51,13 +51,23 @@ def browse_table(
         raise typer.Exit(1)
     database, table_name = table.split(".", 1)
 
+    # Detect engine for quoting
+    from open_navicat.dal.connection_pool import connection_pool as _pool
+    _conn = _pool.get(cid)
+    _info = getattr(_conn, "_info", None) if _conn else None
+    _engine = getattr(_info, "engine", "mysql") if _info else "mysql"
+    q = '"' if _engine == "postgresql" else "`"
+
     # Build query
-    parts = [f"SELECT * FROM `{database}`.`{table_name}`"]
+    parts = [f"SELECT * FROM {q}{database}{q}.{q}{table_name}{q}"]
     if where:
         parts.append(f"WHERE {where}")
     if order:
         parts.append(f"ORDER BY {order}")
-    parts.append(f"LIMIT {limit} OFFSET {offset}")
+    if _engine == "postgresql":
+        parts.append(f"LIMIT {limit} OFFSET {offset}")
+    else:
+        parts.append(f"LIMIT {limit} OFFSET {offset}")
 
     sql = " ".join(parts)
     result = query_engine.execute(cid, sql)

@@ -13,6 +13,14 @@ logger = logging.getLogger("opennavicat.ai")
 from open_navicat.models.table_schema import TableInfo
 
 
+class AIError(Exception):
+    """Raised on non-transient AI API errors (auth, model not found, etc)."""
+
+
+class AITransientError(Exception):
+    """Raised on transient failures that may succeed on retry (timeout, rate limit)."""
+
+
 class AIService:
     """AI-powered database assistant — supports multiple LLM backends."""
 
@@ -25,6 +33,7 @@ class AIService:
         self._chat_history: list[dict[str, str]] = []
         self._system_prompt = "You are a helpful database expert assistant."
         self._schema_embeddings: dict[str, str] = {}
+        self._schema_embedding_conn: tuple[str, str] | None = None  # (connection_id, database) cache key
 
     def update_config(self, cfg: dict) -> None:
         """Update AI configuration at runtime from a config dict."""
@@ -103,6 +112,35 @@ class AIService:
                     },
                 },
             },
+            {
+                "type": "function",
+                "function": {
+                    "name": "ask_ai",
+                    "description": "Ask a general database knowledge question (syntax, best practices, etc.)",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "question": {"type": "string", "description": "Question about databases or SQL"},
+                        },
+                        "required": ["question"],
+                    },
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "generate_report",
+                    "description": "Generate a natural-language report from query results",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "data": {"type": "string", "description": "Query results as JSON or formatted text"},
+                            "question": {"type": "string", "description": "The original question the data answers"},
+                        },
+                        "required": ["data", "question"],
+                    },
+                },
+            },
         ]
 
     # ---- core LLM call ----
@@ -118,21 +156,37 @@ class AIService:
         temperature: float = 0.1,
         tools: list[dict] | None = None,
     ) -> tuple[str, list[dict] | None]:
-        """Send messages to the configured LLM backend.
+        """Send messages to the configured LLM backend with retry.
 
         Returns (text_content, tool_calls) where tool_calls is a list of
         {"name": ..., "arguments": {...}} dicts, or None if no tools were used.
         """
-        if self._provider == "openai":
-            return self._call_openai(messages, temperature, tools)
-        elif self._provider == "deepseek":
-            return self._call_deepseek(messages, temperature, tools)
-        elif self._provider == "ollama":
-            return self._call_ollama(messages, temperature, tools)
-        elif self._provider == "custom":
-            return self._call_custom(messages, temperature, tools)
-        else:
-            return self._call_openai(messages, temperature, tools)
+        import time
+
+        provider_dispatch = {
+            "openai": self._call_openai,
+            "deepseek": self._call_deepseek,
+            "ollama": self._call_ollama,
+            "custom": self._call_custom,
+        }
+        caller = provider_dispatch.get(self._provider, self._call_openai)
+
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                return caller(messages, temperature, tools)
+            except AITransientError as e:
+                last_error = e
+                if attempt < 2:
+                    delay = 1.5 ** attempt
+                    logger.warning("Transient AI error (attempt %d/3): %s — retrying in %.1fs", attempt + 1, e, delay)
+                    time.sleep(delay)
+                else:
+                    logger.error("AI call failed after 3 attempts: %s", e)
+            except AIError as e:
+                raise e
+
+        raise AIError(f"AI provider unavailable after 3 retries: {last_error}")
 
     def _call_openai(
         self,
@@ -141,7 +195,7 @@ class AIService:
         tools: list[dict] | None = None,
     ) -> tuple[str, list[dict] | None]:
         try:
-            from openai import OpenAI
+            from openai import APIConnectionError, APIError, APITimeoutError, OpenAI, RateLimitError
             client = OpenAI(api_key=self._api_key, base_url=self._api_base or None)
             kwargs: dict[str, Any] = {
                 "model": self._model,
@@ -160,9 +214,19 @@ class AIService:
                     for tc in msg.tool_calls
                 ]
             return text, tool_calls
+        except RateLimitError as e:
+            raise AITransientError(f"Rate limited: {e}") from e
+        except APITimeoutError as e:
+            raise AITransientError(f"Request timed out: {e}") from e
+        except APIConnectionError as e:
+            raise AITransientError(f"Connection failed: {e}") from e
+        except APIError as e:
+            if e.status_code and 500 <= e.status_code < 600:
+                raise AITransientError(f"Server error ({e.status_code}): {e}") from e
+            raise AIError(f"API error ({e.status_code}): {e}") from e
         except Exception as e:
-            logger.warning("OpenAI API error: %s", e)
-            return "", None
+            logger.error("Unexpected OpenAI error: %s", e, exc_info=True)
+            raise AIError(str(e)) from e
 
     def _call_deepseek(
         self,
@@ -171,7 +235,7 @@ class AIService:
         tools: list[dict] | None = None,
     ) -> tuple[str, list[dict] | None]:
         try:
-            from openai import OpenAI
+            from openai import APIConnectionError, APIError, APITimeoutError, OpenAI, RateLimitError
             client = OpenAI(
                 api_key=self._api_key or os.environ.get("DEEPSEEK_API_KEY", ""),
                 base_url=self._api_base or "https://api.deepseek.com/v1",
@@ -193,9 +257,19 @@ class AIService:
                     for tc in msg.tool_calls
                 ]
             return text, tool_calls
+        except RateLimitError as e:
+            raise AITransientError(f"DeepSeek rate limited: {e}") from e
+        except APITimeoutError as e:
+            raise AITransientError(f"DeepSeek request timed out: {e}") from e
+        except APIConnectionError as e:
+            raise AITransientError(f"DeepSeek connection failed: {e}") from e
+        except APIError as e:
+            if e.status_code and 500 <= e.status_code < 600:
+                raise AITransientError(f"DeepSeek server error ({e.status_code})") from e
+            raise AIError(f"DeepSeek API error ({e.status_code}): {e}") from e
         except Exception as e:
-            logger.warning("DeepSeek API error: %s", e)
-            return "", None
+            logger.error("Unexpected DeepSeek error: %s", e, exc_info=True)
+            raise AIError(str(e)) from e
 
     def _call_ollama(
         self,
@@ -220,6 +294,7 @@ class AIService:
                 json=payload,
                 timeout=120,
             )
+            response.raise_for_status()
             data = response.json()
             msg = data.get("message", {})
             text = msg.get("content", "")
@@ -237,9 +312,17 @@ class AIService:
                             args = {}
                     tool_calls.append({"name": fn.get("name", ""), "arguments": args})
             return text, tool_calls
+        except httpx.TimeoutException as e:
+            raise AITransientError(f"Ollama request timed out: {e}") from e
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                raise AITransientError("Ollama rate limited") from e
+            raise AIError(f"Ollama error ({e.response.status_code}): {e.response.text[:200]}") from e
+        except httpx.ConnectError as e:
+            raise AITransientError(f"Ollama connection refused (is ollama running?): {e}") from e
         except Exception as e:
-            logger.warning("Ollama error: %s", e)
-            return "", None
+            logger.error("Unexpected Ollama error: %s", e, exc_info=True)
+            raise AIError(str(e)) from e
 
     def _call_custom(
         self,
@@ -266,6 +349,7 @@ class AIService:
                 headers=headers,
                 timeout=120,
             )
+            response.raise_for_status()
             data = response.json()
             msg = data.get("choices", [{}])[0].get("message", {})
             text = msg.get("content", "")
@@ -283,9 +367,17 @@ class AIService:
                             args = {}
                     tool_calls.append({"name": fn.get("name", ""), "arguments": args})
             return text, tool_calls
+        except httpx.TimeoutException as e:
+            raise AITransientError(f"Custom API request timed out: {e}") from e
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                raise AITransientError("Custom API rate limited") from e
+            raise AIError(f"Custom API error ({e.response.status_code}): {e.response.text[:200]}") from e
+        except httpx.ConnectError as e:
+            raise AITransientError(f"Custom API connection refused: {e}") from e
         except Exception as e:
-            logger.warning("Custom API error: %s", e)
-            return "", None
+            logger.error("Unexpected Custom API error: %s", e, exc_info=True)
+            raise AIError(str(e)) from e
 
     # ---- AI features ----
 
@@ -534,20 +626,28 @@ class AIService:
 
         return "\n\n".join(parts)
 
-    def nl2sql_with_rag(self, description: str, connection_id: str, database: str) -> str:
-        """Natural language to SQL with schema RAG context."""
-        schema = self.build_schema_context(connection_id, database)
-        return self.nl2sql(description, schema_context=schema)
+    def build_schema_context_for_query(
+        self, connection_id: str, database: str, query: str, top_k: int = 5
+    ) -> str:
+        """Build schema context for only the tables relevant to a natural language query.
 
-    def ask_with_rag(self, question: str, connection_id: str, database: str) -> str:
-        """Answer a database question with schema RAG context."""
-        schema = self.build_schema_context(connection_id, database)
-        return self.ask(question, schema_context=schema)
+        Uses keyword matching first; if scores are low, falls back to LLM table selection.
+        """
+        self._ensure_embeddings(connection_id, database)
+        keyword_tables = self._keyword_search_tables(query, top_k)
 
-    # ---- Schema Embeddings (lightweight RAG) ----
+        if keyword_tables and keyword_tables[0][0] >= 2:
+            table_names = [t for _, t in keyword_tables[:top_k]]
+        else:
+            table_names = self._llm_select_tables(query, list(self._schema_embeddings.keys()))
 
-    def build_schema_embeddings(self, connection_id: str, database: str) -> None:
-        """Build in-memory text embeddings for schema tables."""
+        return self.build_schema_context(connection_id, database, table_names, max_tables=top_k)
+
+    def _ensure_embeddings(self, connection_id: str, database: str) -> None:
+        """Build embeddings if not cached for this connection+database."""
+        cache_key = (connection_id, database)
+        if self._schema_embedding_conn == cache_key and self._schema_embeddings:
+            return
         from open_navicat.services.metadata_service import metadata_service
         tables = metadata_service.list_tables(connection_id, database)
         self._schema_embeddings = {}
@@ -556,19 +656,56 @@ class AIService:
             if info:
                 text = f"Table {t}: " + ", ".join(f"{c.name} ({c.data_type})" for c in info.columns)
                 self._schema_embeddings[t] = text
+        self._schema_embedding_conn = cache_key
 
-    def semantic_search_schema(self, query: str, top_k: int = 3) -> str:
-        """Simple keyword-based semantic search over schema embeddings (ponytail: uses keyword overlap instead of real vectors)."""
+    def _keyword_search_tables(self, query: str, top_k: int = 5) -> list[tuple[int, str]]:
+        """Score tables by keyword overlap with the query."""
         if not self._schema_embeddings:
-            return ""
+            return []
         query_words = set(query.lower().split())
-        scored = []
+        scored: list[tuple[int, str]] = []
         for name, text in self._schema_embeddings.items():
             score = sum(1 for w in query_words if w in text.lower())
             if score > 0:
-                scored.append((score, name, text))
+                scored.append((score, name))
         scored.sort(reverse=True)
-        return "\n".join(text for _, _, text in scored[:top_k])
+        return scored[:top_k]
+
+    def _llm_select_tables(self, query: str, all_tables: list[str]) -> list[str]:
+        """Ask LLM which tables are relevant to the query."""
+        prompt = (
+            f"A user asked about a database: '{query}'\n\n"
+            f"Available tables: {', '.join(all_tables)}\n\n"
+            "Return ONLY a comma-separated list of the most relevant table names (max 5), nothing else."
+        )
+        reply = self._call_llm_text([
+            {"role": "system", "content": "You are a database expert. Select relevant tables."},
+            {"role": "user", "content": prompt},
+        ], temperature=0.0).strip()
+        return [t.strip() for t in reply.split(",") if t.strip() in all_tables][:5]
+
+    def nl2sql_with_rag(self, description: str, connection_id: str, database: str) -> str:
+        """Natural language to SQL with schema RAG context."""
+        schema = self.build_schema_context_for_query(connection_id, database, description)
+        return self.nl2sql(description, schema_context=schema)
+
+    def ask_with_rag(self, question: str, connection_id: str, database: str) -> str:
+        """Answer a database question with schema RAG context."""
+        schema = self.build_schema_context_for_query(connection_id, database, question)
+        return self.ask(question, schema_context=schema)
+
+    # ---- Schema Embeddings (lightweight RAG) ----
+
+    def build_schema_embeddings(self, connection_id: str, database: str) -> None:
+        """Build in-memory text embeddings for schema tables (public API)."""
+        self._ensure_embeddings(connection_id, database)
+
+    def semantic_search_schema(self, query: str, top_k: int = 3) -> str:
+        """Keyword-based search: find tables relevant to a query."""
+        scored = self._keyword_search_tables(query, top_k)
+        if not scored:
+            return ""
+        return "\n".join(self._schema_embeddings.get(t) for _, t in scored if t in self._schema_embeddings)
 
     # ---- ReAct Agent ----
 
@@ -587,12 +724,18 @@ class AIService:
         steps: list["AIService.AgentStep"] = field(default_factory=list)
         sql: str = ""
 
+    def _needs_confirmation(self, sql: str) -> bool:
+        """Check if SQL requires user confirmation before execution."""
+        from open_navicat.utils.sql_formatter import classify_sql
+        return classify_sql(sql) in ("ddl", "dml")
+
     def agent(
         self,
         request: str,
         connection_id: str = "",
         database: str = "",
         max_steps: int = 5,
+        confirm_callback: callable | None = None,
     ) -> AgentResult:
         """Function Calling agent that reasons, calls tools, and answers.
 
@@ -612,7 +755,8 @@ class AIService:
 
         system = (
             "You are a database assistant. You have access to tools to explore "
-            "the database schema and execute SQL queries. Use them step by step. "
+            "the database schema, execute SQL queries, ask database knowledge questions, "
+            "and generate reports from data. Use them step by step. "
             "When you have the answer, respond directly to the user."
         )
 
@@ -682,10 +826,25 @@ class AIService:
                     elif fn_name == "execute_sql":
                         sql = fn_args.get("sql", "")
                         if connection_id:
+                            if self._needs_confirmation(sql):
+                                confirmed = True
+                                if confirm_callback:
+                                    confirmed = confirm_callback(sql)
+                                if not confirmed:
+                                    step.observation = "Execution cancelled by user"
+                                    history.append({
+                                        "role": "tool",
+                                        "content": step.observation,
+                                    })
+                                    result.steps.append(step)
+                                    continue
                             try:
                                 qr = query_engine.execute(connection_id, sql)
                                 if qr.rows:
-                                    rows_str = json.dumps(qr.rows[:10], default=str, ensure_ascii=False)
+                                    from open_navicat.utils.data_masker import mask_row
+                                    col_names = [c.name for c in (qr.columns or [])]
+                                    masked = [mask_row(r, col_names) for r in qr.rows[:10]]
+                                    rows_str = json.dumps(masked, default=str, ensure_ascii=False)
                                     step.observation = f"Result ({len(qr.rows)} rows): {rows_str}"
                                 else:
                                     step.observation = f"Query OK, {qr.row_count} rows affected"
@@ -694,6 +853,24 @@ class AIService:
                                 step.observation = f"Error: {e}"
                         else:
                             step.observation = "No active connection"
+
+                    elif fn_name == "ask_ai":
+                        question = fn_args.get("question", "")
+                        step.observation = self.ask(question)
+
+                    elif fn_name == "generate_report":
+                        data = fn_args.get("data", "")
+                        question = fn_args.get("question", "")
+                        prompt = (
+                            f"Based on this question: {question}\n\n"
+                            f"And the following query results:\n{data}\n\n"
+                            "Generate a concise natural-language report that answers "
+                            "the question. Include key numbers and findings."
+                        )
+                        step.observation = self._call_llm_text([
+                            {"role": "system", "content": "You are a data analyst. Generate clear reports from data."},
+                            {"role": "user", "content": prompt},
+                        ], temperature=0.1)
 
                     else:
                         step.observation = f"Unknown function: {fn_name}"

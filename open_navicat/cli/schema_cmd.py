@@ -214,8 +214,8 @@ def schema_diff(
                               "change": "New column"})
 
     # Removed tables
-    for t in diff.removed_tables:
-        rows.append({"object": f"[red]- {t}[/red]", "type": "TABLE",
+    for tbl_name in diff.removed_tables:
+        rows.append({"object": f"[red]- {tbl_name}[/red]", "type": "TABLE",
                       "change": "Only in target"})
 
     # Modified tables

@@ -1278,5 +1278,14 @@
   "browser.permissions_execute": "Execute SQL",
   "browser.permissions_sql_placeholder": "Enter GRANT/REVOKE statement",
   "browser.permissions_executed": "SQL Executed",
-  "browser.profile_no_saved": "(No saved profiles)"
+  "browser.profile_no_saved": "(No saved profiles)",
+  "command_panel.title": ">> CLI Commands",
+  "command_panel.export": "Export Script",
+  "command_panel.clear": "Clear",
+  "command_panel.time": "Time",
+  "command_panel.action": "Action",
+  "command_panel.command": "CLI Command",
+  "confirm_sql.title": "Confirm SQL Execution",
+  "confirm_sql.warning": "⚠ This SQL statement will modify data or schema structure. Please review carefully before executing.",
+  "confirm_sql.execute": "Execute Anyway"
 }

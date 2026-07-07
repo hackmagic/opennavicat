@@ -5,8 +5,10 @@ from __future__ import annotations
 from open_navicat.models.table_schema import ColumnInfo, TableInfo
 from open_navicat.utils.sql_formatter import (
     beautify,
+    classify_sql,
     extract_table_names,
     is_ddl,
+    is_dml,
     is_select,
     minify,
 )
@@ -39,6 +41,29 @@ class TestSQLFormatter:
         tables = extract_table_names("SELECT * FROM users JOIN orders ON users.id = orders.user_id")
         assert "users" in tables
         assert "orders" in tables
+
+    def test_classify_sql_select(self) -> None:
+        assert classify_sql("SELECT * FROM users") == "select"
+        assert classify_sql("select 1") == "select"
+
+    def test_classify_sql_ddl(self) -> None:
+        assert classify_sql("CREATE TABLE t (id INT)") == "ddl"
+        assert classify_sql("DROP TABLE t") == "ddl"
+        assert classify_sql("ALTER TABLE t ADD COLUMN x INT") == "ddl"
+        assert classify_sql("TRUNCATE TABLE t") == "ddl"
+
+    def test_classify_sql_dml(self) -> None:
+        assert classify_sql("INSERT INTO t VALUES (1)") == "dml"
+        assert classify_sql("UPDATE t SET x=1") == "dml"
+        assert classify_sql("DELETE FROM t") == "dml"
+
+    def test_classify_sql_unknown(self) -> None:
+        assert classify_sql("") == "unknown"
+        assert classify_sql("   ") == "unknown"
+
+    def test_is_dml(self) -> None:
+        assert is_dml("INSERT INTO t VALUES (1)") is True
+        assert is_dml("SELECT 1") is False
 
 
 class TestSQLGenerator:

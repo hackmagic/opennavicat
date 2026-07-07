@@ -93,10 +93,38 @@ class MetadataService:
 
     # ---- helpers ----
 
+    @staticmethod
+    def _engine_of(connector: BaseConnector) -> str:
+        info = getattr(connector, "_info", None)
+        return getattr(info, "engine", "mysql") if info else "mysql"
+
+    @staticmethod
+    def _quote(name: str, engine: str) -> str:
+        q = '"' if engine == "postgresql" else "`"
+        return f"{q}{name}{q}"
+
     def get_create_table_sql(self, connection_id: str, database: str, table: str) -> str:
         connector = self._connector(connection_id)
         if not connector:
             return ""
+        engine = self._engine_of(connector)
+        if engine == "postgresql":
+            sql = (
+                "SELECT pg_get_tabledef(c.oid) FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = %s AND c.relname = %s"
+            )
+            result = pool_loop.run_until_complete(connector.execute(sql, (database, table)))
+            if result.success and result.rows:
+                return result.rows[0][0] or ""
+            # Fallback: use pg_dump-style DDL
+            qtn = f'{self._quote(database, engine)}.{self._quote(table, engine)}'
+            result = pool_loop.run_until_complete(
+                connector.execute(f"SELECT pg_get_tabledef('{database}', '{table}')")
+            )
+            if result.success and result.rows:
+                return result.rows[0][0] or ""
+            return f"-- PostgreSQL table: {qtn}\n-- Use pg_dump for full DDL"
         result = pool_loop.run_until_complete(
             connector.execute(f"SHOW CREATE TABLE `{database}`.`{table}`")
         )

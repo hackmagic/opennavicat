@@ -68,23 +68,34 @@ class _TransferWorker(QThread):
     def _transfer_table(self, src, tgt, table: str, errors: list[str]) -> None:
         opts = self._opts
 
+        # Detect engine for quoting
+        src_info = getattr(src, "_info", None)
+        src_engine = getattr(src_info, "engine", "mysql") if src_info else "mysql"
+        tgt_info = getattr(tgt, "_info", None)
+        tgt_engine = getattr(tgt_info, "engine", "mysql") if tgt_info else "mysql"
+        sq = '"' if src_engine == "postgresql" else "`"
+        tq = '"' if tgt_engine == "postgresql" else "`"
+
         # 1. Get source structure
         if opts.get("structure", True):
+            from open_navicat.services.metadata_service import metadata_service
+            # Use connection_id-based approach if available, otherwise fallback
             result = pool_loop.run_until_complete(
-                src.execute(f"SHOW CREATE TABLE `{table}`")
+                src.execute(f"SHOW CREATE TABLE {sq}{table}{sq}" if src_engine != "postgresql"
+                           else f"SELECT pg_get_tabledef('{table}')")
             )
             if result.rows and result.rows[0]:
-                ddl = result.rows[0][1]
+                ddl = result.rows[0][1] if src_engine != "postgresql" else result.rows[0][0]
                 if opts.get("drop_if_exists", False):
                     pool_loop.run_until_complete(
-                        tgt.execute(f"DROP TABLE IF EXISTS `{table}`")
+                        tgt.execute(f"DROP TABLE IF EXISTS {tq}{table}{tq}")
                     )
                 pool_loop.run_until_complete(tgt.execute(ddl))
 
         # 2. Copy data
         if opts.get("data", True):
             result = pool_loop.run_until_complete(
-                src.execute(f"SELECT * FROM `{table}`")
+                src.execute(f"SELECT * FROM {sq}{table}{sq}")
             )
             if not result.rows:
                 return

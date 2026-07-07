@@ -868,6 +868,13 @@ class SQLEditorWidget(QWidget):
         if not sql:
             return
 
+        from open_navicat.utils.sql_formatter import classify_sql
+        if classify_sql(sql) in ("ddl", "dml"):
+            from open_navicat.ui.dialogs.confirm_sql_dialog import ConfirmSQLDialog
+            dlg = ConfirmSQLDialog(sql, self.window())
+            if not dlg.exec():
+                return
+
         connector = connection_pool.get(self._connection_id)
         if not connector:
             self._status_label.setText(t("sql_editor.status_disconnected"))

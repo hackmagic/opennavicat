@@ -6,6 +6,7 @@ from open_navicat.ui.widgets.ai_copilot import AICopilotSidebar, ChatBubble
 from open_navicat.ui.widgets.backup_panel import BackupPanel
 from open_navicat.ui.widgets.bi_dashboard import BIDashboardWidget
 from open_navicat.ui.widgets.command_line import CommandLineWidget
+from open_navicat.ui.widgets.command_panel import CommandPanel
 from open_navicat.ui.widgets.data_dictionary import DataDictionaryWidget
 from open_navicat.ui.widgets.data_sync_panel import DataSyncPanel
 from open_navicat.ui.widgets.data_transfer import DataTransferWidget
@@ -41,6 +42,7 @@ __all__ = [
     "DataSyncPanel",
     "SchedulerPanel",
     "DataDictionaryWidget",
+    "CommandPanel",
     "CommandLineWidget",
     "ServerMonitorWidget",
     "HistoryLogWidget",

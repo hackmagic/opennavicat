@@ -9,6 +9,8 @@
 | [README](../README.md) | Everyone | Project introduction, quick start ([EN](../README.md#english) / [中文](../README.md#简体中文)) |
 | [CLI Reference](CLI_REFERENCE.md) | All users | Complete CLI command reference |
 | [Security](SECURITY.md) | Ops/Security | Encryption, transport security |
+| [Privacy](PRIVACY.md) | All users | Data sent to AI, data masking, Ollama offline setup |
+| [Tutorials](tutorials/README.md) | All users | End-to-end walkthroughs |
 | [Deployment](DEPLOYMENT.md) | Ops | Packaging, CI/CD, Docker |
 
 ## Developer Guide
@@ -46,6 +48,8 @@
 | [README](../README.md) | 所有人 | 项目介绍、快速上手 ([EN](../README.md#english) / [中文](../README.md#简体中文)) |
 | [CLI 参考手册](CLI_REFERENCE.md) | 所有用户 | 全部 40+ 条 CLI 命令完整参考 |
 | [安全设计](SECURITY.md) | 运维/安全 | 加密方案、传输安全 |
+| [隐私保护](PRIVACY.md) | 所有用户 | AI 数据发送范围、数据脱敏、Ollama 离线方案 |
+| [教程](tutorials/README.md) | 所有用户 | 端到端实战示例 |
 | [部署指南](DEPLOYMENT.md) | 运维 | 安装、打包、CI/CD、Docker |
 | [贡献指南](../CONTRIBUTING.md) | 贡献者 | 如何参与贡献 |
 

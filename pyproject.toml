@@ -26,9 +26,10 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.15"
-PySide6 = {version = ">=6.5.0", python = ">=3.10,<3.15"}
+PySide6 = {version = ">=6.9,<6.10", python = ">=3.10,<3.14"}
 aiomysql = "^0.3.0"
 pymysql = "^1.1.0"
+sqlglot = "^25.0.0"
 sqlparse = "^0.5.0"
 paramiko = "^5.0.0"
 cryptography = "^48.0.0"

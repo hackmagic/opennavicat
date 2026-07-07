@@ -10,6 +10,7 @@ A free, open-source alternative to Navicat Premium, built with Python.
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen)](CONTRIBUTING.md)
 [![Issues](https://img.shields.io/github/issues/hackmagic/OpenNavicat)](https://github.com/hackmagic/OpenNavicat/issues)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 
 [English](#english) | [简体中文](#简体中文)
 
@@ -30,14 +31,54 @@ OpenNavicat is a full-featured database management tool inspired by [Navicat Pre
 - **Full GUI** — Navicat-like graphical interface with object browser, SQL editor, table designer, data viewer, BI dashboard, and more.
 - **Multi-Database** — MySQL/MariaDB + PostgreSQL + SQLite.
 - **7 Export Formats** — CSV, JSON, XML, HTML, SQL, TXT, Excel.
+- **Privacy-First** — Data masking for AI requests. Full offline mode with Ollama. Encrypted credential storage.
 - **Open Source** — MIT License. Free for personal and commercial use.
 
+### Comparison
+
+| Feature | OpenNavicat | Navicat Premium | DBeaver EE | DataGrip |
+|---------|:-----------:|:---------------:|:----------:|:--------:|
+| **Price** | **Free** (MIT) | $599/yr | $299/yr | $199/yr |
+| **CLI-First** | ✅ Native | ❌ | ❌ (`dbeaver-cli` limited) | ❌ |
+| **AI-Native** (NL2SQL, optimize, fix) | ✅ Built-in | ✅ (paid add-on) | ❌ | 🟡 (AI Assistant) |
+| **ReAct Agent** | ✅ Multi-step | ❌ | ❌ | ❌ |
+| **Schema RAG** | ✅ Vector/keyword | ❌ | ❌ | ❌ |
+| **Cross-Platform** | ✅ Win/Mac/Linux | ✅ Win/Mac | ✅ Win/Mac/Linux | ✅ Win/Mac/Linux |
+| **MySQL / PG / SQLite** | ✅ | ✅ | ✅ | ✅ |
+| **MongoDB / Redis** | ❌ | ✅ | ✅ | ✅ |
+| **BI Dashboard** | ✅ Built-in (no ext libs) | ✅ | ❌ | ❌ |
+| **ER Model Designer** | ✅ Conceptual/Logical/Physical | ✅ | ✅ | ✅ |
+| **Schema & Data Sync** | ✅ MySQL↔PG | ✅ | ✅ | ❌ |
+| **Scheduled Automation** | ✅ (APScheduler) | ✅ | ❌ | ❌ |
+| **SSH Tunnel** | ✅ (asyncssh) | ✅ | ✅ | ✅ |
+| **i18n** | ✅ zh_CN / en_US | ✅ 10+ langs | ✅ 20+ langs | ✅ 15+ langs |
+| **CLI ↔ GUI Bridge** | 🚧 Planned | ❌ | ❌ | ❌ |
+| **Plugin System** | 🔮 Future | ❌ | ✅ | ✅ |
+| **Open Source** | ✅ MIT | ❌ Proprietary | 🟡 (Community edition) | ❌ Proprietary |
+| **Docker Image** | ✅ ghcr.io | ❌ | ❌ | ❌ |
+
 ### Quick Start
+
+**One-liner** (auto-downloads latest CLI for your platform):
+
+```bash
+# Linux/macOS
+curl -fsSL https://github.com/hackmagic/OpenNavicat/releases/latest/download/install.sh | bash
+
+# Windows (PowerShell)
+iwr -Uri https://github.com/hackmagic/OpenNavicat/releases/latest/download/install.ps1 | iex
+```
 
 **Install via pip** (recommended — includes both CLI and GUI):
 
 ```bash
 pip install open-navicat
+```
+
+**Or use Docker** (CLI only, lightweight):
+
+```bash
+docker run --rm ghcr.io/hackmagic/opennavicat:latest conn list
 ```
 
 **Or download standalone executables** from [Releases](https://github.com/hackmagic/OpenNavicat/releases):
@@ -46,6 +87,8 @@ pip install open-navicat
 |---------|----------|-------------|------|
 | `opennavicat-cli-*` | Win/Mac/Linux | CLI only (no Qt) | ~15 MB |
 | `opennavicat-*` | Win/Mac/Linux | Full GUI with PySide6 | ~120 MB |
+
+> **Package managers:** If you'd like to see OpenNavicat on [Homebrew](https://brew.sh), [Scoop](https://scoop.sh), or [Chocolatey](https://chocolatey.org), upvote or open an issue on GitHub!
 
 ```bash
 # Add a connection
@@ -129,6 +172,8 @@ opennavicat
 | [AI Module](docs/AI_MODULE.md) | Developers | AI architecture, prompts, provider config |
 | [Architecture](docs/architecture.md) | Developers | System architecture, module design |
 | [Security](docs/SECURITY.md) | Ops/Security | Encryption, transport security |
+| [Privacy](docs/PRIVACY.md) | All users | Data sent to AI, data masking, Ollama offline setup |
+| [Tutorials](docs/tutorials/README.md) | All users | End-to-end walkthroughs |
 | [Development Guide](docs/DEVELOPMENT.md) | Contributors | Setup, code standards, testing |
 | [Data Flow](docs/DATA_FLOW.md) | Developers | Data flow diagrams |
 | [Deployment](docs/DEPLOYMENT.md) | Ops | Packaging, CI/CD, Docker |
@@ -156,14 +201,54 @@ OpenNavicat 是一款功能齐全的数据库管理工具，灵感来源于 [Nav
 - **完整 GUI** — 类 Navicat 图形界面，包含对象浏览器、SQL 编辑器、表设计器、数据查看器、BI 看板等。
 - **多数据库** — MySQL/MariaDB + PostgreSQL + SQLite。
 - **7 种导出格式** — CSV、JSON、XML、HTML、SQL、TXT、Excel。
+- **隐私优先** — AI 请求自动脱敏，支持 Ollama 全离线模式，凭据加密存储。
 - **开源免费** — MIT 许可证，个人和商业用途均可免费使用。
 
+### 功能对比
+
+| 特性 | OpenNavicat | Navicat Premium | DBeaver EE | DataGrip |
+|------|:-----------:|:---------------:|:----------:|:--------:|
+| **价格** | **免费** (MIT) | $599/年 | $299/年 | $199/年 |
+| **CLI 优先** | ✅ 原生支持 | ❌ | ❌ (`dbeaver-cli` 有限) | ❌ |
+| **AI 原生** (NL2SQL、优化、修复) | ✅ 内置 | ✅ (付费附加) | ❌ | 🟡 (AI Assistant) |
+| **ReAct Agent** | ✅ 多步推理 | ❌ | ❌ | ❌ |
+| **Schema RAG** | ✅ 向量/关键词 | ❌ | ❌ | ❌ |
+| **跨平台** | ✅ Win/Mac/Linux | ✅ Win/Mac | ✅ Win/Mac/Linux | ✅ Win/Mac/Linux |
+| **MySQL / PG / SQLite** | ✅ | ✅ | ✅ | ✅ |
+| **MongoDB / Redis** | ❌ | ✅ | ✅ | ✅ |
+| **BI 看板** | ✅ 内置 (零外部库) | ✅ | ❌ | ❌ |
+| **ER 模型设计器** | ✅ 概念/逻辑/物理 | ✅ | ✅ | ✅ |
+| **结构 & 数据同步** | ✅ MySQL↔PG | ✅ | ✅ | ❌ |
+| **定时自动化** | ✅ (APScheduler) | ✅ | ❌ | ❌ |
+| **SSH 隧道** | ✅ (asyncssh) | ✅ | ✅ | ✅ |
+| **国际化** | ✅ 中/英 | ✅ 10+ 语言 | ✅ 20+ 语言 | ✅ 15+ 语言 |
+| **CLI ↔ GUI 联动** | 🚧 规划中 | ❌ | ❌ | ❌ |
+| **插件系统** | 🔮 未来计划 | ❌ | ✅ | ✅ |
+| **开源** | ✅ MIT | ❌ 专有 | 🟡 (社区版) | ❌ 专有 |
+| **Docker 镜像** | ✅ ghcr.io | ❌ | ❌ | ❌ |
+
 ### 快速上手
+
+**一行命令安装**（自动下载最新版 CLI）：
+
+```bash
+# Linux/macOS
+curl -fsSL https://github.com/hackmagic/OpenNavicat/releases/latest/download/install.sh | bash
+
+# Windows (PowerShell)
+iwr -Uri https://github.com/hackmagic/OpenNavicat/releases/latest/download/install.ps1 | iex
+```
 
 **pip 安装**（推荐，包含 CLI 和 GUI）：
 
 ```bash
 pip install open-navicat
+```
+
+**或用 Docker**（纯 CLI，轻量）：
+
+```bash
+docker run --rm ghcr.io/hackmagic/opennavicat:latest conn list
 ```
 
 **或下载独立可执行文件** — 从 [Releases](https://github.com/hackmagic/OpenNavicat/releases) 获取：
@@ -208,6 +293,18 @@ opennavicat gui
 | `ai chat-history` | 查看/清除聊天历史 | `ai chat-history show` |
 | `schema design` | AI 设计表结构 | `schema design "博客系统: 用户、文章、评论" --deploy` |
 | `data generate` | 智能生成测试数据 | `data generate mydb.users --count 1000` |
+
+### 文档
+
+| 文档 | 适合 | 内容 |
+|------|------|------|
+| [CLI 参考手册](docs/CLI_REFERENCE.md) | 所有用户 | 全部 CLI 命令参考 |
+| [AI 模块设计](docs/AI_MODULE.md) | 开发者 | AI 架构、Prompt、提供商配置 |
+| [架构设计](docs/architecture.md) | 开发者 | 系统架构 |
+| [安全设计](docs/SECURITY.md) | 运维/安全 | 加密、传输安全 |
+| [隐私保护](docs/PRIVACY.md) | 所有用户 | AI 数据范围、脱敏、Ollama 离线方案 |
+| [开发指南](docs/DEVELOPMENT.md) | 贡献者 | 环境搭建、代码规范、测试 |
+| [部署指南](docs/DEPLOYMENT.md) | 运维 | 安装、打包、CI/CD、Docker |
 
 ### 技术栈
 

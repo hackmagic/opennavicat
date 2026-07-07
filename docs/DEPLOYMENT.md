@@ -78,20 +78,23 @@ pyinstaller opennavicat-gui.spec
 
 ### 2.3 Docker 镜像
 
-```dockerfile
-FROM python:3.11-slim
+项目管理一个 [Dockerfile](../Dockerfile) 用于构建轻量级 CLI 镜像。
 
-RUN pip install open-navicat
+```bash
+# 从 GitHub Packages 拉取
+docker pull ghcr.io/hackmagic/opennavicat:latest
 
-# CLI 模式 (无头服务器)
-ENTRYPOINT ["opennavicat"]
+# 运行 CLI
+docker run --rm ghcr.io/hackmagic/opennavicat conn list
 
-# 或带 AI 支持
-ENV OPENNAVICAT_AI_PROVIDER=ollama
-ENV OPENNAVICAT_AI_API_BASE=http://ollama:11434
+# 带 AI 支持 (配合 Ollama)
+docker run --rm \
+  -e OPENNAVICAT_AI_PROVIDER=ollama \
+  -e OPENNAVICAT_AI_API_BASE=http://host.docker.internal:11434 \
+  ghcr.io/hackmagic/opennavicat ai ask "show me all databases"
 ```
 
-构建和运行:
+本地构建:
 ```bash
 docker build -t opennavicat .
 docker run --rm opennavicat conn list

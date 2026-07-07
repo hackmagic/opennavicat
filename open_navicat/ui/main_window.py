@@ -33,6 +33,7 @@ from open_navicat.ui.themes import apply_theme
 from open_navicat.ui.widgets import (
     AICopilotSidebar,
     BackupPanel,
+    CommandPanel,
     DataSyncPanel,
     ObjectBrowser,
     SchedulerPanel,
@@ -162,6 +163,13 @@ class MainWindow(QMainWindow):
         self._workspace.tabBar().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._workspace.tabBar().customContextMenuRequested.connect(self._tab_context_menu)
         content_layout.addWidget(self._workspace, 1)
+
+        # CLI Command panel (bottom, collapsible)
+        self._command_panel = CommandPanel(content)
+        self._command_panel.setObjectName("commandPanel")
+        self._command_panel.setVisible(False)
+        self._command_panel.setMaximumHeight(250)
+        content_layout.addWidget(self._command_panel)
 
         # Status bar
         self._status = QStatusBar(content)
@@ -559,6 +567,13 @@ class MainWindow(QMainWindow):
 
         layout.addStretch()
 
+        # Toggle CLI command panel
+        self._cli_cmd_btn = QPushButton(t("command_panel.title"), bar)
+        self._cli_cmd_btn.setObjectName("cliCmdBtn")
+        self._cli_cmd_btn.setCheckable(True)
+        self._cli_cmd_btn.clicked.connect(self._toggle_command_panel)
+        layout.addWidget(self._cli_cmd_btn)
+
         # AI query button (only if AI enabled)
         if config.get("ai.enabled", False):
             ai_btn = QPushButton(t("toolbar.ai_query"), bar)
@@ -584,6 +599,8 @@ class MainWindow(QMainWindow):
             if ok:
                 self._object_browser.add_connection(info)
                 self._status.showMessage(t("prompt.connected", host=info.host))
+                conn_name = info.name or info.host
+                self.record_cli("Open Connection", f"opennavicat conn open {conn_name}")
             else:
                 QMessageBox.warning(self, t("connection.conn_failed"), t("prompt.conn_failed", host=info.host))
 
@@ -596,6 +613,7 @@ class MainWindow(QMainWindow):
         db = self._get_current_database()
         editor = SQLEditorWidget(active, db, parent=self._workspace)
         editor.ai_requested.connect(self._on_ai_request)
+        editor.executed.connect(lambda r: self.record_cli("Execute SQL", "opennavicat query run \"<sql>\""))
         idx = self._workspace.addTab(editor, t("tab.new_query", n=self._workspace.count() + 1))
         self._workspace.setCurrentIndex(idx)
 
@@ -621,6 +639,7 @@ class MainWindow(QMainWindow):
         if not active:
             QMessageBox.warning(self, t("common.notice"), t("prompt.need_connection"))
             return
+        self.record_cli("Open Schema Sync", "opennavicat schema diff <source> <target>")
         sync = SchemaSyncPanel(active, parent=self._workspace)
         idx = self._workspace.addTab(sync, t("menu.tools.structure_sync"))
         self._workspace.setCurrentIndex(idx)
@@ -631,6 +650,7 @@ class MainWindow(QMainWindow):
         if not active:
             QMessageBox.warning(self, t("common.notice"), t("prompt.need_connection"))
             return
+        self.record_cli("Open Backup", "opennavicat backup create <db>")
         backup = BackupPanel(active, parent=self._workspace)
         idx = self._workspace.addTab(backup, t("menu.tools.backup"))
         self._workspace.setCurrentIndex(idx)
@@ -808,6 +828,7 @@ class MainWindow(QMainWindow):
                     self._workspace.setCurrentIndex(i)
                     return
         from open_navicat.ui.widgets.table_viewer import TableViewerWidget
+        self.record_cli("Open Table", f"opennavicat data browse {table} --db {database}")
         viewer = TableViewerWidget(connection_id, database, table, parent=self._workspace)
         idx = self._workspace.addTab(viewer, t("tab.table_view", table=table))
         self._workspace.setCurrentIndex(idx)
@@ -1207,6 +1228,19 @@ class MainWindow(QMainWindow):
         y = min(y, ag.y() + ag.height() - h)
         self.resize(w, h)
         self.move(x, y)
+
+    @Slot()
+    def _toggle_command_panel(self) -> None:
+        visible = not self._command_panel.isVisible()
+        self._command_panel.setVisible(visible)
+        self._cli_cmd_btn.setChecked(visible)
+
+    def record_cli(self, action: str, command: str) -> None:
+        """Record a GUI action with its CLI equivalent (public API)."""
+        self._command_panel.record(action, command)
+        if not self._command_panel.isVisible():
+            self._command_panel.setVisible(True)
+            self._cli_cmd_btn.setChecked(True)
 
     def closeEvent(self, event):
         if self.isMaximized():

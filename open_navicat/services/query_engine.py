@@ -60,12 +60,16 @@ class QueryEngine:
         connector = connection_pool.get(connection_id)
         if not connector:
             return 0
-        loop = pool_loop
-        safe_db = database.replace("`", "``")
-        safe_table = table.replace("`", "``")
-        result = loop.run_until_complete(
-            connector.execute(f"SELECT COUNT(*) FROM `{safe_db}`.`{safe_table}`")
-        )
+        info = getattr(connector, "_info", None)
+        engine = getattr(info, "engine", "mysql") if info else "mysql"
+        if engine == "postgresql":
+            q = '"'
+            sql = f"SELECT COUNT(*) FROM {q}{database}{q}.{q}{table}{q}"
+        else:
+            safe_db = database.replace("`", "``")
+            safe_table = table.replace("`", "``")
+            sql = f"SELECT COUNT(*) FROM `{safe_db}`.`{safe_table}`"
+        result = pool_loop.run_until_complete(connector.execute(sql))
         if result.success and result.rows:
             return result.rows[0][0]
         return 0

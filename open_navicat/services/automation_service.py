@@ -289,7 +289,11 @@ class AutomationService:
             # Switch database if specified
             if database:
                 from open_navicat.dal.connection_pool import _loop
-                _loop.run_until_complete(connector.execute(f"USE `{database}`"))
+                engine = conn_info.engine if conn_info else "mysql"
+                if engine == "postgresql":
+                    _loop.run_until_complete(connector.execute(f"SET search_path TO {database}"))
+                else:
+                    _loop.run_until_complete(connector.execute(f"USE `{database}`"))
 
             # Execute query
             from open_navicat.dal.connection_pool import _loop
@@ -331,22 +335,40 @@ class AutomationService:
                     local_db.update_job_status(job["id"], "failed: connection failed")
                     return
 
+            engine = conn_info.engine if conn_info else "mysql"
+
             if sync_type == "schema":
+                from open_navicat.dal.connection_pool import _loop as pool_loop
                 from open_navicat.services.sync_engine import sync_engine
-                diff = sync_engine.compare_databases(connector, source_db, target_db)
+                diff = sync_engine.compare_databases(conn_id, source_db, target_db)
                 if diff.has_changes:
-                    sync_engine.generate_sync_script(diff, execute=True)
-                    local_db.update_job_status(job["id"], f"success: {len(diff.table_diffs)} tables synced")
+                    stmts = sync_engine.generate_sync_script(diff, target_db, engine)
+                    for stmt in stmts:
+                        pool_loop.run_until_complete(connector.execute(stmt))
+                    local_db.update_job_status(
+                        job["id"], f"success: {len(diff.modified_tables)} tables synced"
+                    )
                 else:
                     local_db.update_job_status(job["id"], "success: no changes")
             else:
+                from open_navicat.dal.connection_pool import _loop as pool_loop
                 from open_navicat.services.data_sync_engine import data_sync_engine
-                diff = data_sync_engine.compare_tables(connector, source_db, target_db)
-                if diff.has_changes:
-                    data_sync_engine.generate_sync_script(diff, execute=True)
-                    local_db.update_job_status(job["id"], "success: data synced")
-                else:
-                    local_db.update_job_status(job["id"], "success: no changes")
+                tables = pool_loop.run_until_complete(
+                    connector.execute("SHOW TABLES" if engine != "postgresql"
+                                      else "SELECT tablename FROM pg_tables WHERE schemaname='public'")
+                )
+                table_names = [row[0] for row in (tables.rows if tables and tables.rows else [])]
+                for tbl in table_names:
+                    if tbl in (source_db, target_db):
+                        continue
+                    diff = data_sync_engine.compare_tables(
+                        conn_id, source_db, tbl, conn_id, target_db, tbl,
+                    )
+                    if diff.total_diffs > 0:
+                        script = data_sync_engine.generate_sync_script(diff, engine)
+                        if script:
+                            pool_loop.run_until_complete(connector.execute(script))
+                local_db.update_job_status(job["id"], "success: data synced")
         except Exception as exc:
             local_db.update_job_status(job["id"], f"failed: {exc}")
 

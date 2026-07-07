@@ -34,6 +34,9 @@ cd OpenNavicat
 # Install dependencies
 poetry install
 
+# Install pre-commit hooks (recommended)
+poetry run pre-commit install
+
 # Run tests
 poetry run pytest tests/unit/ -v
 
@@ -116,6 +119,9 @@ cd OpenNavicat
 
 # 安装依赖
 poetry install
+
+# 安装 pre-commit 钩子（推荐）
+poetry run pre-commit install
 
 # 运行测试
 poetry run pytest tests/unit/ -v

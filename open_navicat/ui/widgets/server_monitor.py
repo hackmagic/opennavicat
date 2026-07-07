@@ -1,4 +1,4 @@
-"""Server Monitor — show MySQL server status, processes, and variables."""
+"""Server Monitor — show server status, processes, and variables."""
 
 from __future__ import annotations
 
@@ -94,34 +94,79 @@ class ServerMonitorWidget(QWidget):
         connector = connection_pool.get(self._connection_id)
         if not connector:
             return
+        info = getattr(connector, "_info", None)
+        engine = getattr(info, "engine", "mysql") if info else "mysql"
         try:
-            # Status
-            result = pool_loop.run_until_complete(connector.execute("SHOW STATUS"))
-            if result.rows:
-                self._status_table.setRowCount(len(result.rows))
-                for i, row in enumerate(result.rows):
-                    self._status_table.setItem(i, 0, QTableWidgetItem(str(row[0]) if row[0] else ""))
-                    self._status_table.setItem(i, 1, QTableWidgetItem(str(row[1]) if len(row) > 1 and row[1] is not None else ""))
-
-            # Processes
-            result = pool_loop.run_until_complete(connector.execute("SHOW PROCESSLIST"))
-            if result.rows:
-                self._process_table.setRowCount(len(result.rows))
-                for i, row in enumerate(result.rows):
-                    for j in range(min(7, len(row))):
-                        val = str(row[j]) if row[j] is not None else ""
-                        self._process_table.setItem(i, j, QTableWidgetItem(val))
-
-            # Variables
-            result = pool_loop.run_until_complete(connector.execute("SHOW VARIABLES"))
-            if result.rows:
-                self._vars_table.setRowCount(len(result.rows))
-                for i, row in enumerate(result.rows):
-                    self._vars_table.setItem(i, 0, QTableWidgetItem(str(row[0]) if row[0] else ""))
-                    self._vars_table.setItem(i, 1, QTableWidgetItem(str(row[1]) if len(row) > 1 and row[1] is not None else ""))
-
+            if engine == "postgresql":
+                self._refresh_postgresql(connector)
+            else:
+                self._refresh_mysql(connector)
         except Exception as e:
             _log.warning("Server monitor refresh failed: %s", e)
+
+    def _refresh_mysql(self, connector) -> None:
+        result = pool_loop.run_until_complete(connector.execute("SHOW STATUS"))
+        if result.rows:
+            self._status_table.setRowCount(len(result.rows))
+            for i, row in enumerate(result.rows):
+                self._status_table.setItem(i, 0, QTableWidgetItem(str(row[0]) if row[0] else ""))
+                self._status_table.setItem(i, 1, QTableWidgetItem(str(row[1]) if len(row) > 1 and row[1] is not None else ""))
+
+        result = pool_loop.run_until_complete(connector.execute("SHOW PROCESSLIST"))
+        if result.rows:
+            self._process_table.setRowCount(len(result.rows))
+            for i, row in enumerate(result.rows):
+                for j in range(min(7, len(row))):
+                    val = str(row[j]) if row[j] is not None else ""
+                    self._process_table.setItem(i, j, QTableWidgetItem(val))
+
+        result = pool_loop.run_until_complete(connector.execute("SHOW VARIABLES"))
+        if result.rows:
+            self._vars_table.setRowCount(len(result.rows))
+            for i, row in enumerate(result.rows):
+                self._vars_table.setItem(i, 0, QTableWidgetItem(str(row[0]) if row[0] else ""))
+                self._vars_table.setItem(i, 1, QTableWidgetItem(str(row[1]) if len(row) > 1 and row[1] is not None else ""))
+
+    def _refresh_postgresql(self, connector) -> None:
+        # pg_stat_activity for processes
+        result = pool_loop.run_until_complete(connector.execute(
+            "SELECT pid, usename, client_addr, datname, state, "
+            "NOW() - query_start AS duration, query "
+            "FROM pg_stat_activity WHERE state IS NOT NULL ORDER BY pid"
+        ))
+        if result.rows:
+            self._process_table.setRowCount(len(result.rows))
+            for i, row in enumerate(result.rows):
+                for j in range(min(7, len(row))):
+                    val = str(row[j]) if row[j] is not None else ""
+                    self._process_table.setItem(i, j, QTableWidgetItem(val))
+
+        # pg_stat_database for status
+        result = pool_loop.run_until_complete(connector.execute(
+            "SELECT datname, numbackends, xact_commit, xact_rollback, "
+            "blks_read, blks_hit, tup_returned, tup_fetched "
+            "FROM pg_stat_database WHERE datname NOT LIKE 'template%'"
+        ))
+        if result.rows:
+            self._status_table.setRowCount(len(result.rows))
+            for i, row in enumerate(result.rows):
+                self._status_table.setItem(i, 0, QTableWidgetItem(str(row[0]) if row[0] else ""))
+                self._status_table.setItem(i, 1, QTableWidgetItem(
+                    " | ".join(f"{k}={v}" for k, v in zip(
+                        ["backends", "commits", "rollbacks", "reads", "hits", "returned", "fetched"],
+                        row[1:]
+                    ) if v is not None)
+                ))
+
+        # pg_settings for variables
+        result = pool_loop.run_until_complete(connector.execute(
+            "SELECT name, setting FROM pg_settings ORDER BY name"
+        ))
+        if result.rows:
+            self._vars_table.setRowCount(len(result.rows))
+            for i, row in enumerate(result.rows):
+                self._vars_table.setItem(i, 0, QTableWidgetItem(str(row[0]) if row[0] else ""))
+                self._vars_table.setItem(i, 1, QTableWidgetItem(str(row[1]) if row[1] is not None else ""))
 
     def _toggle_auto_refresh(self, checked: bool) -> None:
         self._auto_refresh = checked

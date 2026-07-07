@@ -8,10 +8,22 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.syntax import Syntax
 
+from open_navicat.services.ai_service import AIError, AITransientError
 from open_navicat.services.connection_manager import connection_manager
 
 ai_app = typer.Typer(name="ai", help="AI-powered database assistant", no_args_is_help=True)
 console = Console()
+
+
+def _handle_ai_error(e: Exception) -> None:
+    if isinstance(e, AITransientError):
+        console.print(f"[yellow]⚠️  AI service temporarily unavailable: {e}[/yellow]")
+        console.print("[dim]Check your network connection and try again.[/dim]")
+    elif isinstance(e, AIError):
+        console.print(f"[red]✗ AI error: {e}[/red]")
+    else:
+        console.print(f"[red]✗ Unexpected error: {e}[/red]")
+    raise typer.Exit(1)
 
 
 def _get_active_conn() -> str:
@@ -44,14 +56,21 @@ def ai_ask(
 
     cid = ""
     schema_context = ""
+    database = ""
     if conn or connection_manager.active_ids:
         cid = _resolve_conn(conn)
-        schema_context = _get_schema_context(cid)
+        info = connection_manager.get_saved(cid)
+        if info:
+            database = info.database or ""
+        schema_context = ai_service.build_schema_context_for_query(cid, database, question)
 
     console.print("[dim]🤖 AI thinking...[/dim]")
-    answer = ai_service.ask(question, schema_context)
+    try:
+        answer = ai_service.ask(question, schema_context)
+    except (AIError, AITransientError) as e:
+        _handle_ai_error(e)
     if not answer:
-        console.print("[red]No response from AI.[/red]")
+        console.print("[red]AI returned empty response.[/red]")
         raise typer.Exit(1)
 
     console.print(Panel(Markdown(answer), title="🤖 AI Answer", border_style="blue"))
@@ -78,7 +97,10 @@ def ai_optimize(
                 explain_data = json.dumps(result.rows[:5], indent=2)
 
     console.print("[yellow]🤖 Analyzing query performance...[/yellow]")
-    advice = ai_service.optimize(sql, explain_data)
+    try:
+        advice = ai_service.optimize(sql, explain_data)
+    except (AIError, AITransientError) as e:
+        _handle_ai_error(e)
     if not advice:
         console.print("[red]No optimization advice returned.[/red]")
         raise typer.Exit(1)
@@ -98,7 +120,10 @@ def ai_explain(
     from open_navicat.services.ai_service import ai_service
 
     console.print("[yellow]🤖 Analyzing query...[/yellow]")
-    explanation = ai_service.explain_query(sql)
+    try:
+        explanation = ai_service.explain_query(sql)
+    except (AIError, AITransientError) as e:
+        _handle_ai_error(e)
     if not explanation:
         console.print("[red]Failed to explain query.[/red]")
         raise typer.Exit(1)
@@ -117,7 +142,10 @@ def ai_fix(
     from open_navicat.services.ai_service import ai_service
 
     console.print("[yellow]🤖 Diagnosing and fixing...[/yellow]")
-    fixed = ai_service.fix_sql(sql, error)
+    try:
+        fixed = ai_service.fix_sql(sql, error)
+    except (AIError, AITransientError) as e:
+        _handle_ai_error(e)
     if not fixed:
         console.print("[red]Failed to fix the query.[/red]")
         raise typer.Exit(1)
@@ -147,7 +175,10 @@ def ai_chat(
     # Handle one-shot prompt
     if prompt:
         console.print("[dim]🤖 Thinking...[/dim]")
-        answer = ai_service.chat(prompt)
+        try:
+            answer = ai_service.chat(prompt)
+        except (AIError, AITransientError) as e:
+            _handle_ai_error(e)
         console.print(Panel(Markdown(answer), title="🤖 AI", border_style="blue"))
         if not interactive:
             raise typer.Exit()
@@ -196,7 +227,11 @@ def ai_chat(
             continue
 
         console.print("[dim]🤖 Thinking...[/dim]")
-        answer = ai_service.chat(user_input)
+        try:
+            answer = ai_service.chat(user_input)
+        except (AIError, AITransientError) as e:
+            console.print(f"[red]✗ {e}[/red]")
+            continue
         console.print(Panel(Markdown(answer), title="🤖 AI", border_style="blue"))
 
 
@@ -210,7 +245,10 @@ def ai_tables(
     from open_navicat.services.ai_service import ai_service
 
     console.print("[yellow]🤖 Designing database schema...[/yellow]")
-    ddl = ai_service.design_schema(description)
+    try:
+        ddl = ai_service.design_schema(description)
+    except (AIError, AITransientError) as e:
+        _handle_ai_error(e)
     if not ddl:
         console.print("[red]Failed to generate schema.[/red]")
         raise typer.Exit(1)
@@ -249,8 +287,20 @@ def ai_agent(
         if info:
             database = info.database
 
+    def _confirm_sql(sql: str) -> bool:
+        """Prompt user to confirm DDL/DML execution."""
+        console.print("\n[bold red]⚠ DDL/DML requires confirmation:[/bold red]")
+        console.print(Syntax(sql, "sql", theme="monokai", word_wrap=True))
+        return typer.confirm("Execute?", default=False)
+
     console.print(f"[yellow]🤖 Agent thinking (max {max_steps} steps)...[/yellow]")
-    result = ai_service.agent(request, connection_id=cid, database=database, max_steps=max_steps)
+    try:
+        result = ai_service.agent(
+            request, connection_id=cid, database=database,
+            max_steps=max_steps, confirm_callback=_confirm_sql,
+        )
+    except (AIError, AITransientError) as e:
+        _handle_ai_error(e)
 
     # Show steps
     for i, step in enumerate(result.steps):
@@ -343,7 +393,10 @@ def ai_schema(
     current_ddl = ddl
     if not current_ddl and description:
         console.print("[yellow]🤖 Designing initial schema...[/yellow]")
-        current_ddl = ai_service.design_schema(description)
+        try:
+            current_ddl = ai_service.design_schema(description)
+        except (AIError, AITransientError) as e:
+            _handle_ai_error(e)
         if not current_ddl:
             console.print("[red]Failed to generate initial schema.[/red]")
             raise typer.Exit(1)
@@ -382,7 +435,11 @@ def ai_schema(
             break
 
         console.print("[yellow]🤖 Applying modification...[/yellow]")
-        updated = ai_service.design_schema_iterative(current_ddl, user_input)
+        try:
+            updated = ai_service.design_schema_iterative(current_ddl, user_input)
+        except (AIError, AITransientError) as e:
+            console.print(f"[red]✗ {e}[/red]")
+            continue
         if not updated:
             console.print("[red]Failed to apply modification.[/red]")
             continue
@@ -430,7 +487,10 @@ def ai_build(
 
     if description:
         console.print("[yellow]🤖 Building query...[/yellow]")
-        answer = ai_service.chat(description)
+        try:
+            answer = ai_service.chat(description)
+        except (AIError, AITransientError) as e:
+            _handle_ai_error(e)
         console.print(Panel(Markdown(answer), title="🤖 SQL Query", border_style="green"))
 
     while True:
@@ -469,7 +529,11 @@ def ai_build(
             continue
 
         console.print("[yellow]🤖 Refining...[/yellow]")
-        answer = ai_service.chat(user_input)
+        try:
+            answer = ai_service.chat(user_input)
+        except (AIError, AITransientError) as e:
+            console.print(f"[red]✗ {e}[/red]")
+            continue
         console.print(Panel(Markdown(answer), title="🤖 SQL Query", border_style="green"))
 
 
@@ -484,7 +548,10 @@ def ai_data_quality(
     cid = _resolve_conn(conn) if conn else _get_active_conn() if connection_manager.active_ids else ""
     schema_context = _get_schema_context(cid) if cid else ""
     console.print("[yellow]🤖 Analyzing data quality...[/yellow]")
-    result = ai_service.data_quality(table, schema_context)
+    try:
+        result = ai_service.data_quality(table, schema_context)
+    except (AIError, AITransientError) as e:
+        _handle_ai_error(e)
     console.print(Panel(Markdown(result), title="🔍 Data Quality", border_style="blue"))
 
 
@@ -498,7 +565,10 @@ def ai_anomaly(
     from open_navicat.services.ai_service import ai_service
 
     console.print("[yellow]🤖 Analyzing anomalies...[/yellow]")
-    result = ai_service.anomaly_detection(table, column)
+    try:
+        result = ai_service.anomaly_detection(table, column)
+    except (AIError, AITransientError) as e:
+        _handle_ai_error(e)
     console.print(Panel(Markdown(result), title="📊 Anomaly Detection", border_style="red"))
 
 
@@ -513,7 +583,10 @@ def ai_review(
     cid = _resolve_conn(conn) if conn else _get_active_conn() if connection_manager.active_ids else ""
     schema_context = _get_schema_context(cid) if cid else ""
     console.print("[yellow]🤖 Reviewing SQL...[/yellow]")
-    result = ai_service.sql_review(sql, schema_context)
+    try:
+        result = ai_service.sql_review(sql, schema_context)
+    except (AIError, AITransientError) as e:
+        _handle_ai_error(e)
     console.print(Syntax(sql, "sql", theme="monokai", word_wrap=True))
     console.print(Panel(Markdown(result), title="🛡️ SQL Review", border_style="yellow"))
 
@@ -549,16 +622,22 @@ def ai_test(
 
 # ---- helper ----
 
-def _get_schema_context(conn_id: str) -> str:
+def _get_schema_context(conn_id: str, max_tables: int = 10) -> str:
     """Build a compact schema description for AI prompt context."""
     from open_navicat.services.metadata_service import metadata_service
     dbs = metadata_service.list_databases(conn_id)
     lines = []
-    for db in dbs[:5]:
+    remaining = max_tables
+    for db in dbs[:3]:
         tables = metadata_service.list_tables(conn_id, db.name)
-        for table in tables[:20]:
+        for table in tables[:remaining]:
             info = metadata_service.get_table_info(conn_id, db.name, table)
             if info:
                 cols = ", ".join(f"{c.name} ({c.data_type})" for c in info.columns[:10])
                 lines.append(f"{db.name}.{table}: {cols}")
+                remaining -= 1
+                if remaining <= 0:
+                    break
+        if remaining <= 0:
+            break
     return "\n".join(lines)

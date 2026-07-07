@@ -1,4 +1,4 @@
-"""Command Line Interface — built-in MySQL terminal."""
+"""Command Line Interface — built-in SQL terminal."""
 
 from __future__ import annotations
 
@@ -27,6 +27,13 @@ class CommandLineWidget(QWidget):
         self._database = database
         self._setup_ui()
 
+    def _detect_engine(self) -> str:
+        connector = connection_pool.get(self._connection_id)
+        if connector:
+            info = getattr(connector, "_info", None)
+            return getattr(info, "engine", "mysql") if info else "mysql"
+        return "mysql"
+
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -54,7 +61,9 @@ class CommandLineWidget(QWidget):
         input_layout = QHBoxLayout(input_widget)
         input_layout.setContentsMargins(0, 0, 0, 0)
 
-        self._prompt_label = QLabel("mysql> ")
+        engine = self._detect_engine()
+        prompt_text = f"{engine}> " if self._database is None else f"{engine}({self._database})> " if self._database else f"{engine}> "
+        self._prompt_label = QLabel(prompt_text)
         self._prompt_label.setObjectName("accentLabel")
         input_layout.addWidget(self._prompt_label)
 
@@ -90,7 +99,8 @@ class CommandLineWidget(QWidget):
         self._input.clear()
 
         # Show command
-        self._append_output(f"mysql> {cmd}")
+        engine = self._detect_engine()
+        self._append_output(f"{engine}> {cmd}")
 
         # Handle special commands
         if cmd.lower() in ("quit", "exit", "q"):
@@ -101,7 +111,7 @@ class CommandLineWidget(QWidget):
             return
         if cmd.lower().startswith("use "):
             self._database = cmd.split()[1].strip().strip("`")
-            self._prompt_label.setText(f"mysql({self._database})> ")
+            self._prompt_label.setText(f"{engine}({self._database})> ")
             self._append_output(t("command_line.output.db_switched", database=self._database))
             return
         if cmd.lower() in ("help", "?"):

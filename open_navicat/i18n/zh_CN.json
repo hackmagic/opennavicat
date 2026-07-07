@@ -1278,5 +1278,14 @@
   "browser.permissions_execute": "执行 SQL",
   "browser.permissions_sql_placeholder": "输入 GRANT/REVOKE 语句",
   "browser.permissions_executed": "SQL 已执行",
-  "browser.profile_no_saved": "(无保存的配置)"
+  "browser.profile_no_saved": "(无保存的配置)",
+  "command_panel.title": ">> CLI 命令",
+  "command_panel.export": "导出脚本",
+  "command_panel.clear": "清空",
+  "command_panel.time": "时间",
+  "command_panel.action": "操作",
+  "command_panel.command": "CLI 命令",
+  "confirm_sql.title": "确认 SQL 执行",
+  "confirm_sql.warning": "⚠ 该 SQL 语句将修改数据或表结构，请仔细检查后再执行。",
+  "confirm_sql.execute": "仍然执行"
 }

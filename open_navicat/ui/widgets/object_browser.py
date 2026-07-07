@@ -1353,13 +1353,10 @@ class ObjectBrowser(QTreeWidget):
             return
         connector = connection_pool.get(data["connection_id"])
         if connector:
-            from open_navicat.dal.connection_pool import _loop as pool_loop
             try:
-                result = pool_loop.run_until_complete(
-                    connector.execute(f"SHOW CREATE TABLE `{data['database']}`.`{data['name']}`")
-                )
-                if result.rows:
-                    ddl = str(result.rows[0][1]) if len(result.rows[0]) > 1 else ""
+                from open_navicat.services.metadata_service import metadata_service
+                ddl = metadata_service.get_create_table_sql(data["connection_id"], data["database"], data["name"])
+                if ddl:
                     with open(path, "w", encoding="utf-8") as f:
                         f.write(f"-- Dump table `{data['name']}`\n{ddl};\n")
             except Exception as e:

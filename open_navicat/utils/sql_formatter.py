@@ -82,3 +82,18 @@ def is_dml(sql: str) -> bool:
     if not parsed:
         return False
     return parsed[0].get_type() in ("INSERT", "UPDATE", "DELETE", "REPLACE")
+
+
+def classify_sql(sql: str) -> str:
+    """Classify SQL into: 'select', 'ddl', 'dml', or 'unknown'."""
+    parsed = sqlparse.parse(sql)
+    if not parsed:
+        return "unknown"
+    stmt_type = parsed[0].get_type()
+    if stmt_type == "SELECT":
+        return "select"
+    if stmt_type in ("CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME"):
+        return "ddl"
+    if stmt_type in ("INSERT", "UPDATE", "DELETE", "REPLACE"):
+        return "dml"
+    return "unknown"
