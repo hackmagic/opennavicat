@@ -78,6 +78,12 @@ class ConnectionPool:
         elif info.engine == "duckdb":
             from open_navicat.dal.duckdb_connector import DuckDBConnector
             connector_cls = DuckDBConnector
+        elif info.engine == "mongodb":
+            from open_navicat.dal.mongo_connector import MongoConnector
+            connector_cls = MongoConnector
+        elif info.engine == "redis":
+            from open_navicat.dal.redis_connector import RedisConnector
+            connector_cls = RedisConnector
         else:
             from open_navicat.dal.mysql_connector import MySQLConnector
             connector_cls = MySQLConnector

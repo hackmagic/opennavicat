@@ -17,3 +17,16 @@ __all__ = [
     "local_db",
     "LocalConfigDB",
 ]
+
+# Optional connectors — import will fail if driver not installed
+try:
+    from open_navicat.dal.mongo_connector import MongoConnector
+    __all__.append("MongoConnector")
+except ImportError:
+    pass
+
+try:
+    from open_navicat.dal.redis_connector import RedisConnector
+    __all__.append("RedisConnector")
+except ImportError:
+    pass

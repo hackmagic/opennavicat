@@ -54,6 +54,8 @@ class ConnectionDialog(QDialog):
         self._combo_engine.addItem(t("connection.engine_mysql"), "mysql")
         self._combo_engine.addItem(t("connection.engine_postgresql"), "postgresql")
         self._combo_engine.addItem(t("connection.engine_sqlite"), "sqlite")
+        self._combo_engine.addItem(t("connection.engine_mongodb"), "mongodb")
+        self._combo_engine.addItem(t("connection.engine_redis"), "redis")
         self._combo_engine.currentIndexChanged.connect(self._on_engine_changed)
         general_layout.addRow(t("connection.engine"), self._combo_engine)
 
@@ -253,6 +255,9 @@ class ConnectionDialog(QDialog):
         engine = self._combo_engine.currentData()
         is_sqlite = engine == "sqlite"
         is_pg = engine == "postgresql"
+        is_mongo = engine == "mongodb"
+        is_redis = engine == "redis"
+        is_nosql = is_mongo or is_redis
 
         # SQLite: host = file path, disable port/user/password
         self._edit_host.setPlaceholderText("Path to .db file" if is_sqlite else "")
@@ -260,10 +265,15 @@ class ConnectionDialog(QDialog):
         self._edit_user.setEnabled(not is_sqlite)
         self._edit_password.setEnabled(not is_sqlite)
         self._edit_database.setEnabled(not is_sqlite)
-        self._edit_charset.setEnabled(not is_sqlite)
+        self._edit_charset.setEnabled(not is_sqlite and not is_nosql)
 
         if not is_sqlite:
-            self._spin_port.setValue(5432 if is_pg else 3306)
+            if is_mongo:
+                self._spin_port.setValue(27017)
+            elif is_redis:
+                self._spin_port.setValue(6379)
+            else:
+                self._spin_port.setValue(5432 if is_pg else 3306)
 
     @Slot()
     def _test_connection(self) -> None:

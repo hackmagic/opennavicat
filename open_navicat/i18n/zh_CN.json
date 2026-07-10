@@ -1251,6 +1251,8 @@
   "connection.engine_mysql": "MySQL",
   "connection.engine_postgresql": "PostgreSQL",
   "connection.engine_sqlite": "SQLite",
+  "connection.engine_mongodb": "MongoDB",
+  "connection.engine_redis": "Redis",
   "connection.color_label": "颜色:",
   "connection.color_blue": "蓝色",
   "connection.color_green": "绿色",

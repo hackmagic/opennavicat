@@ -35,6 +35,7 @@ def list_connections(
 @conn_app.command("add")
 def add_connection(
     name: str = typer.Option(..., "--name", "-n", help="Connection name"),
+    engine: str = typer.Option("mysql", "--engine", "-e", help="Database engine: mysql|postgresql|sqlite|mongodb|redis"),
     host: str = typer.Option("127.0.0.1", "--host", "-h", help="Database host"),
     port: int = typer.Option(3306, "--port", "-p", help="Database port"),
     user: str = typer.Option("root", "--user", "-u", help="Database user"),
@@ -50,7 +51,7 @@ def add_connection(
 ) -> None:
     """Add and save a new database connection."""
     info = ConnectionInfo(
-        name=name, host=host, port=port, user=user, password=password,
+        name=name, engine=engine, host=host, port=port, user=user, password=password,
         database=database, charset=charset,
         use_ssh=bool(ssh_host), ssh_host=ssh_host, ssh_port=ssh_port,
         ssh_user=ssh_user, ssh_password=ssh_password, ssh_key_file=ssh_key,
