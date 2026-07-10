@@ -8,7 +8,7 @@ from open_navicat.services.data_sync_engine import DataCompareResult, DataSyncEn
 
 
 def _mock_connector(rows, columns_meta, pk_cols=None):
-    """Create a mock connector whose `execute` returns synchronously (tests wrap in pool_loop)."""
+    """Create a mock connector whose `execute` returns synchronously (tests wrap in _pool_loop)."""
     conn = MagicMock()
     col_result = MagicMock()
     col_result.rows = columns_meta
@@ -44,8 +44,8 @@ class TestDataSyncEngine:
                 _mock_connector(rows, cols),
                 _mock_connector(rows, cols),
             ])
-            with patch("open_navicat.services.data_sync_engine.pool_loop") as loop:
-                loop.run_until_complete = MagicMock(side_effect=lambda c: c)
+            with patch("open_navicat.services.data_sync_engine._pool_loop") as loop:
+                loop.return_value.run_until_complete = MagicMock(side_effect=lambda c: c)
                 result = engine.compare_tables("src", "db", "t", "tgt", "db", "t")
         assert result.source_rows == 3
         assert result.target_rows == 3
@@ -64,8 +64,8 @@ class TestDataSyncEngine:
                 _mock_connector(src_rows, cols),
                 _mock_connector(tgt_rows, cols),
             ])
-            with patch("open_navicat.services.data_sync_engine.pool_loop") as loop:
-                loop.run_until_complete = MagicMock(side_effect=lambda c: c)
+            with patch("open_navicat.services.data_sync_engine._pool_loop") as loop:
+                loop.return_value.run_until_complete = MagicMock(side_effect=lambda c: c)
                 result = engine.compare_tables("src", "db", "t", "tgt", "db", "t")
         assert len(result.inserts) == 2
         assert len(result.deletes) == 0
@@ -86,8 +86,8 @@ class TestDataSyncEngine:
                 _mock_connector(src_rows, cols),
                 _mock_connector(tgt_rows, cols),
             ])
-            with patch("open_navicat.services.data_sync_engine.pool_loop") as loop:
-                loop.run_until_complete = MagicMock(side_effect=lambda c: c)
+            with patch("open_navicat.services.data_sync_engine._pool_loop") as loop:
+                loop.return_value.run_until_complete = MagicMock(side_effect=lambda c: c)
                 result = engine.compare_tables("src", "db", "t", "tgt", "db", "t")
         assert len(result.updates) == 1
         assert result.updates[0].set_values["name"] == "new_name"
@@ -103,8 +103,8 @@ class TestDataSyncEngine:
                 _mock_connector(src_rows, cols),
                 _mock_connector(tgt_rows, cols),
             ])
-            with patch("open_navicat.services.data_sync_engine.pool_loop") as loop:
-                loop.run_until_complete = MagicMock(side_effect=lambda c: c)
+            with patch("open_navicat.services.data_sync_engine._pool_loop") as loop:
+                loop.return_value.run_until_complete = MagicMock(side_effect=lambda c: c)
                 result = engine.compare_tables("src", "db", "t", "tgt", "db", "t")
         assert len(result.deletes) == 2
 

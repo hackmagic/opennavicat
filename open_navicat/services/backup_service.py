@@ -247,31 +247,31 @@ class BackupService:
         if create_db:
             connector = connection_pool.get(conn_info.id)
             if connector is None:
-                from open_navicat.dal.connection_pool import _loop as pool_loop
+                from open_navicat.dal.connection_pool import _get_loop
                 if is_pg:
                     from open_navicat.dal.postgresql_connector import PostgreSQLConnector
                     connector = PostgreSQLConnector()
-                    pool_loop.run_until_complete(connector.connect(
+                    _get_loop().run_until_complete(connector.connect(
                         host=conn_info.host,
                         port=conn_info.port,
                         user=conn_info.user,
                         password=conn_info.password,
                         database="postgres",
                     ))
-                    pool_loop.run_until_complete(
+                    _get_loop().run_until_complete(
                         connector.execute(f'CREATE DATABASE "{database}"')
                     )
                 else:
                     from open_navicat.dal.mysql_connector import MySQLConnector
                     connector = MySQLConnector()
-                    pool_loop.run_until_complete(connector.connect(
+                    _get_loop().run_until_complete(connector.connect(
                         host=conn_info.host,
                         port=conn_info.port,
                         user=conn_info.user,
                         password=conn_info.password,
                         database="mysql",
                     ))
-                    pool_loop.run_until_complete(
+                    _get_loop().run_until_complete(
                         connector.execute(f"CREATE DATABASE IF NOT EXISTS `{database}`")
                     )
 

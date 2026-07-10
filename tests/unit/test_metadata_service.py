@@ -18,10 +18,10 @@ class TestMetadataService:
         dbs = [DatabaseInfo(name="testdb")]
         with (
             patch("open_navicat.services.metadata_service.connection_pool") as mock_pool,
-            patch("open_navicat.services.metadata_service.pool_loop") as mock_loop,
+            patch("open_navicat.services.metadata_service._pool_loop") as mock_loop,
         ):
             mock_pool.get.return_value = mock_pool
-            mock_loop.run_until_complete.return_value = dbs
+            mock_loop.return_value.run_until_complete.return_value = dbs
             result = self._svc.list_databases("c1")
             assert result == dbs
 
@@ -34,10 +34,10 @@ class TestMetadataService:
         tables = ["t1", "t2"]
         with (
             patch("open_navicat.services.metadata_service.connection_pool") as mock_pool,
-            patch("open_navicat.services.metadata_service.pool_loop") as mock_loop,
+            patch("open_navicat.services.metadata_service._pool_loop") as mock_loop,
         ):
             mock_pool.get.return_value = mock_pool
-            mock_loop.run_until_complete.return_value = tables
+            mock_loop.return_value.run_until_complete.return_value = tables
             result = self._svc.list_tables("c1", "db")
             assert result == tables
 
@@ -47,10 +47,10 @@ class TestMetadataService:
         schema = TableInfo(name="t", database="db", columns=[])
         with (
             patch("open_navicat.services.metadata_service.connection_pool") as mock_pool,
-            patch("open_navicat.services.metadata_service.pool_loop") as mock_loop,
+            patch("open_navicat.services.metadata_service._pool_loop") as mock_loop,
         ):
             mock_pool.get.return_value = mock_pool
-            mock_loop.run_until_complete.return_value = schema
+            mock_loop.return_value.run_until_complete.return_value = schema
             result = self._svc.get_table_info("c1", "db", "t")
             assert result == schema
 
@@ -62,19 +62,19 @@ class TestMetadataService:
     def test_list_views(self) -> None:
         with (
             patch("open_navicat.services.metadata_service.connection_pool") as mock_pool,
-            patch("open_navicat.services.metadata_service.pool_loop") as mock_loop,
+            patch("open_navicat.services.metadata_service._pool_loop") as mock_loop,
         ):
             mock_pool.get.return_value = mock_pool
-            mock_loop.run_until_complete.return_value = ["v1"]
+            mock_loop.return_value.run_until_complete.return_value = ["v1"]
             assert self._svc.list_views("c1", "db") == ["v1"]
 
     def test_list_routines(self) -> None:
         with (
             patch("open_navicat.services.metadata_service.connection_pool") as mock_pool,
-            patch("open_navicat.services.metadata_service.pool_loop") as mock_loop,
+            patch("open_navicat.services.metadata_service._pool_loop") as mock_loop,
         ):
             mock_pool.get.return_value = mock_pool
-            mock_loop.run_until_complete.return_value = [("sp1", "PROCEDURE")]
+            mock_loop.return_value.run_until_complete.return_value = [("sp1", "PROCEDURE")]
             assert self._svc.list_routines("c1", "db") == [("sp1", "PROCEDURE")]
 
     def test_invalidate(self) -> None:

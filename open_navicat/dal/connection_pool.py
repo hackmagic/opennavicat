@@ -11,8 +11,15 @@ from open_navicat.models.connection import ConnectionInfo
 
 logger = logging.getLogger("opennavicat.pool")
 
-_loop = asyncio.new_event_loop()
-asyncio.set_event_loop(_loop)
+_loop: asyncio.AbstractEventLoop | None = None
+
+
+def _get_loop() -> asyncio.AbstractEventLoop:
+    global _loop
+    if _loop is None or _loop.is_closed():
+        _loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_loop)
+    return _loop
 
 
 class ConnectionPool:
@@ -76,7 +83,7 @@ class ConnectionPool:
             connector_cls = MySQLConnector
         connector = connector_cls(conn_info)
         try:
-            success = _loop.run_until_complete(connector.connect())
+            success = _get_loop().run_until_complete(connector.connect())
         except Exception as e:
             logger.error("ConnectionPool.open(%s) EXCEPTION: %s", info.name, e, exc_info=True)
             return False
@@ -100,7 +107,7 @@ class ConnectionPool:
     def close(self, connection_id: str) -> None:
         connector = self._connectors.pop(connection_id, None)
         if connector:
-            _loop.run_until_complete(connector.disconnect())
+            _get_loop().run_until_complete(connector.disconnect())
         tunnel = self._tunnels.pop(connection_id, None)
         if tunnel:
             tunnel.close()

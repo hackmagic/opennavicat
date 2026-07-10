@@ -354,22 +354,22 @@ class AutomationService:
             engine = conn_info.engine if conn_info else "mysql"
 
             if sync_type == "schema":
-                from open_navicat.dal.connection_pool import _loop as pool_loop
+                from open_navicat.dal.connection_pool import _get_loop
                 from open_navicat.services.sync_engine import sync_engine
                 diff = sync_engine.compare_databases(conn_id, source_db, target_db)
                 if diff.has_changes:
                     stmts = sync_engine.generate_sync_script(diff, target_db, engine)
                     for stmt in stmts:
-                        pool_loop.run_until_complete(connector.execute(stmt))
+                        _get_loop().run_until_complete(connector.execute(stmt))
                     local_db.update_job_status(
                         job["id"], f"success: {len(diff.modified_tables)} tables synced"
                     )
                 else:
                     local_db.update_job_status(job["id"], "success: no changes")
             else:
-                from open_navicat.dal.connection_pool import _loop as pool_loop
+                from open_navicat.dal.connection_pool import _get_loop
                 from open_navicat.services.data_sync_engine import data_sync_engine
-                tables = pool_loop.run_until_complete(
+                tables = _get_loop().run_until_complete(
                     connector.execute("SHOW TABLES" if engine != "postgresql"
                                       else "SELECT tablename FROM pg_tables WHERE schemaname='public'")
                 )
@@ -383,7 +383,7 @@ class AutomationService:
                     if diff.total_diffs > 0:
                         script = data_sync_engine.generate_sync_script(diff, engine)
                         if script:
-                            pool_loop.run_until_complete(connector.execute(script))
+                            _get_loop().run_until_complete(connector.execute(script))
                 local_db.update_job_status(job["id"], "success: data synced")
         except Exception as exc:
             local_db.update_job_status(job["id"], f"failed: {exc}")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import _get_loop as _pool_loop
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.models.query_result import QueryResult
 from open_navicat.utils.query_cache import query_cache
@@ -25,7 +25,7 @@ class QueryEngine:
         connector = connection_pool.get(connection_id)
         if not connector:
             return QueryResult(success=False, error_message="No active connection")
-        loop = pool_loop
+        loop = _pool_loop()
         result = loop.run_until_complete(connector.execute(sql))
         if result.success and (sql_stripped.startswith("SELECT") or sql_stripped.startswith("WITH")):
             query_cache.set(connection_id, "", sql, result)
@@ -69,7 +69,7 @@ class QueryEngine:
             safe_db = database.replace("`", "``")
             safe_table = table.replace("`", "``")
             sql = f"SELECT COUNT(*) FROM `{safe_db}`.`{safe_table}`"
-        result = pool_loop.run_until_complete(connector.execute(sql))
+        result = _pool_loop().run_until_complete(connector.execute(sql))
         if result.success and result.rows:
             return result.rows[0][0]
         return 0
@@ -81,7 +81,7 @@ class QueryEngine:
         if not conn:
             return
         try:
-            result = pool_loop.run_until_complete(conn.execute(sql))
+            result = _pool_loop().run_until_complete(conn.execute(sql))
             if result.success and result.rows:
                 total = len(result.rows)
                 for i in range(0, total, chunk_size):

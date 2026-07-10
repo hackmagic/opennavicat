@@ -25,14 +25,14 @@ class TestQueryEngine:
         result = QueryResult(success=True, columns=[], rows=[[1]])
         with (
             patch("open_navicat.services.query_engine.connection_pool"),
-            patch("open_navicat.services.query_engine.pool_loop") as mock_loop,
+            patch("open_navicat.services.query_engine._pool_loop") as mock_loop,
             patch("open_navicat.services.query_engine.query_cache") as mock_cache,
         ):
             mock_cache.get.return_value = None
-            mock_loop.run_until_complete.return_value = result
+            mock_loop.return_value.run_until_complete.return_value = result
             out = self._engine.execute("c1", "SELECT 1")
             assert out.success is True
-            mock_loop.run_until_complete.assert_called_once()
+            mock_loop.return_value.run_until_complete.assert_called_once()
 
     def test_execute_returns_cached(self) -> None:
         cached = QueryResult(success=True, columns=[], rows=[[42]])
@@ -48,10 +48,10 @@ class TestQueryEngine:
         result = QueryResult(success=True, affected_rows=2)
         with (
             patch("open_navicat.services.query_engine.connection_pool"),
-            patch("open_navicat.services.query_engine.pool_loop") as mock_loop,
+            patch("open_navicat.services.query_engine._pool_loop") as mock_loop,
             patch("open_navicat.services.query_engine.query_cache") as mock_cache,
         ):
-            mock_loop.run_until_complete.return_value = result
+            mock_loop.return_value.run_until_complete.return_value = result
             out = self._engine.execute("c1", "INSERT INTO t VALUES (1)")
             assert out.affected_rows == 2
             mock_cache.set.assert_not_called()
@@ -59,22 +59,22 @@ class TestQueryEngine:
     def test_explain(self) -> None:
         with (
             patch("open_navicat.services.query_engine.connection_pool") as mock_pool,
-            patch("open_navicat.services.query_engine.pool_loop") as mock_loop,
+            patch("open_navicat.services.query_engine._pool_loop") as mock_loop,
         ):
             mock_pool.get.return_value = mock_pool
             result = QueryResult(success=True, plan="EXPLAIN")
-            mock_loop.run_until_complete.return_value = result
+            mock_loop.return_value.run_until_complete.return_value = result
             out = self._engine.explain("c1", "SELECT 1")
             assert out.plan == "EXPLAIN"
 
     def test_explain_format_json(self) -> None:
         with (
             patch("open_navicat.services.query_engine.connection_pool") as mock_pool,
-            patch("open_navicat.services.query_engine.pool_loop") as mock_loop,
+            patch("open_navicat.services.query_engine._pool_loop") as mock_loop,
         ):
             mock_pool.get.return_value = mock_pool
             result = QueryResult(success=True, plan="JSON")
-            mock_loop.run_until_complete.return_value = result
+            mock_loop.return_value.run_until_complete.return_value = result
             out = self._engine.explain_format_json("c1", "SELECT 1")
             assert out.plan == "JSON"
 

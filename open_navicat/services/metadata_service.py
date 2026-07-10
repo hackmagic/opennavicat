@@ -6,7 +6,7 @@ import time
 from typing import Any, Optional
 
 from open_navicat.dal.base_connector import BaseConnector
-from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import _get_loop as _pool_loop
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.models.table_schema import (
     DatabaseInfo,
@@ -33,7 +33,7 @@ class MetadataService:
         connector = self._connector(connection_id)
         if not connector:
             return None
-        return pool_loop.run_until_complete(getattr(connector, method)(*args))
+        return _pool_loop().run_until_complete(getattr(connector, method)(*args))
 
     def _cached(self, key: str, connection_id: str, method: str, *args) -> Any:
         now = time.monotonic()
@@ -114,18 +114,18 @@ class MetadataService:
                 "JOIN pg_namespace n ON n.oid = c.relnamespace "
                 "WHERE n.nspname = %s AND c.relname = %s"
             )
-            result = pool_loop.run_until_complete(connector.execute(sql, (database, table)))
+            result = _pool_loop().run_until_complete(connector.execute(sql, (database, table)))
             if result.success and result.rows:
                 return result.rows[0][0] or ""
             # Fallback: use pg_dump-style DDL
             qtn = f'{self._quote(database, engine)}.{self._quote(table, engine)}'
-            result = pool_loop.run_until_complete(
+            result = _pool_loop().run_until_complete(
                 connector.execute(f"SELECT pg_get_tabledef('{database}', '{table}')")
             )
             if result.success and result.rows:
                 return result.rows[0][0] or ""
             return f"-- PostgreSQL table: {qtn}\n-- Use pg_dump for full DDL"
-        result = pool_loop.run_until_complete(
+        result = _pool_loop().run_until_complete(
             connector.execute(f"SHOW CREATE TABLE `{database}`.`{table}`")
         )
         if result.success and result.rows:

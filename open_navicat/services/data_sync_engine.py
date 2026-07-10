@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import _get_loop as _pool_loop
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.models.connection import ConnectionInfo
 from open_navicat.models.table_schema import ColumnInfo
@@ -97,7 +97,7 @@ class DataSyncEngine:
                 "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
                 "ORDER BY ORDINAL_POSITION"
             )
-        col_meta = pool_loop.run_until_complete(
+        col_meta = _pool_loop().run_until_complete(
             src_conn.execute(col_info_sql, (source_database, source_table))
         )
 
@@ -132,7 +132,7 @@ class DataSyncEngine:
                 "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
                 "AND CONSTRAINT_NAME='PRIMARY' ORDER BY ORDINAL_POSITION"
             )
-        pk_meta = pool_loop.run_until_complete(
+        pk_meta = _pool_loop().run_until_complete(
             src_conn.execute(pk_sql, (source_table if is_pg else (source_database, source_table)))
         )
         pk_cols = [r[0] for r in (pk_meta.rows or [])]
@@ -146,8 +146,8 @@ class DataSyncEngine:
         src_sql = f"SELECT {cols_csv} FROM {q}{source_database}{q}.{q}{source_table}{q}{inc_filter}"
         tgt_sql = f"SELECT {cols_csv} FROM {q}{target_database}{q}.{q}{target_table}{q}"
 
-        src_rows = pool_loop.run_until_complete(src_conn.execute(src_sql))
-        tgt_rows = pool_loop.run_until_complete(tgt_conn.execute(tgt_sql))
+        src_rows = _pool_loop().run_until_complete(src_conn.execute(src_sql))
+        tgt_rows = _pool_loop().run_until_complete(tgt_conn.execute(tgt_sql))
 
         result.source_rows = len(src_rows.rows or [])
         result.target_rows = len(tgt_rows.rows or [])
