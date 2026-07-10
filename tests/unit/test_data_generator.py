@@ -65,16 +65,14 @@ def test_generate_email_format() -> None:
 
 
 def test_generate_nullable_can_be_none() -> None:
+    from unittest.mock import patch
+
     from open_navicat.services.data_generator import data_generator
     info = _make_table_info()
-    # Run many times — nullable columns should sometimes be None
-    none_found = False
-    for _ in range(50):
+    # Force null path by mocking random.random to return 0.0 (< 0.1 threshold)
+    with patch("open_navicat.services.data_generator.random.random", return_value=0.0):
         rows = data_generator.generate(info, 1)
-        if rows[0].get("email") is None:
-            none_found = True
-            break
-    assert none_found, "Nullable column should sometimes be None"
+        assert rows[0].get("email") is None
 
 
 def test_generate_respects_type_int() -> None:
