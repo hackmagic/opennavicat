@@ -57,6 +57,7 @@ opennavicat conn list [--format table|json|csv]
 ```bash
 opennavicat conn add \
   --name "Production DB" \
+  --engine mysql \
   --host prod.example.com \
   --port 3306 \
   --user admin \
@@ -74,6 +75,7 @@ opennavicat conn add \
 | 选项 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `--name`, `-n` | str | **必填** | 连接名称 |
+| `--engine`, `-e` | str | mysql | 数据库引擎: mysql / postgresql / sqlite / mongodb / redis |
 | `--host`, `-h` | str | 127.0.0.1 | 数据库主机 |
 | `--port`, `-p` | int | 3306 | 数据库端口 |
 | `--user`, `-u` | str | root | 用户名 |

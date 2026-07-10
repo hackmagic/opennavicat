@@ -36,18 +36,18 @@ CLI-First + AI-Native + GUI-Optional
     │  可选前端       │   │  所有业务逻辑  │   │   /PyInstaller) │
     └─────────────────┘   └────────┬───────┘   └────────────────┘
                                    │
-          ┌────────────────────────┼────────────────────────┐
-          │                        │                        │
-    ┌─────▼──────┐        ┌───────▼──────┐        ┌───────▼──────┐
-    │ Services   │        │  DAL         │        │  Utils       │
-    │ 连接管理    │        │ MySQL连接器   │        │ SQL 生成     │
-    │ 查询引擎   │        │ PostgreSQL连接│        │ SQL 美化     │
-    │ 元数据     │        │ SSH隧道      │        │ 密码加密     │
-    │ AI服务     │        │ 本地SQLite   │        │ 输出格式化   │
-    │ 备份服务   │        │              │        │              │
-    │ 同步引擎   │        │              │        │              │
-    │ 调度器     │        │              │        │              │
-    └────────────┘        └──────────────┘        └──────────────┘
+           ┌────────────────────────┼────────────────────────┐
+           │                        │                        │
+     ┌─────▼──────┐        ┌───────▼──────┐        ┌───────▼──────┐
+     │ Services   │        │  DAL         │        │  Utils       │
+     │ 连接管理    │        │ MySQL连接器   │        │ SQL 生成     │
+     │ 查询引擎   │        │ PostgreSQL连接│        │ SQL 美化     │
+     │ 元数据     │        │ MongoDB连接器 │        │ 密码加密     │
+     │ AI服务     │        │ Redis连接器   │        │ 输出格式化   │
+     │ 备份服务   │        │ SSH隧道      │        │              │
+     │ 同步引擎   │        │ 本地SQLite   │        │              │
+     │ 调度器     │        │              │        │              │
+     └────────────┘        └──────────────┘        └──────────────┘
 ```
 
 ## 3. 核心模块依赖关系
@@ -125,6 +125,10 @@ main.py
 |------|------|------|
 | `MySQLConnector` | aiomysql | MySQL/MariaDB 异步连接、查询、元数据 |
 | `PostgreSQLConnector` | asyncpg | PostgreSQL 异步连接、查询、元数据 |
+| `MongoConnector` | motor | MongoDB 异步连接，schema 从文档推断 |
+| `RedisConnector` | redis.asyncio | Redis 异步连接，key 浏览 + 基础命令 |
+| `DuckDBConnector` | duckdb | 嵌入式分析数据库，本地文件 |
+| `SQLiteConnector` | aiosqlite | SQLite 异步连接 |
 | `SSHTunnel` | asyncssh | 异步 SSH 隧道 |
 | `ConnectionPool` | 内存 | 连接池管理与复用 |
 | `LocalConfigDB` | SQLite | 连接配置、设置、片段持久化 |
@@ -150,6 +154,8 @@ main.py
 | GUI 框架 | PySide6 (Qt) | 6.5+ |
 | MySQL 驱动 | aiomysql + pymysql | 0.2+ / 1.1+ |
 | PostgreSQL 驱动 | asyncpg | 0.30+ (可选) |
+| MongoDB 驱动 | motor | 3.6+ (可选) |
+| Redis 驱动 | redis.asyncio | 5.0+ (可选) |
 | SSH 隧道 | asyncssh | 2.17+ |
 | SQL 解析 | sqlparse | 0.5+ |
 | 加密 | cryptography (Fernet) | 42+ |
@@ -165,7 +171,7 @@ main.py
 | 模式 | 使用场景 | 实现 |
 |------|----------|------|
 | **单例** | 全局服务对象 | `connection_pool`, `connection_manager`, `ai_service` 等模块级实例 |
-| **抽象工厂** | 数据库连接器 | `BaseConnector` → `MySQLConnector` / `PostgreSQLConnector` |
+| **抽象工厂** | 数据库连接器 | `BaseConnector` → `MySQLConnector` / `PostgreSQLConnector` / `MongoConnector` / `RedisConnector` |
 | **策略** | AI 提供商切换 | `AIService._call_llm()` 按 `provider` 路由到不同后端 |
 | **外观** | 服务层封装 | `ConnectionManager` 包装 `ConnectionPool` + `LocalConfigDB` |
 | **适配器** | 输出格式 | `format_output()` 适配 table/json/csv/markdown |
@@ -175,7 +181,7 @@ main.py
 ## 7. 扩展性设计
 
 ```
-数据库扩展: open_navicat/dal/base_connector.py ← SQLiteConnector, MariaDBConnector
+数据库扩展: open_navicat/dal/base_connector.py ← SQLiteConnector, MariaDBConnector, MongoConnector, RedisConnector
 AI 提供商扩展: open_navicat/services/ai_service.py ← _call_openai(), _call_ollama(), _call_custom()
 输出格式扩展: open_navicat/utils/output_formatter.py ← _print_html(), _print_yaml()
 存储后端扩展: open_navicat/dal/local_config.py ← RedisConfigDB, FileConfigDB

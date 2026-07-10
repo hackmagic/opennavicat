@@ -1,16 +1,17 @@
 # OpenNavicat
 
 **CLI-First, AI-Native** database management tool (Navicat alternative).  
-Python 3.10+ | Poetry | MySQL + PostgreSQL | Typer + Rich (CLI) | PySide6 (GUI) | aiomysql + asyncpg (async)
+Python 3.10+ | Poetry | MySQL + PostgreSQL + MongoDB + Redis | Typer + Rich (CLI) | PySide6 (GUI) | aiomysql + asyncpg + motor + redis.asyncio (async)
 
 ## Quick start
 
 ```bash
 poetry install                                    # install dependencies
 poetry install --extras postgresql                # with PostgreSQL support
+poetry install --extras "mongodb redis"           # with MongoDB + Redis support
 poetry run opennavicat                            # CLI mode (40+ commands)
 poetry run opennavicat gui                        # GUI mode
-poetry run pytest tests/unit/ -v                  # unit tests (80)
+poetry run pytest tests/unit/ -v                  # unit tests (289)
 poetry run pytest tests/integration/ -v           # integration tests (16, needs Docker)
 ```
 
@@ -38,7 +39,7 @@ poetry build                                      # build sdist + wheel
   - `scheduler` / `automation_service` — APScheduler-based job scheduling
   - `ConnectionManager` — pool management + SSH tunnels
 - **DAL** (`open_navicat/dal/`):
-  - `BaseConnector` ABC → `MySQLConnector` + `PostgreSQLConnector`
+  - `BaseConnector` ABC → `MySQLConnector` + `PostgreSQLConnector` + `MongoConnector` + `RedisConnector`
   - `ConnectionPool` — per-connector async pool management
   - `SSHTunnel` — async SSH tunnel with asyncssh
   - `local_config` — JSON + SQLite persistence

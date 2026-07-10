@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and this proj
 
 ---
 
+## [0.8.0] — 2026-07-10
+
+### Added
+- MongoDB connector (async motor driver, schema inference from documents)
+- Redis connector (async redis.asyncio driver, key browsing + basic commands)
+- Both as optional extras: `pip install open-navicat[mongodb,redis]`
+- Connection dialog + CLI: engine selection for MongoDB/Redis
+- 41 unit tests for new connectors
+
+### Changed
+- `conn add` command: new `--engine/-e` option (mysql|postgresql|sqlite|mongodb|redis)
+- ConnectionPool routes to appropriate connector by engine type
+
+### Fixed
+- Flaky `test_generate_nullable_can_be_none` (mocked random.random)
+
 ## [0.7.0] — 2026-07-06
 
 ### Added

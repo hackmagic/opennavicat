@@ -4,7 +4,7 @@
 
 ## 1. 功能描述
 
-管理所有数据库连接的生命周期：创建、编辑、测试、保存、打开、关闭。支持 SSH 隧道和 SSL 加密。
+管理所有数据库连接的生命周期：创建、编辑、测试、保存、打开、关闭。支持 SSH 隧道和 SSL 加密。支持 MySQL、PostgreSQL、SQLite、MongoDB、Redis 五种引擎。
 
 ## 2. 架构
 
@@ -26,10 +26,15 @@
 │  open/close/get  │            │  save/list/del   │
 └──────┬───────────┘            └──────────────────┘
        │
-┌──────▼───────────┐
-│  MySQLConnector  │──→ SSH Tunnel
-│  (aiomysql)      │──→ SSL/TLS
-└──────────────────┘
+┌──────▼──────────────────────────────────────┐
+│  MySQLConnector (aiomysql)                  │
+│  PostgreSQLConnector (asyncpg)              │
+│  MongoConnector (motor)                     │
+│  RedisConnector (redis.asyncio)             │
+│  SQLiteConnector (aiosqlite)                │
+│  DuckDBConnector (duckdb)                   │
+│  → SSH Tunnel (asyncssh)                    │
+└─────────────────────────────────────────────┘
 ```
 
 ## 3. 类设计
@@ -41,6 +46,7 @@
 class ConnectionInfo:
     id: str          # UUID hex(12)
     name: str        # 用户自定义名称
+    engine: str      # 数据库引擎: mysql|postgresql|sqlite|mongodb|redis
     host: str        # 数据库主机
     port: int        # 端口 (默认 3306)
     user: str        # 用户名
@@ -169,6 +175,12 @@ opennavicat conn add --name "Prod" --host prod.example.com --user admin --test
 opennavicat conn add --name "Staging" --host db.internal \
   --ssh-host bastion.example.com --ssh-user jump \
   --test
+
+# 添加 MongoDB 连接
+opennavicat conn add --name "Analytics" --engine mongodb --host mongo.example.com --port 27017
+
+# 添加 Redis 连接
+opennavicat conn add --name "Cache" --engine redis --host redis.example.com --port 6379
 
 # 激活连接
 opennavicat conn open "Prod"

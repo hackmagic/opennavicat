@@ -1,6 +1,6 @@
 # OpenNavicat Documentation
 
-> Version: 0.2.0 | Updated: 2026-07-01 | GitHub: https://github.com/hackmagic/OpenNavicat
+> Version: 0.8.0 | Updated: 2026-07-10 | GitHub: https://github.com/hackmagic/OpenNavicat
 
 ## User Guide
 
@@ -39,7 +39,7 @@
 
 # OpenNavicat 文档目录
 
-> 版本: 0.2.0 | 更新: 2026-07-01 | 开源地址: https://github.com/hackmagic/OpenNavicat
+> 版本: 0.8.0 | 更新: 2026-07-10 | 开源地址: https://github.com/hackmagic/OpenNavicat
 
 ## 用户文档
 
