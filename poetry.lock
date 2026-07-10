@@ -731,6 +731,18 @@ typing-extensions = {version = ">=4.13.2", markers = "python_full_version < \"3.
 ssh = ["bcrypt (>=3.1.5)"]
 
 [[package]]
+name = "dbfread"
+version = "2.0.7"
+description = "Read DBF Files with Python"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "dbfread-2.0.7-py2.py3-none-any.whl", hash = "sha256:f604def58c59694fa0160d7be5d0b8d594467278d2bb6a47d46daf7162c84cec"},
+    {file = "dbfread-2.0.7.tar.gz", hash = "sha256:07c8a9af06ffad3f6f03e8fe91ad7d2733e31a26d2b72c4dd4cfbae07ee3b73d"},
+]
+
+[[package]]
 name = "distlib"
 version = "0.4.3"
 description = "Distribution utilities"
@@ -2978,4 +2990,4 @@ postgresql = ["asyncpg"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.15"
-content-hash = "0c54d924646946262526e49045015371f006f0c463cb8c12428914cf50363584"
+content-hash = "6746a30d512f54850f9e2b77142b6ccada3b6998ae33f6ff7606096e4b9fb758"
