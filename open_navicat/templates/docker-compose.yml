@@ -1,0 +1,37 @@
+# OpenNavicat with MySQL + PostgreSQL — local development
+# Usage: docker compose up -d
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: devdb
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: pgpass
+      POSTGRES_DB: devdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  opennavicat:
+    image: ghcr.io/anomalyco/opennavicat:latest
+    platform: linux/amd64
+    stdin_open: true
+    tty: true
+    entrypoint: ["opennavicat"]
+    depends_on:
+      - mysql
+      - postgres
+
+volumes:
+  mysql_data:
+  pg_data:

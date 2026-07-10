@@ -29,7 +29,7 @@ from open_navicat.i18n import t
 class FormatPage(QWizardPage):
     """Page 1: select import/export format."""
 
-    FORMATS = [
+    FORMATS_IMPORT = [
         ("txt", t("import_export.file_type.text")),
         ("csv", t("import_export.file_type.csv")),
         ("json", t("import_export.file_type.json")),
@@ -37,13 +37,30 @@ class FormatPage(QWizardPage):
         ("html", t("import_export.file_type.html")),
         ("sql", t("import_export.file_type.sql")),
         ("xlsx", t("import_export.file_type.excel")),
+        ("dbf", "DBase (*.dbf)"),
+        ("mdb", "MS Access (*.mdb)"),
+        ("accdb", "MS Access (*.accdb)"),
+        ("px", "Paradox (*.db)"),
+    ]
+
+    FORMATS_EXPORT = [
+        ("txt", t("import_export.file_type.text")),
+        ("csv", t("import_export.file_type.csv")),
+        ("json", t("import_export.file_type.json")),
+        ("xml", t("import_export.file_type.xml")),
+        ("html", t("import_export.file_type.html")),
+        ("sql", t("import_export.file_type.sql")),
+        ("xlsx", t("import_export.file_type.excel")),
+        ("dbf", "DBase (*.dbf)"),
     ]
 
     def __init__(self, is_import: bool = True) -> None:
         super().__init__()
+        self._is_import = is_import
         self.setTitle(t("import_export.step_format"))
         self._group = QButtonGroup(self)
         layout = QVBoxLayout(self)
+        self.FORMATS = self.FORMATS_IMPORT if is_import else self.FORMATS_EXPORT
         for i, (_, label) in enumerate(self.FORMATS):
             rb = QRadioButton(label)
             layout.addWidget(rb)
@@ -73,7 +90,10 @@ class FilePage(QWizardPage):
         self.registerField("file_path*", self._path_input)
 
     def _browse(self) -> None:
-        filter_str = "文本文件 (*.txt);;CSV (*.csv);;JSON (*.json);;XML (*.xml);;HTML (*.html);;SQL (*.sql);;Excel (*.xlsx);;所有文件 (*)"
+        if self._is_import:
+            filter_str = "文本文件 (*.txt);;CSV (*.csv);;JSON (*.json);;XML (*.xml);;HTML (*.html);;SQL (*.sql);;Excel (*.xlsx);;DBase (*.dbf);;MS Access (*.mdb *.accdb);;Paradox (*.db);;所有文件 (*)"
+        else:
+            filter_str = "文本文件 (*.txt);;CSV (*.csv);;JSON (*.json);;XML (*.xml);;HTML (*.html);;SQL (*.sql);;Excel (*.xlsx);;DBase (*.dbf);;所有文件 (*)"
         if self._is_import:
             path, _ = QFileDialog.getOpenFileName(self, t("import_export.import_file_dialog"), "", filter_str)
         else:
@@ -283,6 +303,44 @@ class ImportWizard(QWizard):
                         row_data = {str(i): str(v) if v is not None else None for i, v in enumerate(row)}
                     rows.append(row_data)
 
+            elif fmt == "dbf":
+                from dbfread import DBF
+                table = DBF(path, encoding=enc)
+                for record in table:
+                    rows.append({k: str(v) if v is not None else None for k, v in record.items()})
+
+            elif fmt == "mdb":
+                import pyodbc
+                conn_str = r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + path
+                with pyodbc.connect(conn_str) as conn:
+                    cursor = conn.cursor()
+                    # Get first table name
+                    tables = [row.table_name for row in cursor.tables(tableType="TABLE")]
+                    if tables:
+                        cursor.execute(f"SELECT * FROM [{tables[0]}]")
+                        cols = [desc[0] for desc in cursor.description]
+                        for row in cursor.fetchall():
+                            rows.append(dict(zip(cols, [str(v) if v is not None else None for v in row])))
+
+            elif fmt == "accdb":
+                import pyodbc
+                conn_str = r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + path
+                with pyodbc.connect(conn_str) as conn:
+                    cursor = conn.cursor()
+                    tables = [row.table_name for row in cursor.tables(tableType="TABLE")]
+                    if tables:
+                        cursor.execute(f"SELECT * FROM [{tables[0]}]")
+                        cols = [desc[0] for desc in cursor.description]
+                        for row in cursor.fetchall():
+                            rows.append(dict(zip(cols, [str(v) if v is not None else None for v in row])))
+
+            elif fmt == "px":
+                # Paradox files use .db extension; try dbfread as fallback
+                from dbfread import DBF
+                table = DBF(path, encoding=enc)
+                for record in table:
+                    rows.append({k: str(v) if v is not None else None for k, v in record.items()})
+
             if not rows:
                 self._confirm_page.set_result(t("import_export.msg.file_empty"))
                 return
@@ -418,6 +476,34 @@ class ExportWizard(QWizard):
                 for row in result.rows:
                     ws.append([v for v in row])
                 wb.save(path)
+
+            elif fmt == "dbf":
+                import struct
+                # Create DBF file
+                with open(path, 'wb') as f:
+                    # DBF header
+                    f.write(b'\x03')  # Version
+                    f.write(struct.pack('BBB', 0, 0, 0))  # Date
+                    f.write(struct.pack('<I', len(result.rows)))  # Number of records
+                    header_len = 32 + 32 * len(cols) + 1
+                    rec_len = 1 + sum(32 for _ in cols)  # Simplified
+                    f.write(struct.pack('<HH', header_len, rec_len))
+                    # Fields
+                    for c in cols:
+                        field_name = c[:10].ljust(10, '\x00').encode('ascii')
+                        f.write(field_name)
+                        f.write(b'C')  # Type
+                        f.write(b'\x00' * 4)
+                        f.write(struct.pack('B', 255))  # Length
+                        f.write(b'\x00' * 14)
+                    f.write(b'\r')  # Header terminator
+                    # Records
+                    for row in result.rows:
+                        f.write(b'\x20')  # Space = valid record
+                        for v in row:
+                            val = str(v) if v is not None else ''
+                            f.write(val[:255].encode(enc, errors='replace').ljust(255, b'\x20'))
+                    f.write(b'\x1a')  # EOF marker
 
             self._confirm_page.set_result(t("import_export.export_success", count=len(result.rows), path=path))
         except Exception as e:

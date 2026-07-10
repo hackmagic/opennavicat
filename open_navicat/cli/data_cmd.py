@@ -221,17 +221,17 @@ def generate_data(
     table: str = typer.Argument(..., help="Target table (format: db.table)"),
     count: int = typer.Option(100, "--count", "-n", help="Number of rows to generate"),
     conn: str = typer.Option("", "--conn", "-c", help="Connection name"),
-    prompt: str = typer.Option("", "--prompt", "-p", help="AI prompt: describe realistic data rules"),
+    prompt: str = typer.Option("", "--prompt", "-p", help="AI prompt: describe realistic data rules (AI mode only)"),
+    method: str = typer.Option("auto", "--method", "-m", help="Generation method: auto|ai|pattern"),
     preview: bool = typer.Option(True, "--preview/--yes", help="Preview before inserting"),
 ) -> None:
-    """AI-powered test data generation — describe business rules, get realistic data."""
+    """Generate test data — pattern-based (no AI) or AI-powered."""
     cid = _resolve_conn(conn)
     if "." not in table:
         console.print("[red]Use format: db.table (e.g. mydb.users)[/red]")
         raise typer.Exit(1)
     database, table_name = table.split(".", 1)
 
-    from open_navicat.services.ai_service import ai_service
     from open_navicat.services.metadata_service import metadata_service
 
     info = metadata_service.get_table_info(cid, database, table_name)
@@ -239,11 +239,20 @@ def generate_data(
         console.print(f"[red]Table '{table}' not found.[/red]")
         raise typer.Exit(1)
 
-    console.print(f"[yellow]🤖 AI generating {count} realistic rows for {table}...[/yellow]")
-    rows = ai_service.generate_data(info, count, prompt)
+    # Decide method
+    use_ai = method == "ai" or (method == "auto" and prompt)
+
+    if use_ai:
+        from open_navicat.services.ai_service import ai_service
+        console.print(f"[yellow]🤖 AI generating {count} rows for {table}...[/yellow]")
+        rows = ai_service.generate_data(info, count, prompt)
+    else:
+        from open_navicat.services.data_generator import data_generator
+        console.print(f"[yellow]⚡ Pattern-generating {count} rows for {table}...[/yellow]")
+        rows = data_generator.generate(info, count)
 
     if not rows:
-        console.print("[red]Failed to generate test data.[/red]")
+        console.print("[red]Failed to generate data.[/red]")
         raise typer.Exit(1)
 
     if preview:

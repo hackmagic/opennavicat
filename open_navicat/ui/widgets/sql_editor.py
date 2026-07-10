@@ -115,6 +115,86 @@ class LineNumberArea(QWidget):
         self._editor_widget.line_number_area_paint_event(event)
 
 
+class CodeFoldingArea(QWidget):
+    """Widget that paints code folding markers for BEGIN/END blocks."""
+
+    FOLD_WIDTH = 16
+
+    def __init__(self, editor_widget: SQLEditorWidget) -> None:
+        super().__init__(editor_widget._editor)
+        self._editor_widget = editor_widget
+        self._fold_regions: list[tuple[int, int]] = []  # (start_line, end_line)
+        self._collapsed: set[int] = set()  # collapsed start lines
+        self.setFixedWidth(self.FOLD_WIDTH)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def sizeHint(self) -> QSize:
+        return QSize(self.FOLD_WIDTH, 0)
+
+    def update_regions(self) -> None:
+        """Scan document for BEGIN/END fold regions."""
+        self._fold_regions.clear()
+        doc = self._editor_widget._editor.document()
+        stack: list[int] = []
+        for i in range(doc.blockCount()):
+            text = doc.findBlockByNumber(i).text().strip().upper()
+            if text.startswith("BEGIN") or text.startswith("CREATE PROCEDURE"):
+                stack.append(i)
+            elif text.startswith("END") and stack:
+                start = stack.pop()
+                self._fold_regions.append((start, i))
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.fillRect(event.rect(), QColor("#252526"))
+        editor = self._editor_widget._editor
+
+        for start, end in self._fold_regions:
+            if start in self._collapsed:
+                # Draw collapsed indicator
+                block = editor.blockBoundingGeometry(
+                    editor.document().findBlockByNumber(start)
+                ).translated(editor.contentOffset())
+                top = round(block.top())
+                painter.setPen(QColor("#858585"))
+                painter.drawText(0, top, self.FOLD_WIDTH, 14, Qt.AlignmentFlag.AlignCenter, "▶")
+            else:
+                # Draw expand indicator
+                block = editor.blockBoundingGeometry(
+                    editor.document().findBlockByNumber(start)
+                ).translated(editor.contentOffset())
+                top = round(block.top())
+                painter.setPen(QColor("#858585"))
+                painter.drawText(0, top, self.FOLD_WIDTH, 14, Qt.AlignmentFlag.AlignCenter, "▼")
+        painter.end()
+
+    def mousePressEvent(self, event) -> None:
+        """Toggle fold on click."""
+        editor = self._editor_widget._editor
+        block = editor.firstVisibleBlock()
+        block_number = block.blockNumber()
+        top = round(block.blockBoundingGeometry().translated(editor.contentOffset()).top())
+        bottom = top + round(block.blockBoundingRect().height())
+
+        while block.isValid() and top <= event.pos().y():
+            if block.isVisible() and bottom >= event.pos().y():
+                for start, end in self._fold_regions:
+                    if start == block_number:
+                        if start in self._collapsed:
+                            self._collapsed.discard(start)
+                            self._editor_widget._unfold_block(start, end)
+                        else:
+                            self._collapsed.add(start)
+                            self._editor_widget._fold_block(start, end)
+                        self.update()
+                        return
+            block = block.next()
+            top = bottom
+            bottom = top + round(block.blockBoundingRect().height())
+            block_number += 1
+
+
 class ResultTable(QTableWidget):
     """Query results table with multi-select, right-click copy, and column WHERE IN."""
 
@@ -367,6 +447,25 @@ class SQLEditorWidget(QWidget):
         self._setup_ui()
         self._load_databases()
 
+        # Register with auto-recovery service
+        from open_navicat.services.auto_recovery_service import AutoRecoveryService
+        self._recovery_id = f"query_{connection_id}_{id(self)}"
+        AutoRecoveryService.instance().register_editor(
+            self._recovery_id,
+            self._editor,
+            lambda: self._editor.toPlainText(),
+        )
+
+        # Auto-recovery timer
+        from open_navicat.config import config as _cfg
+        if _cfg.get("advanced.auto_recovery", True):
+            from PySide6.QtCore import QTimer
+            self._recovery_timer = QTimer(self)
+            self._recovery_timer.timeout.connect(
+                lambda: AutoRecoveryService.instance().save_all()
+            )
+            self._recovery_timer.start(30000)  # 30 seconds
+
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -538,11 +637,15 @@ class SQLEditorWidget(QWidget):
 
         # Line numbers
         self._line_area = LineNumberArea(self)
-        self._editor.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
+        self._fold_area = CodeFoldingArea(self)
+        self._editor.setViewportMargins(self.line_number_area_width() + CodeFoldingArea.FOLD_WIDTH, 0, 0, 0)
         self._editor.updateRequest.connect(self._line_area.update)
+        self._editor.updateRequest.connect(self._fold_area.update)
         self._editor.blockCountChanged.connect(self._update_line_number_area_width)
+        self._editor.blockCountChanged.connect(self._fold_area.update_regions)
         self._editor.cursorPositionChanged.connect(self._highlight_current_line)
         self._update_line_number_area_width(0)
+        self._fold_area.update_regions()
 
         # Quick SQL snippet bar
         snippet_bar = QWidget(editor_container)
@@ -687,7 +790,71 @@ class SQLEditorWidget(QWidget):
             selection.format.setProperty(QTextCharFormat.Property.FullWidthSelection, True)
             selection.cursor = self._editor.textCursor()
             selection.cursor.clearSelection()
-            self._editor.setExtraSelections([selection])
+            extra_list = [selection]
+
+            # Bracket matching
+            from open_navicat.config import config as _cfg
+            if _cfg.get("editor.bracket_highlight", True):
+                bracket_extra = self._bracket_match_extra_selection()
+                if bracket_extra:
+                    extra_list.append(bracket_extra)
+
+            self._editor.setExtraSelections(extra_list)
+
+    def _bracket_match_extra_selection(self) -> QTextEdit.ExtraSelection | None:
+        """Find and highlight matching bracket for the character at cursor."""
+        from PySide6.QtGui import QTextCursor, QTextEdit
+
+        cursor = self._editor.textCursor()
+        pos = cursor.position()
+        text = self._editor.toPlainText()
+        if pos >= len(text):
+            return None
+
+        char = text[pos]
+        # Also check the character before cursor
+        if pos > 0 and text[pos - 1] in "([{)]}":
+            char = text[pos - 1]
+            check_pos = pos - 1
+        else:
+            check_pos = pos
+
+        pairs = {"(": ")", ")": "(", "[": "]", "]": "[", "{": "}", "}": "{"}
+        if char not in pairs:
+            return None
+
+        match_char = pairs[char]
+        is_open = char in "([{"
+
+        # Search for matching bracket
+        depth = 0
+        search_range = range(check_pos, len(text)) if is_open else range(check_pos - 1, -1, -1)
+        for i in search_range:
+            c = text[i]
+            if c == char:
+                depth += 1
+            elif c == match_char:
+                depth -= 1
+                if depth == 0:
+                    # Found match — highlight both brackets
+                    fmt = QTextCharFormat()
+                    fmt.setBackground(QColor("#094771"))
+                    fmt.setForeground(QColor("#ffffff"))
+                    fmt.setFontWeight(QFont.Weight.Bold)
+
+                    # Create extra selection for the matching bracket
+                    extra = QTextEdit.ExtraSelection()
+                    extra.format = fmt
+                    extra.cursor = self._editor.textCursor()
+                    extra.cursor.clearSelection()
+                    extra.cursor.setPosition(i)
+                    extra.cursor.movePosition(
+                        QTextCursor.MoveOperation.Right,
+                        QTextCursor.MoveMode.MoveAnchor,
+                        1,
+                    )
+                    return extra
+        return None
 
     def line_number_area_paint_event(self, event) -> None:
         painter = QPainter(self._line_area)
@@ -709,9 +876,26 @@ class SQLEditorWidget(QWidget):
                 )
             block = block.next()
             top = bottom
-            bottom = top + round(self._editor.blockBoundingRect(block).height())
+            bottom = top + round(block.blockBoundingRect(block).height())
             block_number += 1
         painter.end()
+
+    def _fold_block(self, start: int, end: int) -> None:
+        """Fold a block of lines (make them invisible)."""
+        doc = self._editor.document()
+        for i in range(start + 1, end + 1):
+            block = doc.findBlockByNumber(i)
+            block.setVisible(False)
+        # Add collapsed indicator on start line
+        self._editor.updateRequest.emit(self._editor.visibleRegion(), 0)
+
+    def _unfold_block(self, start: int, end: int) -> None:
+        """Unfold a block of lines (make them visible)."""
+        doc = self._editor.document()
+        for i in range(start + 1, end + 1):
+            block = doc.findBlockByNumber(i)
+            block.setVisible(True)
+        self._editor.updateRequest.emit(self._editor.visibleRegion(), 0)
 
     def _load_databases(self) -> None:
         """Populate the database selector dropdown with available databases."""

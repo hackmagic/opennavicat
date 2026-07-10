@@ -1,0 +1,14 @@
+Id: Opennavicat.Opennavicat
+Name: OpenNavicat
+Version: 0.7.0
+Publisher: OpenNavicat
+License: MIT
+Description: CLI-native, AI-powered database management tool (Navicat alternative)
+Homepage: https://github.com/opennavicat/opennavicat
+Installers:
+  - Arch: x64
+    Url: https://github.com/opennavicat/opennavicat/releases/latest/download/opennavicat-win-x86_64.zip
+    Sha256: ""
+    InstallerType: zip
+    Commands:
+      - opennavicat

@@ -1,0 +1,48 @@
+{
+  "name": "opennavicat",
+  "displayName": "OpenNavicat",
+  "description": "CLI-native database management — connect, query, sync, and AI-powered SQL assistance",
+  "version": "0.7.0",
+  "publisher": "opennavicat",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/opennavicat/opennavicat" },
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages", "Database", "Formatters"],
+  "keywords": ["sql", "mysql", "postgresql", "database", "navicat"],
+  "activationEvents": ["onLanguage:sql", "onCommand:opennavicat.connect", "onCommand:opennavicat.execute"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "opennavicat.connect", "title": "OpenNavicat: Connect to Database" },
+      { "command": "opennavicat.execute", "title": "OpenNavicat: Execute SQL" },
+      { "command": "opennavicat.ai", "title": "OpenNavicat: AI Assistant" },
+      { "command": "opennavicat.tables", "title": "OpenNavicat: List Tables" },
+      { "command": "opennavicat.schema", "title": "OpenNavicat: Show Schema" }
+    ],
+    "keybindings": [
+      { "command": "opennavicat.execute", "key": "ctrl+shift+e", "when": "editorLangId == sql" },
+      { "command": "opennavicat.ai", "key": "ctrl+shift+i", "when": "editorLangId == sql" }
+    ],
+    "menus": {
+      "editor/context": [
+        { "command": "opennavicat.execute", "when": "editorLangId == sql", "group": "navigation@1" },
+        { "command": "opennavicat.ai", "when": "editorLangId == sql", "group": "navigation@2" }
+      ]
+    },
+    "languages": [{
+      "id": "sql",
+      "aliases": ["SQL"],
+      "extensions": [".sql"]
+    }],
+    "configuration": {
+      "title": "OpenNavicat",
+      "properties": {
+        "opennavicat.cliPath": {
+          "type": "string",
+          "default": "opennavicat",
+          "description": "Path to the opennavicat CLI executable"
+        }
+      }
+    }
+  }
+}

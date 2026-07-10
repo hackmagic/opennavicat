@@ -17,6 +17,7 @@ from open_navicat.cli.query_cmd import query_app
 from open_navicat.cli.schema_cmd import schema_app
 from open_navicat.cli.snippet_cmd import snippet_app
 from open_navicat.cli.sql_cmd import sql_app
+from open_navicat.cli.template_cmd import template_app
 
 app = typer.Typer(
     name="opennavicat",
@@ -36,6 +37,7 @@ app.add_typer(ai_app, name="ai", help="AI-powered database assistant")
 app.add_typer(snippet_app, name="snippet", help="Manage reusable SQL snippets")
 app.add_typer(cloud_app, name="cloud", help="Cloud database discovery")
 app.add_typer(sql_app, name="sql", help="SQL dialect translation & optimization")
+app.add_typer(template_app, name="template", help="Community templates & starter projects")
 
 # Also register as top-level aliases for common operations
 app.add_typer(ai_app, name="ask", help="Shortcut: AI ask (see 'ai' subcommand for full features)")

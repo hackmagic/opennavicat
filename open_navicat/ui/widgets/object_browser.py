@@ -132,6 +132,23 @@ class ObjectBrowser(QTreeWidget):
             else:
                 ungrouped.append(conn)
 
+        # Add favorites section
+        favorites = local_db.list_favorites()
+        if favorites:
+            fav_item = QTreeWidgetItem(self)
+            fav_item.setText(0, "⭐ Favorites")
+            fav_item.setData(0, Qt.ItemDataRole.UserRole, {"type": "favorites"})
+            fav_item.setExpanded(True)
+            for fav in favorites:
+                fav_child = QTreeWidgetItem(fav_item)
+                fav_child.setText(0, f"{fav['type']}: {fav['name']}")
+                fav_child.setData(0, Qt.ItemDataRole.UserRole, {
+                    "type": fav["type"],
+                    "id": fav.get("connection_id", ""),
+                    "name": fav["name"],
+                    "database": fav.get("database", ""),
+                })
+
         # Add group folder items
         for group_name in sorted(groups):
             group_item = QTreeWidgetItem(self)
@@ -286,6 +303,8 @@ class ObjectBrowser(QTreeWidget):
             act_drop.triggered.connect(lambda: self._drop_table(item))
             act_truncate = menu.addAction(t("browser.truncate_table"))
             act_truncate.triggered.connect(lambda: self._truncate_table(item))
+            act_empty = menu.addAction(t("browser.empty_table"))
+            act_empty.triggered.connect(lambda: self._empty_table(item))
             menu.addSeparator()
             act_copy = menu.addAction(t("browser.copy_table"))
             act_copy.triggered.connect(lambda: self._copy_table(item))
@@ -522,6 +541,8 @@ class ObjectBrowser(QTreeWidget):
         act_drop.triggered.connect(lambda: self._drop_table_from_list(table_name, conn_id, db_name, table_widget))
         act_truncate = menu.addAction(t("browser.truncate_table"))
         act_truncate.triggered.connect(lambda: self._truncate_table_from_list(table_name, conn_id, db_name))
+        act_empty = menu.addAction(t("browser.empty_table"))
+        act_empty.triggered.connect(lambda: self._empty_table_from_list(table_name, conn_id, db_name))
         menu.addSeparator()
         act_rename = menu.addAction(t("browser.rename"))
         act_rename.triggered.connect(lambda: self._rename_table_from_list(table_name, conn_id, db_name, table_widget))
@@ -530,6 +551,20 @@ class ObjectBrowser(QTreeWidget):
         act_dict.triggered.connect(lambda: self._open_data_dictionary_from_list(conn_id, db_name))
         act_gen = menu.addAction(t("browser.generate_data"))
         act_gen.triggered.connect(lambda: self._open_table_tab_from_list(table_name, conn_id, db_name))
+        menu.addSeparator()
+        # Maintenance submenu
+        maint_menu = menu.addMenu(t("browser.maintenance"))
+        for label_key, meth in [
+            ("browser.check_table", lambda: self._run_maintenance_sql_from_list(table_name, conn_id, db_name, "CHECK")),
+            ("browser.optimize_table", lambda: self._run_maintenance_sql_from_list(table_name, conn_id, db_name, "OPTIMIZE")),
+            ("browser.repair_table", lambda: self._run_maintenance_sql_from_list(table_name, conn_id, db_name, "REPAIR")),
+            ("browser.analyze_table", lambda: self._run_maintenance_sql_from_list(table_name, conn_id, db_name, "ANALYZE")),
+        ]:
+            act = maint_menu.addAction(t(label_key))
+            act.triggered.connect(meth)
+        menu.addSeparator()
+        act_bi = menu.addAction(t("browser.create_bi_workspace"))
+        act_bi.triggered.connect(lambda: self._create_bi_workspace_from_list(table_name, conn_id, db_name))
         menu.addSeparator()
         act_refresh = menu.addAction(t("browser.refresh"))
         act_refresh.triggered.connect(lambda: self._reload_table_list(conn_id, db_name, table_widget))
@@ -590,6 +625,26 @@ class ObjectBrowser(QTreeWidget):
             pool_loop.run_until_complete(connector.execute(f"TRUNCATE TABLE `{table_name}`"))
         except Exception as e:
             logger.warning("truncate table failed: %s", e)
+
+    def _run_maintenance_sql_from_list(self, table_name: str, conn_id: str, db_name: str, operation: str) -> None:
+        """Run a maintenance operation from the list view context menu."""
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
+        connector = connection_pool.get(conn_id)
+        if not connector:
+            return
+        try:
+            sql = f"{operation} TABLE `{db_name}`.`{table_name}`"
+            pool_loop.run_until_complete(connector.execute(sql))
+            QMessageBox.information(self.window(), t("common.success"), t("browser.maintenance_success", operation=operation, table=table_name))
+        except Exception as e:
+            QMessageBox.warning(self.window(), t("common.error"), t("browser.maintenance_failed", operation=operation, error=e))
+
+    def _create_bi_workspace_from_list(self, table_name: str, conn_id: str, db_name: str) -> None:
+        """Open BI workspace from list view context menu."""
+        mw = self.window()
+        if hasattr(mw, '_show_bi_dashboard'):
+            mw._show_bi_dashboard()
 
     def _rename_table_from_list(self, old_name: str, conn_id: str, db_name: str, table_widget: QTableWidget) -> None:
         from PySide6.QtWidgets import QInputDialog
@@ -1080,6 +1135,79 @@ class ObjectBrowser(QTreeWidget):
                 connector.execute(f"TRUNCATE TABLE `{data['database']}`.`{data['name']}`")
             )
 
+    def _empty_table(self, item: QTreeWidgetItem) -> None:
+        """Empty table by deleting all rows (DELETE WHERE 1=1) with confirmation."""
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        from PySide6.QtCore import Qt as QtConst
+        from PySide6.QtWidgets import QCheckBox, QMessageBox
+
+        dlg = QMessageBox(self.window())
+        dlg.setWindowTitle(t("browser.empty_table"))
+        dlg.setIcon(QMessageBox.Icon.Warning)
+        dlg.setText(t("browser.empty_confirm", name=data["name"]))
+
+        layout = dlg.layout()
+        confirm_cb = QCheckBox(t("browser.irreversible_confirm"))
+        layout.addWidget(confirm_cb)
+
+        btn_empty = dlg.addButton(t("browser.empty_btn"), QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = dlg.addButton(t("common.cancel"), QMessageBox.ButtonRole.RejectRole)  # noqa: F841
+        btn_empty.setEnabled(False)
+        confirm_cb.stateChanged.connect(lambda state: btn_empty.setEnabled(state == QtConst.CheckState.Checked.value))
+
+        dlg.exec()
+        if dlg.clickedButton() != btn_empty:
+            return
+
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
+        connector = connection_pool.get(data["connection_id"])
+        if connector:
+            try:
+                pool_loop.run_until_complete(
+                    connector.execute(f"DELETE FROM `{data['database']}`.`{data['name']}`")
+                )
+                QMessageBox.information(self.window(), t("common.success"), t("browser.empty_success", name=data["name"]))
+            except Exception as e:
+                QMessageBox.warning(self.window(), t("common.error"), t("browser.empty_failed", error=e))
+
+    def _empty_table_from_list(self, table_name: str, conn_id: str, db_name: str) -> None:
+        """Empty table from list view context menu."""
+        from PySide6.QtCore import Qt as QtConst
+        from PySide6.QtWidgets import QCheckBox, QMessageBox
+
+        dlg = QMessageBox(self.window())
+        dlg.setWindowTitle(t("browser.empty_table"))
+        dlg.setIcon(QMessageBox.Icon.Warning)
+        dlg.setText(t("browser.empty_confirm", name=table_name))
+
+        layout = dlg.layout()
+        confirm_cb = QCheckBox(t("browser.irreversible_confirm"))
+        layout.addWidget(confirm_cb)
+
+        btn_empty = dlg.addButton(t("browser.empty_btn"), QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = dlg.addButton(t("common.cancel"), QMessageBox.ButtonRole.RejectRole)  # noqa: F841
+        btn_empty.setEnabled(False)
+        confirm_cb.stateChanged.connect(lambda state: btn_empty.setEnabled(state == QtConst.CheckState.Checked.value))
+
+        dlg.exec()
+        if dlg.clickedButton() != btn_empty:
+            return
+
+        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import connection_pool
+        connector = connection_pool.get(conn_id)
+        if connector:
+            try:
+                pool_loop.run_until_complete(
+                    connector.execute(f"DELETE FROM `{db_name}`.`{table_name}`")
+                )
+                QMessageBox.information(self.window(), t("common.success"), t("browser.empty_success", name=table_name))
+            except Exception as e:
+                QMessageBox.warning(self.window(), t("common.error"), t("browser.empty_failed", error=e))
+
     def _drop_table(self, item: QTreeWidgetItem) -> None:
         """Drop the selected table with FK check and confirmation."""
         data = item.data(0, Qt.ItemDataRole.UserRole)
@@ -1566,7 +1694,11 @@ class ObjectBrowser(QTreeWidget):
         if connector:
             from open_navicat.dal.connection_pool import _loop as pool_loop
             sql = f"{operation} TABLE `{data['database']}`.`{data['name']}`"
-            pool_loop.run_until_complete(connector.execute(sql))
+            try:
+                pool_loop.run_until_complete(connector.execute(sql))
+                QMessageBox.information(self.window(), t("common.success"), t("browser.maintenance_success", operation=operation, table=data["name"]))
+            except Exception as e:
+                QMessageBox.warning(self.window(), t("common.error"), t("browser.maintenance_failed", operation=operation, error=e))
 
     def _check_table(self, item: QTreeWidgetItem) -> None:
         self._run_maintenance_sql(item, "CHECK")

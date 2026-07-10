@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QApplication,
@@ -58,6 +60,7 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._build_editor_tab(), t("settings.editor"))
         tabs.addTab(self._build_records_tab(), t("settings.records"))
         tabs.addTab(self._build_ai_tab(), t("settings.ai"))
+        tabs.addTab(self._build_file_locations_tab(), t("settings.file_locations"))
         tabs.addTab(self._build_advanced_tab(), t("settings.advanced"))
 
         layout.addWidget(tabs)
@@ -366,10 +369,47 @@ class SettingsDialog(QDialog):
         form.addRow("", self._chk_diag_log)
         self._chk_allow_multi = QCheckBox(t("settings.allow_multi_instance"))
         form.addRow("", self._chk_allow_multi)
+        self._chk_auto_recovery = QCheckBox(t("settings.enable_auto_recovery"))
+        self._chk_auto_recovery.setChecked(True)
+        form.addRow("", self._chk_auto_recovery)
+        self._chk_telemetry = QCheckBox(t("settings.enable_telemetry"))
+        self._chk_telemetry.setChecked(False)
+        form.addRow("", self._chk_telemetry)
 
         note = QLabel(t("settings.restart_required"))
         note.setStyleSheet("color: #888; font-size: 11px;")
         form.addRow("", note)
+
+        return tab
+
+    # ---- File Locations ----
+
+    def _build_file_locations_tab(self) -> QWidget:
+        tab = QWidget()
+        form = QFormLayout(tab)
+
+        from open_navicat.config import CONFIG_DIR, CONFIG_FILE, CONNECTION_DB, DATA_DIR
+
+        lbl_config_dir = QLabel(str(CONFIG_DIR))
+        lbl_config_dir.setStyleSheet("color: #888; font-size: 11px;")
+        form.addRow(t("settings.config_dir") + ":", lbl_config_dir)
+
+        lbl_data_dir = QLabel(str(DATA_DIR))
+        lbl_data_dir.setStyleSheet("color: #888; font-size: 11px;")
+        form.addRow(t("settings.data_dir") + ":", lbl_data_dir)
+
+        lbl_config_file = QLabel(str(CONFIG_FILE))
+        lbl_config_file.setStyleSheet("color: #888; font-size: 11px;")
+        form.addRow(t("settings.config_file") + ":", lbl_config_file)
+
+        lbl_conn_db = QLabel(str(CONNECTION_DB))
+        lbl_conn_db.setStyleSheet("color: #888; font-size: 11px;")
+        form.addRow(t("settings.connection_db") + ":", lbl_conn_db)
+
+        recovery_dir = Path.home() / ".opennavicat" / "recovery"
+        lbl_recovery = QLabel(str(recovery_dir))
+        lbl_recovery.setStyleSheet("color: #888; font-size: 11px;")
+        form.addRow(t("settings.recovery_dir") + ":", lbl_recovery)
 
         return tab
 
@@ -527,6 +567,23 @@ class SettingsDialog(QDialog):
 
         self._chk_diag_log.setChecked(config.get("advanced.diag_log", False))
         self._chk_allow_multi.setChecked(config.get("advanced.allow_multi", False))
+        self._chk_auto_recovery.setChecked(config.get("advanced.auto_recovery", True))
+        self._chk_telemetry.setChecked(config.get("advanced.telemetry", False))
+
+        # Tab behavior
+        tab_open = config.get("tabs.open_in", "main")
+        if tab_open == "last":
+            self._radio_tab_last.setChecked(True)
+        elif tab_open == "new":
+            self._radio_tab_new.setChecked(True)
+        else:
+            self._radio_tab_main.setChecked(True)
+
+        startup = config.get("tabs.startup", "object")
+        if startup == "restore":
+            self._radio_start_restore.setChecked(True)
+        else:
+            self._radio_start_object.setChecked(True)
 
     def _collect_config(self) -> dict:
         cfg = {
@@ -563,6 +620,10 @@ class SettingsDialog(QDialog):
             "ai.temperature": self._slider_temp.value() / 10.0,
             "advanced.diag_log": self._chk_diag_log.isChecked(),
             "advanced.allow_multi": self._chk_allow_multi.isChecked(),
+            "advanced.auto_recovery": self._chk_auto_recovery.isChecked(),
+            "advanced.telemetry": self._chk_telemetry.isChecked(),
+            "tabs.open_in": "last" if self._radio_tab_last.isChecked() else "new" if self._radio_tab_new.isChecked() else "main",
+            "tabs.startup": "restore" if self._radio_start_restore.isChecked() else "object",
         }
         # Color settings
         for key, btn in self._color_buttons.items():

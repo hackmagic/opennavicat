@@ -22,7 +22,22 @@ def mask_row(row: list[Any], columns: list[str]) -> list[Any]:
     return masked
 
 
+def _get_plugin_mask_rules() -> dict[str, callable]:
+    try:
+        from open_navicat.plugin.manager import plugin_manager
+        return plugin_manager.get_mask_rules()
+    except ImportError:
+        return {}
+
+
 def _mask_string(val: str, col: str) -> str:
+    # Check plugin rules first
+    for pattern, handler in _get_plugin_mask_rules().items():
+        if pattern in col:
+            try:
+                return handler(val)
+            except Exception:
+                continue
     if "email" in col or "mail" in col:
         return re.sub(r"[^@\s]+@[^@\s]+\.[^@\s]+", "redacted@example.com", val)
     if "phone" in col or "mobile" in col or "tel" in col or "fax" in col:

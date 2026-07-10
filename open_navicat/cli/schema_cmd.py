@@ -325,3 +325,58 @@ def ai_design(
             raise typer.Exit(1)
     else:
         console.print("[yellow]Preview only. Use --deploy to push to database.[/yellow]")
+
+
+@schema_app.command("snapshot")
+def schema_snapshot(
+    database: str = typer.Argument(..., help="Database name"),
+    conn: str = typer.Option("", "--conn", help="Connection name"),
+    output: str = typer.Option("", "--output", help="Output file"),
+) -> None:
+    """Dump full schema DDL — useful for git versioning (Database as Code)."""
+    cid = _resolve_conn(conn) if conn else _get_active_conn()
+    tables = metadata_service.list_tables(cid, database)
+    if not tables:
+        console.print("[yellow]No tables found.[/yellow]")
+        raise typer.Exit()
+
+    sql_parts: list[str] = [f"-- Schema snapshot for {database}"]
+    sql_parts.append(f"-- Generated: {__import__('datetime').datetime.now().isoformat()}")
+    sql_parts.append("")
+
+    for tbl in tables:
+        info = metadata_service.get_table_info(cid, database, tbl)
+        if not info:
+            continue
+        lines = [f"CREATE TABLE IF NOT EXISTS `{tbl}` ("]
+        for col in info.columns:
+            parts = [f"  `{col.name}` {col.data_type}"]
+            if not col.nullable:
+                parts.append("NOT NULL")
+            if col.is_primary_key:
+                parts.append("PRIMARY KEY")
+            if col.default is not None:
+                parts.append(f"DEFAULT {col.default}")
+            if col.is_auto_increment:
+                parts.append("AUTO_INCREMENT")
+            lines.append(" ".join(parts) + ",")
+        for idx in info.indexes:
+            cols = "`, `".join(idx.columns)
+            if idx.is_primary:
+                lines.append(f"  PRIMARY KEY (`{cols}`),")
+            elif idx.is_unique:
+                lines.append(f"  UNIQUE KEY `{idx.name}` (`{cols}`),")
+            else:
+                lines.append(f"  INDEX `{idx.name}` (`{cols}`),")
+        if lines[-1].endswith(","):
+            lines[-1] = lines[-1][:-1]
+        lines.append(");\n")
+        sql_parts.append("\n".join(lines))
+
+    full = "\n".join(sql_parts)
+    if output:
+        with open(output, "w") as f:
+            f.write(full)
+        console.print(f"[green]Schema snapshot written to {output}[/green]")
+    else:
+        console.print(Syntax(full, "sql", theme="monokai", word_wrap=True))

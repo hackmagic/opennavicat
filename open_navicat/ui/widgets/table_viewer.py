@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QFormLayout,
@@ -46,6 +47,295 @@ def _fmt_bytes(n: int | float) -> str:
             return f"{n:.1f} {unit}"
         n /= 1024
     return f"{n:.1f} PB"
+
+
+class FilterRow(QWidget):
+    """A single filter condition row: [column] [operator] [value] [remove]."""
+
+    OPERATORS = [
+        ("=", "="),
+        ("!=", "!="),
+        (">", ">"),
+        ("<", "<"),
+        (">=", ">="),
+        ("<=", "<="),
+        ("LIKE", "LIKE"),
+        ("NOT LIKE", "NOT LIKE"),
+        ("IN", "IN"),
+        ("NOT IN", "NOT IN"),
+        ("BETWEEN", "BETWEEN"),
+        ("IS NULL", "IS NULL"),
+        ("IS NOT NULL", "IS NOT NULL"),
+        ("STARTS WITH", "STARTS WITH"),
+        ("ENDS WITH", "ENDS WITH"),
+        ("CONTAINS", "CONTAINS"),
+    ]
+
+    def __init__(self, columns: list[str], parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._columns = columns
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self._combo_col = QComboBox(self)
+        self._combo_col.addItems(columns)
+        self._combo_col.setMinimumWidth(120)
+        layout.addWidget(self._combo_col)
+
+        self._combo_op = QComboBox(self)
+        for label, value in self.OPERATORS:
+            self._combo_op.addItem(label, value)
+        self._combo_op.setMinimumWidth(100)
+        layout.addWidget(self._combo_op)
+
+        self._edit_value = QLineEdit(self)
+        self._edit_value.setPlaceholderText(t("filter.value_placeholder"))
+        layout.addWidget(self._edit_value, 1)
+
+        self._chk_negate = QCheckBox(t("filter.negate"), self)
+        self._chk_negate.setToolTip(t("filter.negate_tooltip"))
+        layout.addWidget(self._chk_negate)
+
+        self._btn_remove = QPushButton("✕", self)
+        self._btn_remove.setFixedWidth(28)
+        self._btn_remove.setToolTip(t("filter.remove_condition"))
+        layout.addWidget(self._btn_remove)
+
+        # Hide value for IS NULL / IS NOT NULL
+        self._combo_op.currentIndexChanged.connect(self._on_op_changed)
+
+    def _on_op_changed(self, index: int) -> None:
+        op_value = self._combo_op.currentData()
+        hide_value = op_value in ("IS NULL", "IS NOT NULL")
+        self._edit_value.setVisible(not hide_value)
+        self._chk_negate.setVisible(op_value not in ("IS NULL", "IS NOT NULL", "IN", "NOT IN", "BETWEEN"))
+
+    def to_sql(self) -> str | None:
+        """Convert this filter row to a SQL WHERE fragment."""
+        col = self._combo_col.currentText()
+        op = self._combo_op.currentData()
+        val = self._edit_value.text().strip()
+        negate = self._chk_negate.isChecked()
+
+        if op in ("IS NULL", "IS NOT NULL"):
+            clause = f"`{col}` IS {'NOT' if op == 'IS NOT NULL' else ''} NULL"
+        elif op == "LIKE" or op == "NOT LIKE":
+            if not val:
+                return None
+            actual_op = "NOT LIKE" if negate else "LIKE"
+            clause = f"`{col}` {actual_op} '{val}%'"
+        elif op == "STARTS WITH":
+            if not val:
+                return None
+            actual_op = "NOT LIKE" if negate else "LIKE"
+            clause = f"`{col}` {actual_op} '{val}%'"
+        elif op == "ENDS WITH":
+            if not val:
+                return None
+            actual_op = "NOT LIKE" if negate else "LIKE"
+            clause = f"`{col}` {actual_op} '%{val}'"
+        elif op == "CONTAINS":
+            if not val:
+                return None
+            actual_op = "NOT LIKE" if negate else "LIKE"
+            clause = f"`{col}` {actual_op} '%{val}%'"
+        elif op == "IN" or op == "NOT IN":
+            if not val:
+                return None
+            actual_op = "NOT IN" if negate else "IN"
+            # Parse comma-separated values
+            items = [v.strip().strip("'\"") for v in val.split(",")]
+            formatted = ", ".join(f"'{v}'" for v in items)
+            clause = f"`{col}` {actual_op} ({formatted})"
+        elif op == "BETWEEN":
+            parts = [p.strip() for p in val.split(",")]
+            if len(parts) != 2:
+                return None
+            clause = f"`{col}` BETWEEN '{parts[0]}' AND '{parts[1]}'"
+        else:
+            # =, !=, >, <, >=, <=
+            if not val:
+                return None
+            actual_op = f"NOT {op}" if negate and op == "=" else ("!=" if negate and op == "!=" else op)
+            if negate and op == "=":
+                clause = f"`{col}` != '{val}'"
+            elif negate and op == "!=":
+                clause = f"`{col}` = '{val}'"
+            else:
+                clause = f"`{col}` {op} '{val}'"
+
+        return clause
+
+    def set_columns(self, columns: list[str]) -> None:
+        """Update the column combo with new columns."""
+        self._columns = columns
+        self._combo_col.clear()
+        self._combo_col.addItems(columns)
+
+
+class FilterPanel(QWidget):
+    """Collapsible visual filter panel above the data grid."""
+
+    filter_applied = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._columns: list[str] = []
+        self._rows: list[FilterRow] = []
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
+
+        # Header bar
+        header = QHBoxLayout()
+        self._toggle_btn = QPushButton("▾ " + t("filter.panel_title"), self)
+        self._toggle_btn.setStyleSheet("font-weight: bold; border: none; text-align: left;")
+        self._toggle_btn.clicked.connect(self._toggle_visibility)
+        header.addWidget(self._toggle_btn)
+
+        # Mode toggle
+        self._mode_text = QPushButton(t("filter.text_mode"), self)
+        self._mode_text.setCheckable(True)
+        self._mode_text.clicked.connect(lambda: self._set_mode("text"))
+        header.addWidget(self._mode_text)
+
+        self._mode_builder = QPushButton(t("filter.builder_mode"), self)
+        self._mode_builder.setCheckable(True)
+        self._mode_builder.setChecked(True)
+        self._mode_builder.clicked.connect(lambda: self._set_mode("builder"))
+        header.addWidget(self._mode_builder)
+
+        header.addStretch()
+
+        self._btn_add = QPushButton("+ " + t("filter.add_condition"), self)
+        self._btn_add.clicked.connect(self._add_row)
+        header.addWidget(self._btn_add)
+
+        self._btn_apply = QPushButton(t("filter.apply_filters"), self)
+        self._btn_apply.setProperty("class", "primary")
+        self._btn_apply.clicked.connect(self._apply_filters)
+        header.addWidget(self._btn_apply)
+
+        self._btn_clear = QPushButton(t("filter.clear_all"), self)
+        self._btn_clear.clicked.connect(self._clear_all)
+        header.addWidget(self._btn_clear)
+
+        layout.addLayout(header)
+
+        # Text mode input
+        self._text_input = QLineEdit(self)
+        self._text_input.setPlaceholderText(t("filter.text_placeholder"))
+        self._text_input.setVisible(False)
+        layout.addWidget(self._text_input)
+
+        # Scrollable filter rows (builder mode)
+        self._rows_container = QWidget()
+        self._rows_layout = QVBoxLayout(self._rows_container)
+        self._rows_layout.setContentsMargins(0, 0, 0, 0)
+        self._rows_layout.setSpacing(2)
+
+        self._scroll = QScrollArea(self)
+        self._scroll.setWidget(self._rows_container)
+        self._scroll.setWidgetResizable(True)
+        self._scroll.setMaximumHeight(200)
+        layout.addWidget(self._scroll)
+
+        # Default: collapsed
+        self._scroll.setVisible(False)
+        self._collapsed = True
+
+        # Active filter display
+        self._active_label = QLabel(t("filter.no_filters"), self)
+        self._active_label.setStyleSheet("color: #888; font-size: 11px; font-style: italic;")
+        layout.addWidget(self._active_label)
+
+    def _toggle_visibility(self) -> None:
+        self._collapsed = not self._collapsed
+        self._scroll.setVisible(not self._collapsed)
+        arrow = "▾" if not self._collapsed else "▸"
+        self._toggle_btn.setText(f"{arrow} {t('filter.panel_title')}")
+
+    def set_columns(self, columns: list[str]) -> None:
+        """Update all filter rows with new column list."""
+        self._columns = columns
+        for row in self._rows:
+            row.set_columns(columns)
+
+    def _add_row(self) -> None:
+        if not self._columns:
+            return
+        row = FilterRow(self._columns, self)
+        row._btn_remove.clicked.connect(lambda: self._remove_row(row))
+        self._rows.append(row)
+        self._rows_layout.addWidget(row)
+        # Auto-expand when adding first condition
+        if self._collapsed:
+            self._toggle_visibility()
+
+    def _remove_row(self, row: FilterRow) -> None:
+        if row in self._rows:
+            self._rows.remove(row)
+            self._rows_layout.removeWidget(row)
+            row.deleteLater()
+
+    def _clear_all(self) -> None:
+        for row in self._rows:
+            self._rows_layout.removeWidget(row)
+            row.deleteLater()
+        self._rows.clear()
+        self._active_label.setText(t("filter.no_filters"))
+        self.filter_applied.emit()
+
+    def _apply_filters(self) -> None:
+        conditions = []
+        for row in self._rows:
+            sql = row.to_sql()
+            if sql:
+                conditions.append(sql)
+
+        if conditions:
+            self._active_label.setText(
+                t("filter.active_filters", count=len(conditions), conditions=" AND ".join(conditions))
+            )
+            self._active_label.setStyleSheet("color: #4fc3f7; font-size: 11px;")
+        else:
+            self._active_label.setText(t("filter.no_filters"))
+            self._active_label.setStyleSheet("color: #888; font-size: 11px; font-style: italic;")
+
+        self.filter_applied.emit()
+
+    def _set_mode(self, mode: str) -> None:
+        """Switch between text and builder filter modes."""
+        if mode == "text":
+            self._text_input.setVisible(True)
+            self._scroll.setVisible(False)
+            self._btn_add.setVisible(False)
+            self._mode_text.setChecked(True)
+            self._mode_builder.setChecked(False)
+        else:
+            self._text_input.setVisible(False)
+            self._scroll.setVisible(self._collapsed is False)
+            self._btn_add.setVisible(True)
+            self._mode_text.setChecked(False)
+            self._mode_builder.setChecked(True)
+
+    def get_sql_conditions(self) -> list[str]:
+        """Return list of SQL WHERE conditions from all rows."""
+        if self._mode_text.isChecked():
+            text = self._text_input.text().strip()
+            return [text] if text else []
+        conditions = []
+        for row in self._rows:
+            sql = row.to_sql()
+            if sql:
+                conditions.append(sql)
+        return conditions
+
+    def has_filters(self) -> bool:
+        return bool(self.get_sql_conditions())
 
 
 class TableViewerWidget(QWidget):
@@ -91,12 +381,24 @@ class TableViewerWidget(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
+        # -- Filter Panel (collapsible, above toolbar) --
+        self._filter_panel = FilterPanel(self)
+        self._filter_panel.filter_applied.connect(self._on_filter_panel_apply)
+        layout.addWidget(self._filter_panel)
+
         # -- Toolbar --
         toolbar = QToolBar(self)
 
         # Group 1: Profile & Transaction
         self._btn_profile = QPushButton(t("data_viewer.table_profile"), self)
-        self._btn_profile.clicked.connect(self._show_table_profile)
+        self._profile_menu = QMenu(self)
+        self._btn_profile.setMenu(self._profile_menu)
+        self._profile_menu.addAction(t("data_viewer.table_info"), self._show_table_profile)
+        self._profile_menu.addSeparator()
+        self._act_save_profile = self._profile_menu.addAction(t("data_viewer.save_view_profile"))
+        self._act_save_profile.triggered.connect(self._save_view_profile)
+        self._act_load_profile = self._profile_menu.addAction(t("data_viewer.load_view_profile"))
+        self._act_load_profile.triggered.connect(self._load_view_profile)
         toolbar.addWidget(self._btn_profile)
 
         toolbar.addSeparator()
@@ -138,6 +440,21 @@ class TableViewerWidget(QWidget):
         self._btn_batch_rollback = QPushButton(t("data_viewer.rollback"), self)
         self._btn_batch_rollback.clicked.connect(self._rollback_batch)
         toolbar.addWidget(self._btn_batch_rollback)
+
+        toolbar.addSeparator()
+
+        # Transaction control
+        self._btn_tx_begin = QPushButton(t("data_viewer.tx_begin"), self)
+        self._btn_tx_begin.clicked.connect(self._tx_begin)
+        toolbar.addWidget(self._btn_tx_begin)
+        self._btn_tx_commit = QPushButton(t("data_viewer.tx_commit"), self)
+        self._btn_tx_commit.clicked.connect(self._tx_commit)
+        toolbar.addWidget(self._btn_tx_commit)
+        self._btn_tx_rollback = QPushButton(t("data_viewer.tx_rollback"), self)
+        self._btn_tx_rollback.clicked.connect(self._tx_rollback)
+        toolbar.addWidget(self._btn_tx_rollback)
+
+        toolbar.addSeparator()
 
         # View mode toggle
         self._btn_form_view = QPushButton(t("table_viewer.form_view"), self)
@@ -330,8 +647,10 @@ class TableViewerWidget(QWidget):
         if self._filters:
             where_parts = []
             for k, v in self._filters.items():
-                # v can be: plain value (=), or "LIKE x", ">= 5", "!= x" etc.
-                if any(v.startswith(op) for op in [">=", "<=", "!=", ">", "<", "LIKE", "IN", "BETWEEN"]):
+                if k == "__panel__":
+                    # Visual filter panel conditions (already SQL)
+                    where_parts.append(f"({v})")
+                elif any(v.startswith(op) for op in [">=", "<=", "!=", ">", "<", "LIKE", "IN", "BETWEEN"]):
                     where_parts.append(f"`{k}` {v}")
                 else:
                     where_parts.append(f"`{k}` = '{v}'")
@@ -371,9 +690,22 @@ class TableViewerWidget(QWidget):
         if result.is_select:
             cols = [c.name for c in result.columns]
             self._loaded_column_names = cols
+
+            # Fetch column types for type icons
+            col_types = self._fetch_column_types()
+
             self._table_widget.setColumnCount(len(cols))
-            self._table_widget.setHorizontalHeaderLabels(cols)
+            # Add type icons to headers
+            headers = []
+            for c in cols:
+                dtype = col_types.get(c, "")
+                icon = self._type_icon(dtype)
+                headers.append(f"{icon} {c}" if icon else c)
+            self._table_widget.setHorizontalHeaderLabels(headers)
             self._table_widget.setRowCount(len(result.rows))
+
+            # Update filter panel with column names
+            self._filter_panel.set_columns(cols)
 
             for row_idx, row in enumerate(result.rows):
                 for col_idx, val in enumerate(row):
@@ -443,8 +775,44 @@ class TableViewerWidget(QWidget):
                 pass
         return f"[BLOB {_fmt_bytes(size)}]"
 
+    def _fetch_column_types(self) -> dict[str, str]:
+        """Fetch column data types from information_schema."""
+        connector = connection_pool.get(self._connection_id)
+        if not connector:
+            return {}
+        try:
+            sql = (
+                "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION"
+            )
+            result = pool_loop.run_until_complete(connector.execute(sql, (self._database, self._table)))
+            return {row[0]: row[1].lower() for row in (result.rows or [])}
+        except Exception:
+            return {}
+
+    def _type_icon(self, dtype: str) -> str:
+        """Return a short type icon for a column data type."""
+        if not dtype:
+            return ""
+        dtype = dtype.lower()
+        if any(t in dtype for t in ("int", "serial")):
+            return "#"  # numeric
+        if any(t in dtype for t in ("float", "double", "decimal", "numeric", "real")):
+            return "#"  # numeric
+        if any(t in dtype for t in ("char", "text", "enum", "set", "varchar")):
+            return "Abc"  # string
+        if any(t in dtype for t in ("date", "time", "datetime", "timestamp")):
+            return ""  # date/time — skip icon, too noisy
+        if any(t in dtype for t in ("blob", "binary", "varbinary")):
+            return " "  # binary
+        if "json" in dtype:
+            return "{}"  # json
+        if "bool" in dtype:
+            return ""  # bool
+        return ""
+
     def _on_cell_double_click(self, row: int, col: int) -> None:
-        """Open BLOB viewer or FK picker on double-click."""
+        """Open BLOB viewer, FK picker, or cell editor on double-click."""
         item = self._table_widget.item(row, col)
         if item and item.data(Qt.ItemDataRole.UserRole) is not None:
             blob_data = item.data(Qt.ItemDataRole.UserRole)
@@ -467,6 +835,11 @@ class TableViewerWidget(QWidget):
             btn.clicked.connect(dlg.accept)
             vl.addWidget(btn)
             dlg.exec()
+            return
+        # Open cell editor for long text / JSON
+        cell_text = item.text() if item else ""
+        if len(cell_text) > 80 or cell_text.startswith("{") or cell_text.startswith("["):
+            self._open_cell_editor(row, col)
 
     def _toggle_view_mode(self, form_mode: bool | None = None) -> None:
         """Switch between table grid (0) and form view (1)."""
@@ -910,12 +1283,8 @@ class TableViewerWidget(QWidget):
             QMessageBox.warning(self, t("table_viewer.import_failed"), str(e))
 
     def _generate_test_data(self) -> None:
-        """Generate test data using AI and insert into the table."""
+        """Generate test data using pattern-based generator or AI."""
         from PySide6.QtWidgets import QInputDialog
-
-        from open_navicat.dal.connection_pool import _loop as pool_loop
-        from open_navicat.dal.connection_pool import connection_pool
-        from open_navicat.services.ai_service import ai_service
 
         count, ok = QInputDialog.getInt(self, t("table_viewer.generate_data"), t("table_viewer.generate_rows"), 10, 1, 1000)
         if not ok:
@@ -939,8 +1308,10 @@ class TableViewerWidget(QWidget):
                     comment=r[5] or "",
                 ))
 
-            # Generate data via AI
-            generated = ai_service.generate_data(table_info, count)
+            # Use pattern-based generator (fast, no AI needed)
+            from open_navicat.services.data_generator import data_generator
+            generated = data_generator.generate(table_info, count)
+
             if not generated:
                 self._status_msg.setText(t("table_viewer.generate_failed"))
                 return
@@ -1005,6 +1376,73 @@ class TableViewerWidget(QWidget):
         except Exception as e:
             QMessageBox.warning(self, t("common.error"), str(e))
 
+    def _save_view_profile(self) -> None:
+        """Save current view configuration (columns, sort, filter) as a profile."""
+        from PySide6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(self, t("data_viewer.save_view_profile"), t("data_viewer.profile_name"))
+        if not ok or not name.strip():
+            return
+
+        # Get current column order
+        headers = [self._table.horizontalHeaderItem(i).text() for i in range(self._table.columnCount())]
+
+        # Get current sort
+        sort_col = self._table.horizontalHeader().sortIndicatorSection()
+        sort_order = "asc" if self._table.horizontalHeader().sortIndicatorOrder() == Qt.SortOrder.AscendingOrder else "desc"
+        sort = [{"column": headers[sort_col], "order": sort_order}] if sort_col >= 0 else []
+
+        # Get current filter
+        filter_sql = self._filter_panel._build_where_clause() if hasattr(self._filter_panel, '_build_where_clause') else ""
+
+        profile = {
+            "name": name.strip(),
+            "conn_id": self._connection_id,
+            "database": self._database,
+            "table": self._table_name,
+            "columns": headers,
+            "sort": sort,
+            "filter": filter_sql,
+        }
+
+        from open_navicat.dal.local_config import local_db
+        local_db.save_profile(profile)
+        QMessageBox.information(self, t("data_viewer.profile_saved"), t("data_viewer.profile_saved_msg", name=name))
+
+    def _load_view_profile(self) -> None:
+        """Load a saved view profile."""
+        from open_navicat.dal.local_config import local_db
+        table_ref = f"{self._connection_id}/{self._database}/{self._table_name}"
+        profiles = local_db.list_profiles(table_ref)
+
+        if not profiles:
+            QMessageBox.information(self, t("data_viewer.no_profiles"), t("data_viewer.no_profiles_msg"))
+            return
+
+        from PySide6.QtWidgets import QInputDialog
+        names = [p["name"] for p in profiles]
+        name, ok = QInputDialog.getItem(self, t("data_viewer.load_view_profile"), t("data_viewer.select_profile"), names, 0, False)
+        if not ok:
+            return
+
+        profile = next((p for p in profiles if p["name"] == name), None)
+        if not profile:
+            return
+
+        # Apply filter
+        if profile.get("filter"):
+            self._filter_panel._where_input.setText(profile["filter"])
+            self._on_filter_apply()
+
+        # Apply sort
+        if profile.get("sort"):
+            sort_info = profile["sort"][0]
+            col_name = sort_info.get("column", "")
+            headers = [self._table.horizontalHeaderItem(i).text() for i in range(self._table.columnCount())]
+            if col_name in headers:
+                col_idx = headers.index(col_name)
+                order = Qt.SortOrder.AscendingOrder if sort_info.get("order") == "asc" else Qt.SortOrder.DescendingOrder
+                self._table.sortByColumn(col_idx, order)
+
     def _commit_transaction(self) -> None:
         connector = connection_pool.get(self._connection_id)
         if connector:
@@ -1022,6 +1460,136 @@ class TableViewerWidget(QWidget):
                 self._status_msg.setText(t("table_viewer.rolled_back"))
             except Exception as e:
                 self._status_msg.setText(t("table_viewer.rollback_failed", error=e))
+
+    # ---- transaction control (explicit) ----
+
+    def _tx_begin(self) -> None:
+        connector = connection_pool.get(self._connection_id)
+        if not connector:
+            return
+        try:
+            pool_loop.run_until_complete(connector.execute("BEGIN"))
+            self._status_msg.setText(t("table_viewer.tx_started"))
+        except Exception as e:
+            self._status_msg.setText(t("table_viewer.tx_begin_failed", error=e))
+
+    def _tx_commit(self) -> None:
+        connector = connection_pool.get(self._connection_id)
+        if not connector:
+            return
+        try:
+            pool_loop.run_until_complete(connector.execute("COMMIT"))
+            self._status_msg.setText(t("table_viewer.committed"))
+        except Exception as e:
+            self._status_msg.setText(t("table_viewer.commit_failed", error=e))
+
+    def _tx_rollback(self) -> None:
+        connector = connection_pool.get(self._connection_id)
+        if not connector:
+            return
+        try:
+            pool_loop.run_until_complete(connector.execute("ROLLBACK"))
+            self._status_msg.setText(t("table_viewer.rolled_back"))
+        except Exception as e:
+            self._status_msg.setText(t("table_viewer.rollback_failed", error=e))
+
+    # ---- filter panel integration ----
+
+    def _on_filter_panel_apply(self) -> None:
+        """Apply visual filter panel conditions and reload."""
+        panel_conditions = self._filter_panel.get_sql_conditions()
+        # Merge with text filter
+        if panel_conditions:
+            self._filters = {"__panel__": " AND ".join(panel_conditions)}
+        else:
+            self._filters.pop("__panel__", None)
+        self._current_page = 0
+        self._load_page()
+
+    # ---- cell editor dialog ----
+
+    def _open_cell_editor(self, row: int, col: int) -> None:
+        """Open a full-featured cell editor dialog for large text/JSON."""
+        item = self._table_widget.item(row, col)
+        if not item:
+            return
+        col_name = self._loaded_column_names[col] if col < len(self._loaded_column_names) else ""
+        current_val = item.text()
+        is_json = False
+        try:
+            import json
+            json.loads(current_val)
+            is_json = True
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+        dlg = QDialog(self.window())
+        dlg.setWindowTitle(t("cell_editor.title", column=col_name))
+        dlg.resize(600, 450)
+        layout = QVBoxLayout(dlg)
+
+        # Info bar
+        info = QLabel(t("cell_editor.info", row=row + 1, column=col_name), dlg)
+        info.setStyleSheet("color: #888; font-size: 11px; padding: 4px;")
+        layout.addWidget(info)
+
+        # Text editor
+        text_edit = QLineEdit(dlg) if len(current_val) < 200 else None
+        if text_edit is None:
+            from PySide6.QtWidgets import QTextEdit
+            text_edit = QTextEdit(dlg)
+            text_edit.setPlainText(current_val)
+            text_edit.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+            layout.addWidget(text_edit, 1)
+        else:
+            text_edit.setText(current_val)
+            layout.addWidget(text_edit)
+
+        # Buttons
+        btn_layout = QHBoxLayout()
+        if is_json:
+            btn_format = QPushButton(t("cell_editor.format_json"), dlg)
+            btn_format.clicked.connect(lambda: self._format_json_in_editor(text_edit))
+            btn_layout.addWidget(btn_format)
+
+        btn_layout.addStretch()
+        btn_cancel = QPushButton(t("common.cancel"), dlg)
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_layout.addWidget(btn_cancel)
+        btn_save = QPushButton(t("common.save"), dlg)
+        btn_save.setProperty("class", "primary")
+        btn_save.clicked.connect(dlg.accept)
+        btn_layout.addWidget(btn_save)
+        layout.addLayout(btn_layout)
+
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            if isinstance(text_edit, QLineEdit):
+                new_val = text_edit.text()
+            else:
+                new_val = text_edit.toPlainText()
+            if new_val != current_val:
+                self._table_widget.blockSignals(True)
+                item.setText(new_val)
+                self._table_widget.blockSignals(False)
+                self._on_cell_changed(row, col)
+
+    def _format_json_in_editor(self, editor) -> None:
+        """Format JSON content in the editor."""
+        from PySide6.QtWidgets import QTextEdit
+        if isinstance(editor, QTextEdit):
+            text = editor.toPlainText()
+        else:
+            text = editor.text()
+        try:
+            import json
+            parsed = json.loads(text)
+            formatted = json.dumps(parsed, indent=2, ensure_ascii=False)
+            if isinstance(editor, QTextEdit):
+                editor.setPlainText(formatted)
+            else:
+                editor.setText(formatted)
+        except (json.JSONDecodeError, ValueError):
+            pass
 
     def _toggle_cell_editor(self, checked: bool) -> None:
         if checked:

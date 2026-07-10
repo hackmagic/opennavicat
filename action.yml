@@ -1,0 +1,32 @@
+name: "OpenNavicat Action"
+description: "Run OpenNavicat CLI commands in CI/CD pipelines"
+author: "OpenNavicat"
+branding:
+  icon: "database"
+  color: "blue"
+
+inputs:
+  command:
+    description: "OpenNavicat CLI command to run (e.g. 'query exec conn1 --sql \"SELECT 1\"')"
+    required: true
+  opennavicat_version:
+    description: 'Version of OpenNavicat to install (e.g. "0.7.0", "latest")'
+    default: "latest"
+    required: false
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install OpenNavicat
+      shell: bash
+      run: |
+        if [ "${{ inputs.opennavicat_version }}" = "latest" ]; then
+          pip install opennavicat
+        else
+          pip install opennavicat==${{ inputs.opennavicat_version }}
+        fi
+
+    - name: Run command
+      shell: bash
+      run: |
+        opennavicat ${{ inputs.command }}

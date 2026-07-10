@@ -231,6 +231,20 @@ class AutomationService:
 
     # ── Job runners ───────────────────────────────────────────────────
 
+    def _send_notification(self, message: str) -> None:
+        """Dispatch notification to all registered plugin backends."""
+        try:
+            from open_navicat.plugin.manager import plugin_manager
+            backends = plugin_manager.get_notification_backends()
+            cfg = {"url": ""}  # ponytail: read from job config in the future
+            for name, send in backends.items():
+                try:
+                    send(message, cfg)
+                except Exception as e:
+                    _log.warning("Notification backend '%s' failed: %s", name, e)
+        except ImportError:
+            pass
+
     def _run_backup_job(self, job: dict) -> None:
         """Execute a backup job."""
         conn_id = job.get("connection_id", "")
@@ -254,8 +268,10 @@ class AutomationService:
             backup_service.backup_dir = output_dir
             backup_service.create_backup(conn_info, database, compress=compress)
             local_db.update_job_status(job["id"], "success")
+            self._send_notification(f"Backup complete: {database}")
         except Exception as exc:
             local_db.update_job_status(job["id"], f"failed: {exc}")
+            self._send_notification(f"Backup failed: {database} — {exc}")
 
     def _run_query_job(self, job: dict) -> None:
         """Execute a scheduled query job."""

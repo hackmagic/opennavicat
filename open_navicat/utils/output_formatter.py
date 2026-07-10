@@ -32,6 +32,17 @@ def format_output(
     elif format == "markdown":
         _print_markdown(rows)
     else:
+        _try_plugin_format(rows, format, title)
+
+
+def _try_plugin_format(rows: list[dict], fmt: str, title: str) -> None:
+    """Check plugin-registered export formats."""
+    from open_navicat.plugin.manager import plugin_manager
+    formats = plugin_manager.get_export_formats()
+    renderer = formats.get(fmt)
+    if renderer:
+        _console.print(renderer(rows, title))
+    else:
         _print_table(rows, title)
 
 

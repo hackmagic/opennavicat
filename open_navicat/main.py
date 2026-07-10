@@ -12,6 +12,11 @@ import os
 import sys
 
 
+def _init_plugins() -> None:
+    from open_navicat.plugin.manager import plugin_manager
+    plugin_manager.discover_and_load()
+
+
 def cli_main() -> None:
     """Entry point for CLI mode (default)."""
     # If user passes "gui" as the first arg, launch GUI instead
@@ -26,6 +31,7 @@ def cli_main() -> None:
         print(f"OpenNavicat v{__version__}")
         sys.exit(0)
 
+    _init_plugins()
     from open_navicat.cli.app import cli_main as _cli
     # Re-export for the pyproject.toml entry point
     _cli()
@@ -33,6 +39,7 @@ def cli_main() -> None:
 
 def main() -> int:
     """Launch the OpenNavicat GUI application."""
+    _init_plugins()
     from open_navicat.app import Application
     app = Application(sys.argv)
     return app.run()

@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenNavicat — CLI-First, AI-Native Database Tool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Ubuntu:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0d1117;
+  --bg-card: #161b22;
+  --bg-hover: #1c2333;
+  --border: #30363d;
+  --border-accent: #58a6ff;
+  --text: #c9d1d9;
+  --text-muted: #8b949e;
+  --text-dim: #484f58;
+  --accent: #58a6ff;
+  --accent-glow: rgba(88,166,255,0.15);
+  --success: #3fb950;
+  --warning: #d29922;
+  --danger: #f85149;
+  --terminal-bg: #0d1117;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-body: 'Ubuntu', -apple-system, sans-serif;
+  --radius: 8px;
+  --max-w: 1200px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:16px;line-height:1.6;overflow-x:hidden}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:var(--font-mono);font-size:0.9em;background:var(--bg-hover);padding:2px 6px;border-radius:4px}
+pre{font-family:var(--font-mono);font-size:0.85rem;line-height:1.5}
+::selection{background:var(--accent);color:#fff}
+
+.container{max-width:var(--max-w);margin:0 auto;padding:0 24px}
+
+/* ---- Hero ---- */
+.hero{min-height:100vh;display:flex;flex-direction:column;justify-content:center;position:relative;padding:80px 0;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-50%;right:-20%;width:800px;height:800px;background:radial-gradient(circle,rgba(88,166,255,0.06),transparent 70%);pointer-events:none}
+.hero-grid{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:center}
+@media(max-width:900px){.hero-grid{grid-template-columns:1fr;gap:40px}}
+
+.hero-content h1{font-size:3.5rem;font-weight:700;line-height:1.15;margin-bottom:16px;letter-spacing:-0.02em}
+.hero-content h1 span{background:linear-gradient(135deg,#58a6ff,#3fb950);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-content p{font-size:1.15rem;color:var(--text-muted);max-width:500px;margin-bottom:32px}
+@media(max-width:900px){.hero-content h1{font-size:2.5rem}}
+
+.hero-badges{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:28px}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:500;border:1px solid var(--border)}
+.badge.python{background:rgba(55,118,171,0.15);border-color:rgba(55,118,171,0.3);color:#58a6ff}
+.badge.cli{background:rgba(63,185,80,0.12);border-color:rgba(63,185,80,0.25);color:var(--success)}
+.badge.open{background:rgba(210,153,34,0.12);border-color:rgba(210,153,34,0.25);color:var(--warning)}
+
+.install-btns{display:flex;gap:12px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 24px;border-radius:var(--radius);font-size:0.95rem;font-weight:500;border:none;cursor:pointer;transition:all 0.2s;font-family:var(--font-body)}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:0 0 20px var(--accent-glow)}
+.btn-primary:hover{background:#4c96e8;box-shadow:0 0 30px var(--accent-glow);text-decoration:none}
+.btn-secondary{background:var(--bg-hover);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:var(--border);text-decoration:none}
+.btn-icon{font-size:1.2em}
+
+/* Terminal */
+.terminal{background:var(--terminal-bg);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5)}
+.terminal-header{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg-card)}
+.terminal-dot{width:12px;height:12px;border-radius:50%}
+.terminal-dot.red{background:#ff5f56}
+.terminal-dot.yellow{background:#ffbd2e}
+.terminal-dot.green{background:#27c93f}
+.terminal-title{font-size:0.8rem;color:var(--text-dim);font-family:var(--font-mono);margin-left:12px}
+.terminal-body{padding:20px;min-height:280px}
+.terminal-body pre{color:var(--text-muted)}
+.terminal-body .prompt{color:var(--success)}
+.terminal-body .cmd{color:var(--accent)}
+.terminal-body .output{color:var(--text-muted)}
+.terminal-body .cursor{display:inline-block;width:8px;height:16px;background:var(--accent);animation:blink 0.8s step-end infinite;vertical-align:text-bottom}
+@keyframes blink{50%{opacity:0}}
+.typing-line{overflow:hidden;white-space:nowrap;border-right:2px solid transparent;animation:typeIn 0s forwards}
+@keyframes typeIn{to{width:100%}}
+
+/* ---- Section common ---- */
+section{padding:80px 0}
+.section-label{font-size:0.8rem;color:var(--accent);font-weight:600;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px}
+.section-title{font-size:2rem;font-weight:700;margin-bottom:48px}
+.section-title span{color:var(--accent)}
+
+/* ---- Features ---- */
+.features{background:var(--bg)}
+.feature-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+.feature-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:28px;transition:all 0.2s}
+.feature-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 8px 30px rgba(0,0,0,0.3)}
+.feature-card .icon{font-size:1.8rem;margin-bottom:12px}
+.feature-card h3{font-size:1rem;font-weight:600;margin-bottom:8px}
+.feature-card p{font-size:0.9rem;color:var(--text-muted);line-height:1.5}
+
+/* ---- Comparison table ---- */
+.comparison table{width:100%;border-collapse:collapse;font-size:0.9rem}
+.comparison th,td{padding:14px 16px;text-align:left;border-bottom:1px solid var(--border)}
+.comparison th{background:var(--bg-card);font-weight:600;color:var(--text-muted);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.05em}
+.comparison tr:hover td{background:var(--bg-hover)}
+.comparison .check{color:var(--success)}
+.comparison .cross{color:var(--danger)}
+.comparison .partial{color:var(--warning)}
+.comparison .highlight{background:rgba(88,166,255,0.06)!important;border-left:2px solid var(--accent)}
+
+/* ---- Installation ---- */
+.install-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
+.install-card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:28px;text-align:center}
+.install-card .icon{font-size:2rem;margin-bottom:12px}
+.install-card h3{margin-bottom:8px;font-size:1rem}
+.install-card p{font-size:0.85rem;color:var(--text-muted);margin-bottom:16px}
+.install-card code{display:block;padding:10px;background:var(--bg);border-radius:6px;font-size:0.8rem;text-align:left;overflow-x:auto}
+.copy-btn{font-size:0.75rem;color:var(--accent);cursor:pointer;float:right;background:none;border:none;font-family:var(--font-mono)}
+.copy-btn:hover{text-decoration:underline}
+
+/* ---- CLI Showcase ---- */
+.cli-showcase pre{background:var(--terminal-bg);border:1px solid var(--border);border-radius:var(--radius);padding:24px;overflow-x:auto;font-size:0.85rem}
+.cli-showcase .comment{color:var(--text-dim)}
+.cli-showcase .keyword{color:var(--accent)}
+.cli-showcase .string{color:var(--success)}
+.cli-showcase .number{color:var(--warning)}
+
+/* ---- Footer ---- */
+footer{border-top:1px solid var(--border);padding:40px 0;text-align:center;color:var(--text-dim);font-size:0.85rem}
+footer a{color:var(--text-muted)}
+footer a:hover{color:var(--accent)}
+.footer-links{display:flex;justify-content:center;gap:24px;margin-bottom:16px;flex-wrap:wrap}
+
+/* ---- Animations ---- */
+.fade-in{opacity:0;transform:translateY(20px);transition:opacity 0.6s ease,transform 0.6s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+
+.lines{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden}
+.lines span{display:block;width:1px;height:100%;background:linear-gradient(180deg,transparent,var(--border),transparent);position:absolute;opacity:0.3}
+.lines span:nth-child(1){left:10%}
+.lines span:nth-child(2){left:30%}
+.lines span:nth-child(3){left:50%}
+.lines span:nth-child(4){left:70%}
+.lines span:nth-child(5){left:90%}
+</style>
+</head>
+<body>
+
+<header style="position:fixed;top:0;width:100%;z-index:100;background:rgba(13,17,23,0.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)">
+  <div class="container" style="display:flex;align-items:center;justify-content:space-between;padding:12px 24px">
+    <span style="font-family:var(--font-mono);font-weight:700;font-size:1.1rem">OpenNavicat</span>
+    <nav style="display:flex;gap:20px;font-size:0.9rem">
+      <a href="#features">Features</a>
+      <a href="#comparison">Comparison</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/anomalyco/OpenNavicat">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="lines"><span></span><span></span><span></span><span></span><span></span></div>
+  <div class="container">
+    <div class="hero-grid">
+      <div class="hero-content">
+        <div class="hero-badges">
+          <span class="badge python">Python 3.10+</span>
+          <span class="badge cli">40+ CLI commands</span>
+          <span class="badge open">MIT License</span>
+        </div>
+        <h1>Your database,<br><span>in your terminal.</span></h1>
+        <p>OpenNavicat is a CLI-first, AI-powered database management tool — a modern, open-source alternative to Navicat, DBeaver, and DataGrip.</p>
+        <div class="install-btns">
+          <a href="#install" class="btn btn-primary"><span class="btn-icon">↓</span> Get Started</a>
+          <a href="https://github.com/anomalyco/OpenNavicat" class="btn btn-secondary"><span class="btn-icon">⌨</span> GitHub</a>
+        </div>
+      </div>
+      <div class="terminal" id="demo-terminal">
+        <div class="terminal-header">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+          <span class="terminal-title">~/opennavicat</span>
+        </div>
+        <div class="terminal-body">
+          <pre><span class="prompt">$</span> <span class="cmd">opennavicat conn list</span>
+┌──────┬──────────┬──────────┬──────────┐
+│ Name │   Host   │  Type    │  Status  │
+├──────┼──────────┼──────────┼──────────┤
+│ prod │ db.acme  │ postgres │ ● active │
+│ dev  │ localhost│ mysql    │ ● active │
+└──────┴──────────┴──────────┴──────────┘
+
+<span class="prompt">$</span> <span class="cmd">opennavicat ai ask "Which users registered last month?"</span>
+<span class="output">🤖 SELECT name, email FROM users
+    WHERE created_at >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
+    ORDER BY created_at DESC;
+
+→ 42 users found. Top signup: Jane Doe (jane@acme.com)</span>
+<span class="prompt">$</span> <span class="cursor"></span></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features" class="features">
+  <div class="container">
+    <p class="section-label">Capabilities</p>
+    <h2 class="section-title">What <span>OpenNavicat</span> brings</h2>
+    <div class="feature-grid">
+      <div class="feature-card fade-in"><div class="icon">⌨</div><h3>CLI-First</h3><p>40+ commands covering connection, query, schema, data, backup, and AI — all from your terminal.</p></div>
+      <div class="feature-card fade-in"><div class="icon">🤖</div><h3>AI-Native</h3><p>Natural language to SQL, query optimization, schema design, and a ReAct agent that explores and executes.</p></div>
+      <div class="feature-card fade-in"><div class="icon">📦</div><h3>Dual Interface</h3><p>Full CLI and optional PySide6 GUI with acrylic glass themes, table designer, and command recording.</p></div>
+      <div class="feature-card fade-in"><div class="icon">🐬</div><h3>MySQL + PostgreSQL</h3><p>Async drivers (aiomysql + asyncpg) with connection pooling, SSH tunnels, and schema sync.</p></div>
+      <div class="feature-card fade-in"><div class="icon">🔁</div><h3>Sync & Migration</h3><p>Schema compare, data sync, and dialect translation (MySQL ↔ PostgreSQL via sqlglot).</p></div>
+      <div class="feature-card fade-in"><div class="icon">⏰</div><h3>Automation</h3><p>APScheduler-based job scheduling: automated backups, query execution, and sync tasks.</p></div>
+      <div class="feature-card fade-in"><div class="icon">🔒</div><h3>Privacy First</h3><p>AI data masking (PII redaction), dry-run mode, DDL/DML confirmation dialog — your data stays yours.</p></div>
+      <div class="feature-card fade-in"><div class="icon">🌐</div><h3>i18n Ready</h3><p>Fully translatable UI (1289 keys per language, en_US/zh_CN built-in).</p></div>
+    </div>
+    <p style="text-align:center;margin-top:48px;color:var(--text-dim);font-size:0.9rem">
+      <a href="https://github.com/anomalyco/OpenNavicat" style="color:var(--accent)">View all features on GitHub →</a>
+    </p>
+  </div>
+</section>
+
+<section id="comparison" class="comparison" style="background:var(--bg-card)">
+  <div class="container">
+    <p class="section-label">Comparison</p>
+    <h2 class="section-title">Why <span>OpenNavicat</span>?</h2>
+    <div style="overflow-x:auto">
+    <table>
+      <tr><th>Feature</th><th>OpenNavicat</th><th>Navicat</th><th>DBeaver</th><th>DataGrip</th></tr>
+      <tr class="highlight"><td>CLI mode</td><td class="check">✅ 40+ commands</td><td class="cross">❌</td><td class="partial">⚠ Partial</td><td class="cross">❌</td></tr>
+      <tr><td>AI NL2SQL</td><td class="check">✅ Built-in</td><td class="partial">⚠ Add-on</td><td class="cross">❌</td><td class="partial">⚠ Plugin</td></tr>
+      <tr class="highlight"><td>ReAct Agent</td><td class="check">✅ Multi-step</td><td class="cross">❌</td><td class="cross">❌</td><td class="cross">❌</td></tr>
+      <tr><td>Schema sync</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td><td class="check">✅</td></tr>
+      <tr><td>GUI</td><td class="check">✅ Glass theme</td><td class="check">✅ Premium</td><td class="check">✅</td><td class="check">✅</td></tr>
+      <tr><td>CLI command recording</td><td class="check">✅ Built-in</td><td class="cross">❌</td><td class="cross">❌</td><td class="cross">❌</td></tr>
+      <tr><td>Docker support</td><td class="check">✅ Multi-arch</td><td class="partial">⚠ Linux only</td><td class="check">✅</td><td class="cross">❌</td></tr>
+      <tr><td>AI privacy (data masking)</td><td class="check">✅</td><td class="cross">❌</td><td class="cross">❌</td><td class="cross">❌</td></tr>
+      <tr><td>Automation / scheduling</td><td class="check">✅ Built-in</td><td class="check">✅</td><td class="partial">⚠ Plugin</td><td class="partial">⚠ Plugin</td></tr>
+      <tr><td>Price</td><td class="check" style="color:var(--success)"><strong>FREE</strong> (MIT)</td><td>$199+/yr</td><td>Free / Enterprise</td><td>$199/yr</td></tr>
+    </table>
+    </div>
+  </div>
+</section>
+
+<section id="install" class="install">
+  <div class="container">
+    <p class="section-label">Get Started</p>
+    <h2 class="section-title">Install in <span>one command</span></h2>
+    <div class="install-grid">
+      <div class="install-card fade-in">
+        <div class="icon">🐍</div><h3>pip</h3><p>Install from PyPI with optional extras.</p>
+        <code onclick="copy(this)">pip install opennavicat<span style="display:block;margin-top:4px">pip install opennavicat[postgresql]</span></code>
+      </div>
+      <div class="install-card fade-in">
+        <div class="icon">🐳</div><h3>Docker</h3><p>Multi-arch image with CLI and GUI.</p>
+        <code onclick="copy(this)">docker pull ghcr.io/anomalyco/opennavicat:latest</code>
+      </div>
+      <div class="install-card fade-in">
+        <div class="icon">📦</div><h3>Standalone</h3><p>Download CLI or GUI binary from releases.</p>
+        <code onclick="copy(this)">curl -sSf https://opennavicat.dev/install.sh | sh<script>document.currentScript&&0</script></code>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div class="footer-links">
+      <a href="https://github.com/anomalyco/OpenNavicat">GitHub</a>
+      <a href="https://github.com/anomalyco/OpenNavicat/releases">Releases</a>
+      <a href="docs/INDEX.md">Documentation</a>
+      <a href="https://github.com/anomalyco/OpenNavicat/issues">Issues</a>
+    </div>
+    <p>MIT License &middot; Built with Python, Typer, Rich &amp; PySide6</p>
+  </div>
+</footer>
+
+<script>
+// Intersection Observer for fade-in
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible') })
+}, { threshold: 0.1 })
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el))
+
+// Copy to clipboard
+function copy(el) {
+  const t = el.innerText
+  navigator.clipboard.writeText(t).then(() => {
+    el.style.borderColor = 'var(--success)'
+    setTimeout(() => el.style.borderColor = '', 800)
+  })
+}
+
+// Terminal typing animation
+;(function() {
+  const body = document.querySelector('.terminal-body pre')
+  if (!body) return
+  const html = body.innerHTML
+  body.innerHTML = ''
+  let i = 0
+  function type() {
+    if (i < html.length) {
+      // Handle HTML tags — insert them all at once
+      if (html[i] === '<') {
+        const end = html.indexOf('>', i)
+        body.innerHTML += html.slice(i, end + 1)
+        i = end + 1
+      } else {
+        body.innerHTML += html[i]
+        i++
+      }
+      setTimeout(type, 12)
+    }
+  }
+  setTimeout(type, 400)
+})()
+</script>
+</body>
+</html>

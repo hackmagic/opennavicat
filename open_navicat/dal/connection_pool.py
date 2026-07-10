@@ -68,6 +68,9 @@ class ConnectionPool:
         elif info.engine == "sqlite":
             from open_navicat.dal.sqlite_connector import SQLiteConnector
             connector_cls = SQLiteConnector
+        elif info.engine == "duckdb":
+            from open_navicat.dal.duckdb_connector import DuckDBConnector
+            connector_cls = DuckDBConnector
         else:
             from open_navicat.dal.mysql_connector import MySQLConnector
             connector_cls = MySQLConnector
