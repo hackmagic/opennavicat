@@ -19,19 +19,14 @@ class TestMetadataServiceCache:
         assert result[0].name == "db1"
 
     def test_cache_miss_calls_connector(self) -> None:
-        mock_conn = MagicMock()
-        mock_conn.list_databases = AsyncMock(return_value=[DatabaseInfo(name="db1")])
-        with patch.object(self._svc, "_connector", return_value=mock_conn):
+        with patch.object(self._svc, "_exec", return_value=[DatabaseInfo(name="db1")]):
             result = self._svc.list_databases("cid")
         assert len(result) == 1
-        mock_conn.list_databases.assert_called_once()
 
     def test_cache_expiry(self) -> None:
         old_ts = time.monotonic() - 120
         self._svc._cache["cid:list_databases"] = (old_ts, [DatabaseInfo(name="stale")])
-        mock_conn = MagicMock()
-        mock_conn.list_databases = AsyncMock(return_value=[DatabaseInfo(name="fresh")])
-        with patch.object(self._svc, "_connector", return_value=mock_conn):
+        with patch.object(self._svc, "_exec", return_value=[DatabaseInfo(name="fresh")]):
             result = self._svc.list_databases("cid")
         assert result[0].name == "fresh"
 

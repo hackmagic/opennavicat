@@ -19,12 +19,13 @@ class TestTemplateList:
         dst = tmp_path / "daily_backup.sh"
         template_generate("daily_backup.sh", str(tmp_path))
         assert dst.exists()
-        assert "opennavicat backup create" in dst.read_text()
+        assert "opennavicat backup create" in dst.read_text(encoding="utf-8")
 
     def test_generate_unknown_exits(self) -> None:
         from open_navicat.cli.template_cmd import template_generate
+        import click
         try:
             template_generate("nonexistent", ".")
             assert False, "should have raised"
-        except SystemExit:
+        except (SystemExit, click.exceptions.Exit):
             pass
