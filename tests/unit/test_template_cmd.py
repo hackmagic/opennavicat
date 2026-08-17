@@ -22,10 +22,11 @@ class TestTemplateList:
         assert "opennavicat backup create" in dst.read_text(encoding="utf-8")
 
     def test_generate_unknown_exits(self) -> None:
+        import typer
+
         from open_navicat.cli.template_cmd import template_generate
-        import click
         try:
             template_generate("nonexistent", ".")
             assert False, "should have raised"
-        except (SystemExit, click.exceptions.Exit):
+        except typer.Exit:
             pass
