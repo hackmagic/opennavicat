@@ -157,7 +157,7 @@ main.py
 | MongoDB 驱动 | motor | 3.6+ (可选) |
 | Redis 驱动 | redis.asyncio | 5.0+ (可选) |
 | SSH 隧道 | asyncssh | 2.17+ |
-| SQL 解析 | sqlparse | 0.5+ |
+| SQL 解析 | sqlparse | 0.6+ |
 | 加密 | cryptography (Fernet) | 42+ |
 | 定时调度 | APScheduler | 3.10+ |
 | LLM 后端 | openai + httpx | 1.12+ / 0.27+ |
