@@ -29,7 +29,7 @@ OpenNavicat is a full-featured database management tool inspired by [Navicat Pre
 - **CLI-First** — Every operation has a CLI command. AI (LLM) can call CLI directly.
 - **AI-Native** — Natural language to SQL, query optimization, auto-fix broken SQL, intelligent data generation.
 - **Full GUI** — Navicat-like graphical interface with object browser, SQL editor, table designer, data viewer, BI dashboard, and more.
-- **Multi-Database** — MySQL/MariaDB + PostgreSQL + SQLite + MongoDB + Redis.
+- **Multi-Database** — MySQL/MariaDB + PostgreSQL + SQLite + DuckDB + SQL Server + ClickHouse + Oracle + MongoDB + Redis. New engines are one registry row plus one connector module.
 - **7 Export Formats** — CSV, JSON, XML, HTML, SQL, TXT, Excel.
 - **Privacy-First** — Data masking for AI requests. Full offline mode with Ollama. Encrypted credential storage.
 - **Open Source** — MIT License. Free for personal and commercial use.
@@ -46,6 +46,8 @@ OpenNavicat is a full-featured database management tool inspired by [Navicat Pre
 | **Cross-Platform** | ✅ Win/Mac/Linux | ✅ Win/Mac | ✅ Win/Mac/Linux | ✅ Win/Mac/Linux |
 | **MySQL / PG / SQLite** | ✅ | ✅ | ✅ | ✅ |
 | **MongoDB / Redis** | ✅ | ✅ | ✅ | ✅ |
+| **DuckDB / SQL Server** | ✅ | ✅ | ✅ | 🟡 |
+| **ClickHouse / Oracle** | ✅ | 🟡 (Oracle) | ✅ | ✅ |
 | **BI Dashboard** | ✅ Built-in (no ext libs) | ✅ | ❌ | ❌ |
 | **ER Model Designer** | ✅ Conceptual/Logical/Physical | ✅ | ✅ | ✅ |
 | **Schema & Data Sync** | ✅ MySQL↔PG | ✅ | ✅ | ❌ |
@@ -199,7 +201,8 @@ OpenNavicat 是一款功能齐全的数据库管理工具，灵感来源于 [Nav
 - **CLI 优先** — 每个操作都有对应的 CLI 命令，AI (LLM) 可直接调用。
 - **AI 原生** — 自然语言转 SQL、查询优化、自动修复错误 SQL、智能数据生成。
 - **完整 GUI** — 类 Navicat 图形界面，包含对象浏览器、SQL 编辑器、表设计器、数据查看器、BI 看板等。
-- **多数据库** — MySQL/MariaDB + PostgreSQL + SQLite + MongoDB + Redis。
+- **多数据库** — MySQL/MariaDB + PostgreSQL + SQLite + DuckDB + SQL Server + ClickHouse + Oracle + MongoDB + Redis。
+  新增引擎只需在注册表加一行 + 写一个 connector 模块。
 - **7 种导出格式** — CSV、JSON、XML、HTML、SQL、TXT、Excel。
 - **隐私优先** — AI 请求自动脱敏，支持 Ollama 全离线模式，凭据加密存储。
 - **开源免费** — MIT 许可证，个人和商业用途均可免费使用。
@@ -216,6 +219,8 @@ OpenNavicat 是一款功能齐全的数据库管理工具，灵感来源于 [Nav
 | **跨平台** | ✅ Win/Mac/Linux | ✅ Win/Mac | ✅ Win/Mac/Linux | ✅ Win/Mac/Linux |
 | **MySQL / PG / SQLite** | ✅ | ✅ | ✅ | ✅ |
 | **MongoDB / Redis** | ✅ | ✅ | ✅ | ✅ |
+| **DuckDB / SQL Server** | ✅ | ✅ | ✅ | 🟡 |
+| **ClickHouse / Oracle** | ✅ | 🟡 (Oracle) | ✅ | ✅ |
 | **BI 看板** | ✅ 内置 (零外部库) | ✅ | ❌ | ❌ |
 | **ER 模型设计器** | ✅ 概念/逻辑/物理 | ✅ | ✅ | ✅ |
 | **结构 & 数据同步** | ✅ MySQL↔PG | ✅ | ✅ | ❌ |

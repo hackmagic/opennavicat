@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -55,6 +56,7 @@ class TestLocalConfigDB:
     def test_migrate_old_schema(self) -> None:
         """Verify schema migration from old DB missing color/conn_group columns."""
         import sqlite3
+
         tmp = tempfile.mkdtemp()
         old_db = Path(tmp) / "old_config.sqlite"
         conn = sqlite3.connect(str(old_db))
@@ -113,3 +115,99 @@ class TestLocalConfigDB:
         snippets = db.list_snippets()
         assert len(snippets) == 1
         assert snippets[0]["name"] == "count_users"
+
+
+class TestEnginePersistence:
+    """A connection must keep its engine across a save/load round trip.
+
+    Regression: ``connections`` used to have no ``engine`` column at all, so
+    every profile read back as the ConnectionInfo default ("mysql") and
+    postgres/mongo/redis/sqlite connections silently became MySQL ones.
+    """
+
+    @pytest.mark.parametrize(
+        "engine,host,port,database",
+        [
+            ("mysql", "db.local", 3306, "app"),
+            ("postgresql", "pg.local", 5432, "analytics"),
+            ("mongodb", "mongo.local", 27017, "shop"),
+            ("redis", "cache.local", 6379, "3"),
+            ("sqlite", "", 0, "/tmp/app.db"),
+            ("duckdb", "", 0, ":memory:"),
+            ("sqlserver", "sql01", 1433, "master"),
+        ],
+    )
+    def test_engine_round_trip(self, db: LocalConfigDB, engine, host, port, database) -> None:
+        info = ConnectionInfo(
+            name=f"{engine}-conn", engine=engine, host=host, port=port, database=database
+        )
+        db.save_connection(info)
+        loaded = db.get_connection(info.id)
+        assert loaded is not None
+        assert loaded.engine == engine
+        assert loaded.database == database
+
+    def test_engine_defaults_when_blank(self, db: LocalConfigDB) -> None:
+        info = ConnectionInfo(name="blank", engine="")
+        db.save_connection(info)
+        assert db.get_connection(info.id).engine == "mysql"
+
+    def test_legacy_database_is_migrated(self, tmp_path) -> None:
+        """A config created before the engine column still opens and migrates.
+
+        Mirrors the real v0.8 schema: everything present except ``engine``.
+        """
+        legacy = tmp_path / "legacy.sqlite"
+        raw = sqlite3.connect(legacy)
+        raw.executescript(
+            """
+            CREATE TABLE connections (
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                host        TEXT NOT NULL DEFAULT '127.0.0.1',
+                port        INTEGER NOT NULL DEFAULT 3306,
+                user        TEXT NOT NULL DEFAULT 'root',
+                password    TEXT DEFAULT '',
+                database    TEXT DEFAULT '',
+                charset     TEXT DEFAULT 'utf8mb4',
+                use_ssh     INTEGER DEFAULT 0,
+                ssh_host    TEXT DEFAULT '',
+                ssh_port    INTEGER DEFAULT 22,
+                ssh_user    TEXT DEFAULT '',
+                ssh_password TEXT DEFAULT '',
+                ssh_key_file TEXT DEFAULT '',
+                use_ssl     INTEGER DEFAULT 0,
+                ssl_ca      TEXT DEFAULT '',
+                ssl_cert    TEXT DEFAULT '',
+                ssl_key     TEXT DEFAULT '',
+                created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                color       TEXT DEFAULT '',
+                conn_group  TEXT DEFAULT ''
+            );
+            INSERT INTO connections (id, name, host, port, user, database)
+            VALUES ('abc123', 'Old Profile', '10.0.0.9', 3306, 'root', 'legacy_db');
+            """
+        )
+        raw.commit()
+        raw.close()
+
+        migrated = LocalConfigDB(legacy)
+        rows = migrated.list_connections()
+        assert len(rows) == 1
+        # Pre-engine profiles were MySQL by definition.
+        assert rows[0].engine == "mysql"
+        assert rows[0].name == "Old Profile"
+        assert rows[0].database == "legacy_db"
+
+        # The column now exists and is writable, so the next save keeps the engine.
+        upgraded = ConnectionInfo(
+            id="abc123",
+            name="Old Profile",
+            engine="postgresql",
+            host="10.0.0.9",
+            port=5432,
+            database="legacy_db",
+        )
+        migrated.save_connection(upgraded)
+        assert migrated.get_connection("abc123").engine == "postgresql"

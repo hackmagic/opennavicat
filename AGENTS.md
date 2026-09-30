@@ -1,7 +1,7 @@
 # OpenNavicat
 
 **CLI-First, AI-Native** database management tool (Navicat alternative).  
-Python 3.10+ | Poetry | MySQL + PostgreSQL + MongoDB + Redis | Typer + Rich (CLI) | PySide6 (GUI) | aiomysql + asyncpg + motor + redis.asyncio (async)
+Python 3.10+ | Poetry | MySQL + PostgreSQL + SQLite + DuckDB + SQL Server + ClickHouse + Oracle + MongoDB + Redis | Typer + Rich (CLI) | PySide6 (GUI)
 
 ## Quick start
 
@@ -9,9 +9,10 @@ Python 3.10+ | Poetry | MySQL + PostgreSQL + MongoDB + Redis | Typer + Rich (CLI
 poetry install                                    # install dependencies
 poetry install --extras postgresql                # with PostgreSQL support
 poetry install --extras "mongodb redis"           # with MongoDB + Redis support
+poetry install --extras "sqlserver clickhouse oracle"   # with SQL Server / ClickHouse / Oracle drivers
 poetry run opennavicat                            # CLI mode (40+ commands)
 poetry run opennavicat gui                        # GUI mode
-poetry run pytest tests/unit/ -v                  # unit tests (289)
+poetry run pytest tests/unit/ -v                  # unit tests (562)
 poetry run pytest tests/integration/ -v           # integration tests (16, needs Docker)
 ```
 
@@ -20,6 +21,7 @@ poetry run pytest tests/integration/ -v           # integration tests (16, needs
 ```bash
 poetry run ruff check open_navicat/               # lint (ruff)
 poetry run mypy open_navicat/                     # typecheck (non-strict)
+poetry run python scripts/build_dependency_matrix.py --check  # architecture guard (CI)
 poetry run pytest tests/ -v --cov=open_navicat    # test + coverage
 poetry build                                      # build sdist + wheel
 ```
@@ -38,23 +40,35 @@ poetry build                                      # build sdist + wheel
   - `sync_engine` / `data_sync_engine` — schema + data comparison (MySQL/PostgreSQL)
   - `scheduler` / `automation_service` — APScheduler-based job scheduling
   - `ConnectionManager` — pool management + SSH tunnels
+- **Drivers** (`open_navicat/drivers/`) — see `drivers/README.md`:
+  - `BaseConnector` ABC → the connector contract every engine implements
+  - `registry.py` — `DRIVER_REGISTRY` (`DriverSpec`) + `get_connector_class()` / `available_engines()`; **adding an engine = one registry row + one connector module** (no pool/CLI/GUI edits)
+  - 9 connectors: mysql, postgresql, sqlite, duckdb, sqlserver, clickhouse, oracle, mongodb, redis
+  - `dsn.py` — `parse_dsn` / `dsn_to_connection` / `info_to_dsn`
+  - Sync drivers (sqlserver/clickhouse/oracle) bridge to async via a **single-thread executor** per connector
 - **DAL** (`open_navicat/dal/`):
-  - `BaseConnector` ABC → `MySQLConnector` + `PostgreSQLConnector` + `MongoConnector` + `RedisConnector`
-  - `ConnectionPool` — per-connector async pool management
-  - `SSHTunnel` — async SSH tunnel with asyncssh
+  - `base_connector.py` + `*_connector.py` are compatibility shims re-exporting `drivers/`
+  - `ConnectionPool` — engine selection is registry lookup (no `if/elif` branches); records structured `last_error`
+  - `SSHTunnel` — async SSH tunnel
   - `local_config` — JSON + SQLite persistence
+- **Errors** (`open_navicat/errors.py`): `NavicatError` with `code / message_key / detail / source / stage / recoverable / retryable`; codes `ONV-<域>-<序号>`, auto-redacted (`redact()`)
 - **Models** (`open_navicat/models/`): dataclass-style models (`ConnectionInfo`, `QueryResult`, `TableInfo`, `BackupInfo`, `SyncResult`, etc.)
 - **Config persistence**: platform-specific dir (`%APPDATA%/OpenNavicat` / `~/.config/OpenNavicat`), JSON + SQLite
+- **Layering** (enforced in CI by `scripts/build_dependency_matrix.py --check`):
+  L0 `models`/`errors` → L1 `drivers`/`dal`/`utils`/`config`/`i18n` → L2 `services`/`plugin` → L3 `cli`/`ui`
+  Lower layers must never import upward.
 
 ## Key conventions
 
 - All files use `from __future__ import annotations` + full type annotations
 - Ruff config: line-length 100, select `E,F,I,N,W`, ignore `E501`
 - Async tests: no decorator needed — `pytest.ini` sets `asyncio_mode = auto`
+- Connector subclasses **must** call `super().__init__()` (sets `_last_error`; omitting it makes the failure path crash and mask the real error)
+- Driver modules must raise `DriverNotFoundError` (`ONV-DRV-002`) when their third-party package is missing — never silently `return False`
 - i18n: custom JSON-based system (`open_navicat/i18n/`), call `t("key")` not gettext
-  - 1265 keys per language (zh_CN / en_US), verified symmetric after each change
+  - zh_CN / en_US must stay key-symmetric; `t()` echoes the key when untranslated
   - All UI-visible strings use `t()`, zero hardcoded Chinese/English
-- Optional deps: asyncpg is `[postgresql]` extra, not default install
+- Optional deps: `asyncpg` `[postgresql]`, `motor` `[mongodb]`, `redis` `[redis]`, `pyodbc` `[sqlserver]`, `clickhouse-connect` `[clickhouse]`, `oracledb` `[oracle]` — none are default installs
 
 ## AI integration
 

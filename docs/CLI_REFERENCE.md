@@ -27,6 +27,7 @@ opennavicat query run "SELECT * FROM users"
 
 ```bash
 opennavicat conn list            # 列出所有保存的连接
+opennavicat conn engines         # 列出支持的引擎及驱动是否就绪
 opennavicat conn add             # 新增连接
 opennavicat conn edit            # 编辑连接
 opennavicat conn remove          # 删除连接
@@ -54,7 +55,15 @@ opennavicat conn list [--format table|json|csv]
 
 ### 1.2 conn add
 
+两种写法：**连接串（推荐）** 或逐个字段。
+
 ```bash
+# 方式一：连接串
+opennavicat conn add --name "Production DB" --dsn "mysql://admin:pw@prod.example.com:3306/mydb"
+opennavicat conn add --name "Local DuckDB"  --dsn "duckdb:///data/warehouse.duckdb"
+opennavicat conn add --name "Local SQLite"  --dsn "sqlite:///tmp/app.db"
+
+# 方式二：逐个字段
 opennavicat conn add \
   --name "Production DB" \
   --engine mysql \
@@ -75,12 +84,13 @@ opennavicat conn add \
 | 选项 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `--name`, `-n` | str | **必填** | 连接名称 |
-| `--engine`, `-e` | str | mysql | 数据库引擎: mysql / postgresql / sqlite / mongodb / redis |
-| `--host`, `-h` | str | 127.0.0.1 | 数据库主机 |
-| `--port`, `-p` | int | 3306 | 数据库端口 |
-| `--user`, `-u` | str | root | 用户名 |
+| `--dsn` | str | '' | 连接串；给出后作为基准，其余显式选项覆盖它 |
+| `--engine`, `-e` | str | mysql | 引擎：mysql / postgresql / sqlite / duckdb / mongodb / redis / sqlserver / clickhouse / oracle |
+| `--host`, `-h` | str | 127.0.0.1 | 数据库主机（sqlite/duckdb 下可放文件路径） |
+| `--port`, `-p` | int | 0 | 端口，**0 = 用该引擎的默认端口**（mysql 3306 / postgresql 5432 / sqlserver 1433 …） |
+| `--user`, `-u` | str | '' | 用户名（mysql 默认 root，其余默认空） |
 | `--password`, `-P` | str | '' | 密码 (隐藏输入) |
-| `--database`, `-d` | str | '' | 默认数据库 |
+| `--database`, `-d` | str | '' | 默认数据库（sqlite/duckdb 下为文件路径） |
 | `--charset`, `-c` | str | utf8mb4 | 字符集 |
 | `--ssh-host` | str | '' | SSH 隧道主机 |
 | `--ssh-port` | int | 22 | SSH 隧道端口 |
@@ -119,15 +129,17 @@ opennavicat conn remove "Production DB" [--force]
 ### 1.5 conn test
 
 ```bash
-opennavicat conn test "Production DB"
+opennavicat conn test "Production DB"                        # 已保存的连接
+opennavicat conn test "postgresql://pg@host:5432/app"        # 临时连接串，不保存
 ```
 
-测试已保存连接的可用性。
+测试已保存连接的可用性，或直接测试一个连接串（不会写入配置）。
 
 ### 1.6 conn open
 
 ```bash
 opennavicat conn open "Production DB"
+opennavicat conn open "sqlite:///tmp/app.db"   # 也可传连接串
 ```
 
 激活连接。激活后后续的 query/schema/data 命令不需要再指定 `--conn`。
@@ -168,6 +180,47 @@ opennavicat conn group delete "GroupName"  # 删除连接组（连接不丢失�
 ```
 
 连接组用于在 GUI 对象浏览器中对连接进行分类管理。删除组时，组内的连接不会丢失，只是回到"未分组"状态。
+
+### 1.11 conn engines
+
+```bash
+opennavicat conn engines [--format table|json|csv]
+```
+
+列出本 build 支持的所有引擎，以及驱动是否就绪、缺失时怎么装。
+
+```
+| engine     | name                 | status         | install                 |
+|------------|----------------------|----------------|-------------------------|
+| mysql      | MySQL / MariaDB      | ready          | -                       |
+| sqlserver  | Microsoft SQL Server | ready          | pip install open-navicat|
+| ...
+```
+
+`status` 为 `driver missing` 时，用 `install` 列的命令补上对应 extra。
+
+---
+
+## 连接串（DSN）速查
+
+`conn add --dsn` / `conn test` / `conn open` 都接受连接串：
+
+| 引擎 | 示例 |
+|------|------|
+| MySQL / MariaDB | `mysql://root:pw@host:3306/db?charset=utf8mb4` |
+| PostgreSQL | `postgresql://pg@host:5432/db?ssl=require&connect_timeout=5` |
+| SQL Server | `sqlserver://sa:pw@host:1433/master`（别名 `mssql`） |
+| ClickHouse | `clickhouse://default:pw@host:8123/db`（别名 `ch`；`?ssl=on` 走 HTTPS，缺省端口转 8443） |
+| Oracle | `oracle://hr:pw@host:1521/ORCLPDB1`（路径为 service name；留空则按 `host:port` 连） |
+| MongoDB | `mongodb://user:pw@host:27017/db` |
+| Redis | `redis://:pw@host:6379/0`（库号在路径里） |
+| SQLite | `sqlite:///abs/path.db`（绝对）、`sqlite:rel/path.db`（相对） |
+| DuckDB | `duckdb:///:memory:`、`duckdb:///data/wh.duckdb` |
+
+- 凭据需百分号编码：`p@ss` 写成 `p%40ss`。
+- 支持的 query 参数：`charset`、`ssl`、`pool_min`、`pool_max`、`connect_timeout`。
+- 未知引擎会报 `ONV-DRV-001`，格式错误报 `ONV-CFG-001`。
+- 参数绑定形态按引擎不同：ClickHouse 只认命名绑定 `%(name)s`（传位置参数会被明确拒绝，不会静默丢弃）；Oracle 分页用命名绑定、DML 用位置绑定。
 
 ---
 

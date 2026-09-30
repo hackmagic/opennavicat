@@ -47,6 +47,9 @@ jobs:
       - name: Run linter
         run: poetry run ruff check open_navicat/
 
+      - name: Architecture guard (layering + matrix freshness)
+        run: poetry run python scripts/build_dependency_matrix.py --check
+
       - name: Run tests
         run: poetry run pytest tests/unit/ -v --tb=short
 

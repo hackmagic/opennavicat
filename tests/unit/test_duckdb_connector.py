@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from open_navicat.dal.duckdb_connector import DuckDBConnector
+from open_navicat.drivers.duckdb_connector import DuckDBConnector
 from open_navicat.models import ConnectionInfo
 
 

@@ -249,7 +249,7 @@ class BackupService:
             if connector is None:
                 from open_navicat.dal.connection_pool import _get_loop
                 if is_pg:
-                    from open_navicat.dal.postgresql_connector import PostgreSQLConnector
+                    from open_navicat.drivers.postgresql_connector import PostgreSQLConnector
                     connector = PostgreSQLConnector()
                     _get_loop().run_until_complete(connector.connect(
                         host=conn_info.host,
@@ -262,7 +262,7 @@ class BackupService:
                         connector.execute(f'CREATE DATABASE "{database}"')
                     )
                 else:
-                    from open_navicat.dal.mysql_connector import MySQLConnector
+                    from open_navicat.drivers.mysql_connector import MySQLConnector
                     connector = MySQLConnector()
                     _get_loop().run_until_complete(connector.connect(
                         host=conn_info.host,

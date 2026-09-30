@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from open_navicat.dal.redis_connector import RedisConnector
+from open_navicat.drivers.redis_connector import RedisConnector
 from open_navicat.models import ConnectionInfo
 
 

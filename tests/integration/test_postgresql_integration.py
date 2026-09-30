@@ -17,7 +17,7 @@ class TestPostgreSQLConnector:
             pytest.skip("asyncpg not installed")
 
         from open_navicat.dal.connection_pool import _loop
-        from open_navicat.dal.postgresql_connector import PostgreSQLConnector
+        from open_navicat.drivers.postgresql_connector import PostgreSQLConnector
 
         self.info = pg_conn_info
         self.connector = PostgreSQLConnector(pg_conn_info)

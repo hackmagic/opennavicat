@@ -5,9 +5,9 @@ from __future__ import annotations
 import time
 from typing import Any, Optional
 
-from open_navicat.dal.base_connector import BaseConnector
 from open_navicat.dal.connection_pool import _get_loop as _pool_loop
 from open_navicat.dal.connection_pool import connection_pool
+from open_navicat.drivers.base_connector import BaseConnector
 from open_navicat.models.table_schema import (
     DatabaseInfo,
     TableInfo,

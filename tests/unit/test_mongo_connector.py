@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from open_navicat.dal.mongo_connector import MongoConnector, _python_type_to_str
+from open_navicat.drivers.mongo_connector import MongoConnector, _python_type_to_str
 from open_navicat.models import ConnectionInfo
 
 

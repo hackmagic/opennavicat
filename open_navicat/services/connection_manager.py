@@ -12,12 +12,21 @@ from open_navicat.models.connection import ConnectionInfo
 class ConnectionManager:
     """High-level API for managing database connections."""
 
-    def connect(self, info: ConnectionInfo) -> bool:
-        """Open a connection and persist it locally."""
+    def connect(self, info: ConnectionInfo, *, persist: bool = True) -> bool:
+        """Open a connection and, unless ``persist`` is false, save it locally.
+
+        Ad-hoc targets (e.g. ``conn test <dsn>``) must pass ``persist=False`` so
+        a throwaway connection string never ends up in the user's config.
+        """
         success = connection_pool.open(info)
-        if success:
+        if success and persist:
             local_db.save_connection(info)
         return success
+
+    @property
+    def last_error(self):
+        """Structured :class:`NavicatError` from the most recent failed connect."""
+        return connection_pool.last_error
 
     def disconnect(self, connection_id: str) -> None:
         """Close and remove a connection."""

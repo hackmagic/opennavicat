@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from open_navicat.dal.postgresql_connector import _parse_cmd_tag
+from open_navicat.drivers.postgresql_connector import _parse_cmd_tag
 from open_navicat.models.connection import ConnectionInfo
 
 

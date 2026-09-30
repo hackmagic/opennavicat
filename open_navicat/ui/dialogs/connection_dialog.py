@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from open_navicat.dal.connection_pool import connection_pool
+from open_navicat.drivers.registry import DRIVER_REGISTRY, get_spec, is_file_engine
 from open_navicat.i18n import t
 from open_navicat.models.connection import ConnectionInfo
 
@@ -51,11 +52,12 @@ class ConnectionDialog(QDialog):
         general_layout.addRow(t("connection.name"), self._edit_name)
 
         self._combo_engine = QComboBox(self)
-        self._combo_engine.addItem(t("connection.engine_mysql"), "mysql")
-        self._combo_engine.addItem(t("connection.engine_postgresql"), "postgresql")
-        self._combo_engine.addItem(t("connection.engine_sqlite"), "sqlite")
-        self._combo_engine.addItem(t("connection.engine_mongodb"), "mongodb")
-        self._combo_engine.addItem(t("connection.engine_redis"), "redis")
+        # Populated from the driver registry so new engines appear without
+        # touching this dialog.  i18n name when defined, spec label otherwise.
+        for engine, spec in DRIVER_REGISTRY.items():
+            label = t(f"connection.engine_{engine}")
+            # t() echoes the key when untranslated; fall back to the spec label.
+            self._combo_engine.addItem(label if label != f"connection.engine_{engine}" else spec.display_name, engine)
         self._combo_engine.currentIndexChanged.connect(self._on_engine_changed)
         general_layout.addRow(t("connection.engine"), self._combo_engine)
 
@@ -253,27 +255,32 @@ class ConnectionDialog(QDialog):
     @Slot(int)
     def _on_engine_changed(self, _index: int) -> None:
         engine = self._combo_engine.currentData()
-        is_sqlite = engine == "sqlite"
-        is_pg = engine == "postgresql"
-        is_mongo = engine == "mongodb"
-        is_redis = engine == "redis"
-        is_nosql = is_mongo or is_redis
+        spec = get_spec(engine)
+        is_file = is_file_engine(engine)
+        # Legacy layout: SQLite keeps the file path in `host`; newer file
+        # engines (duckdb) use the database field instead.
+        is_legacy_file = engine == "sqlite"
+        is_nosql = engine in ("mongodb", "redis")
 
-        # SQLite: host = file path, disable port/user/password
-        self._edit_host.setPlaceholderText("Path to .db file" if is_sqlite else "")
-        self._spin_port.setEnabled(not is_sqlite)
-        self._edit_user.setEnabled(not is_sqlite)
-        self._edit_password.setEnabled(not is_sqlite)
-        self._edit_database.setEnabled(not is_sqlite)
-        self._edit_charset.setEnabled(not is_sqlite and not is_nosql)
+        if is_legacy_file:
+            self._edit_host.setPlaceholderText("Path to .db file")
+        elif is_file:
+            self._edit_host.setPlaceholderText("")
+            self._edit_database.setPlaceholderText("Path to database file, or :memory:")
+        else:
+            self._edit_host.setPlaceholderText("")
+            self._edit_database.setPlaceholderText("(leave empty to browse)")
 
-        if not is_sqlite:
-            if is_mongo:
-                self._spin_port.setValue(27017)
-            elif is_redis:
-                self._spin_port.setValue(6379)
-            else:
-                self._spin_port.setValue(5432 if is_pg else 3306)
+        self._edit_host.setEnabled(not is_legacy_file)
+        self._spin_port.setEnabled(not is_file)
+        self._edit_user.setEnabled(not is_file)
+        self._edit_password.setEnabled(not is_file)
+        # Database carries the file path for file engines.
+        self._edit_database.setEnabled(True)
+        self._edit_charset.setEnabled(not is_file and not is_nosql)
+
+        if not is_file and spec.default_port:
+            self._spin_port.setValue(spec.default_port)
 
     @Slot()
     def _test_connection(self) -> None:
@@ -287,7 +294,10 @@ class ConnectionDialog(QDialog):
             connection_pool.close(info.id)
             QMessageBox.information(self, "Success", t("connection.success"))
         else:
-            QMessageBox.warning(self, "Failed", t("connection.failed"))
+            # The pool records a structured NavicatError (code + redacted detail).
+            err = connection_pool.last_error
+            msg = err.render() if err is not None else t("connection.failed")
+            QMessageBox.warning(self, "Failed", msg)
 
         self._btn_test.setText(t("connection.test"))
         self._btn_test.setEnabled(True)
@@ -295,5 +305,9 @@ class ConnectionDialog(QDialog):
     @Slot()
     def _copy_uri(self) -> None:
         info = self.connection_info()
-        uri = f"{info.engine}://{info.user}:{info.password}@{info.host}:{info.port}/{info.database}"
+        # Render through the DSN module so file engines and credential
+        # encoding behave like `conn test <dsn>`.
+        from open_navicat.drivers.dsn import info_to_dsn
+
+        uri = info_to_dsn(info, include_password=True)
         QGuiApplication.clipboard().setText(uri)

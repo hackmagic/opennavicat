@@ -12,7 +12,7 @@ class TestMySQLConnector:
     @pytest.fixture(autouse=True)
     def setup(self, mysql_conn_info):
         from open_navicat.dal.connection_pool import _loop
-        from open_navicat.dal.mysql_connector import MySQLConnector
+        from open_navicat.drivers.mysql_connector import MySQLConnector
 
         self.info = mysql_conn_info
         self.connector = MySQLConnector(mysql_conn_info)
