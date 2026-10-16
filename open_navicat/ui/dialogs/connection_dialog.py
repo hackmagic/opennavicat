@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.drivers.registry import DRIVER_REGISTRY, get_spec, is_file_engine
+from open_navicat.errors import ERR_DRIVER_MISSING
 from open_navicat.i18n import t
 from open_navicat.models.connection import ConnectionInfo
 
@@ -297,6 +298,12 @@ class ConnectionDialog(QDialog):
             # The pool records a structured NavicatError (code + redacted detail).
             err = connection_pool.last_error
             msg = err.render() if err is not None else t("connection.failed")
+            if err is not None and err.code == ERR_DRIVER_MISSING:
+                # "Could not connect to the server." is actively misleading when
+                # the real problem is that this build shipped without the driver.
+                spec = get_spec(info.engine)
+                hint = spec.install_hint or t("connection.driver_missing_hint")
+                msg = f"{err.render()}\n\n{hint}"
             QMessageBox.warning(self, "Failed", msg)
 
         self._btn_test.setText(t("connection.test"))

@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
 
 from open_navicat.config import config
 from open_navicat.i18n import set_language, t
-from open_navicat.ui.themes import list_themes
+from open_navicat.ui.themes import list_themes, resolve_theme
 
 
 def _color_button(color_hex: str) -> QPushButton:
@@ -512,7 +512,10 @@ class SettingsDialog(QDialog):
                 self._combo_lang.setCurrentIndex(i)
                 break
 
-        theme = config.get("theme", "acrylic")
+        # Resolve legacy aliases ("light", "acrylic", ...) onto a registered
+        # theme so the combo shows what is actually in effect.  Leaving the
+        # selection untouched would silently rewrite the user's theme on save.
+        theme = resolve_theme(config.get("theme")) or self._combo_theme.itemData(0)
         for i in range(self._combo_theme.count()):
             if self._combo_theme.itemData(i) == theme:
                 self._combo_theme.setCurrentIndex(i)
@@ -638,7 +641,7 @@ class SettingsDialog(QDialog):
         cfg = self._collect_config()
         old_lang = config.get("language", "zh_CN")
         lang_changed = cfg["language"] != old_lang
-        theme_changed = cfg["theme"] != config.get("theme")
+        theme_changed = cfg["theme"] != (resolve_theme(config.get("theme")) or config.get("theme"))
         ai_enabled_changed = cfg["ai.enabled"] != config.get("ai.enabled", False)
 
         for key, val in cfg.items():

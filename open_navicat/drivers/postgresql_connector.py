@@ -28,6 +28,7 @@ def _parse_cmd_tag(tag: str) -> int:
 
 class PostgreSQLConnector(BaseConnector):
     def __init__(self, info: ConnectionInfo) -> None:
+        super().__init__()
         self._info = info
         self._pool: asyncpg.Pool | None = None
 
@@ -116,6 +117,23 @@ class PostgreSQLConnector(BaseConnector):
             "SELECT specific_name, routine_type FROM information_schema.routines "
             "WHERE specific_schema = 'public' ORDER BY specific_name"
         )
+        try:
+            rows = await self._fetch_all(sql)
+            return [(str(r[0]), str(r[1])) for r in rows]
+        except Exception:
+            return []
+
+    async def list_triggers(self, database: str) -> list[tuple[str, str]]:
+        """User-defined triggers; internal constraint triggers are excluded."""
+        _ = database
+        sql = """
+            SELECT t.tgname, c.relname
+            FROM pg_trigger t
+            JOIN pg_class c ON t.tgrelid = c.oid
+            JOIN pg_namespace n ON c.relnamespace = n.oid
+            WHERE NOT t.tgisinternal AND n.nspname = 'public'
+            ORDER BY t.tgname
+        """
         try:
             rows = await self._fetch_all(sql)
             return [(str(r[0]), str(r[1])) for r in rows]

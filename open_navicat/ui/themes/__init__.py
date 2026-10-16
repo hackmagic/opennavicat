@@ -34,6 +34,60 @@ _THEME_MODULES: dict[str, str] = {
     "pro-light": "open_navicat.ui.themes.pro_light",
 }
 
+#: Theme used when nothing is configured, and the first fallback when the
+#: configured name cannot be resolved.
+DEFAULT_THEME = "pro-dark"
+
+#: Names that used to be valid, or that users reasonably type, mapped onto the
+#: themes this build actually registers.  AppConfig shipped "light" as its
+#: default for several releases and the retired "acrylic" variant lived in the
+#: same slot, so both must keep resolving instead of crashing startup.
+THEME_ALIASES: dict[str, str] = {
+    "light": "pro-light",
+    "dark": "pro-dark",
+    "acrylic": "pro-dark",
+    "aero": "pro-dark",
+    "mica": "pro-dark",
+    "pro_light": "pro-light",
+    "pro_dark": "pro-dark",
+    "prolight": "pro-light",
+    "prodark": "pro-dark",
+}
+
+
+def resolve_theme(name: str | None) -> str | None:
+    """Return the registered key that *name* refers to, or ``None``.
+
+    Accepts an exact registry key, a case/punctuation variant of one, or a legacy
+    alias such as ``"light"``.  Never raises: callers decide what to do with an
+    unresolvable name, which is what keeps a stale ``settings.json`` from taking
+    the whole application down at startup.
+    """
+    _ensure_themes_loaded()
+    if not name:
+        return None
+    key = str(name).strip()
+    if not key:
+        return None
+    if key in theme_map:
+        return key
+    folded = key.lower().replace("-", "_")
+    for candidate in (key.lower(), folded, folded.replace("_", "")):
+        alias = THEME_ALIASES.get(candidate)
+        if alias and alias in theme_map:
+            return alias
+    return None
+
+
+def fallback_theme() -> str:
+    """Name of the theme to use when the requested one cannot be resolved."""
+    _ensure_themes_loaded()
+    if DEFAULT_THEME in theme_map:
+        return DEFAULT_THEME
+    if theme_map:
+        return next(iter(theme_map))
+    raise RuntimeError("no themes could be loaded; the installation is incomplete")
+
 
 def _ensure_themes_loaded() -> None:
     """Import all known theme modules so their decorators populate theme_map."""
@@ -88,16 +142,25 @@ class Theme(ABC):
 
 # ── Public API ──────────────────────────────────────────────────────────────
 
-def apply_theme(name: str, app: QApplication, window: QMainWindow) -> None:
-    """Look up *name* in the registry and apply it (QSS + window setup)."""
-    _ensure_themes_loaded()
-    cls = theme_map.get(name)
-    if cls is None:
-        available = ", ".join(theme_map)
-        logger.warning("Unknown theme '%s'. Available: %s. Falling back to 'acrylic'.", name, available)
-        cls = theme_map.get("acrylic")
-    if cls is None:
-        raise RuntimeError(f"No theme found (name={name!r}, registry={list(theme_map)})")
+def apply_theme(name: str, app: QApplication, window: QMainWindow) -> str:
+    """Look up *name* in the registry and apply it (QSS + window setup).
+
+    Returns the theme key that was actually applied.  An unknown name — a stale
+    ``settings.json``, a theme retired between releases — degrades to
+    :func:`fallback_theme` with a warning instead of raising, because this runs
+    inside ``MainWindow.__init__`` where an exception leaves the user with no
+    window at all.
+    """
+    key = resolve_theme(name)
+    if key is None:
+        key = fallback_theme()
+        logger.warning(
+            "Unknown theme %r. Available: %s. Falling back to %r.",
+            name,
+            ", ".join(sorted(theme_map)),
+            key,
+        )
+    cls = theme_map[key]
     theme = cls()
     # 1. Clear old stylesheet first so Qt doesn't merge old+new
     app.setStyleSheet("")
@@ -108,6 +171,7 @@ def apply_theme(name: str, app: QApplication, window: QMainWindow) -> None:
     app.processEvents()
     refresh_all_widgets(app)
     logger.info("Applied theme: %s", cls.name)
+    return cls.name
 
 
 def apply_theme_window(name: str, window: QMainWindow) -> None:
@@ -116,11 +180,9 @@ def apply_theme_window(name: str, window: QMainWindow) -> None:
     This is called from MainWindow.showEvent when the window handle is
     guaranteed to be valid — pywinstyles calls require a valid HWND.
     """
-    _ensure_themes_loaded()
-    cls = theme_map.get(name)
-    if cls is None:
-        cls = theme_map.get("acrylic")
-    if cls is None:
+    key = resolve_theme(name) or fallback_theme()
+    cls = theme_map.get(key)
+    if cls is None:  # pragma: no cover - fallback_theme guarantees a hit
         return
     theme = cls()
     theme.setup_window(window)

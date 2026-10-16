@@ -42,7 +42,9 @@ jobs:
             ${{ runner.os }}-poetry-
 
       - name: Install dependencies
-        run: poetry install
+        # Include the optional extras so the connector tests exercise the real
+        # drivers instead of skipping every one of them.
+        run: poetry install --all-extras
 
       - name: Run linter
         run: poetry run ruff check open_navicat/

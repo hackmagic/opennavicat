@@ -54,7 +54,10 @@ class AppConfig:
     def _defaults() -> dict[str, Any]:
         return {
             "language": "en_US",
-            "theme": "light",
+            #: Must name a theme the UI actually registers (see
+            #: open_navicat.ui.themes.THEME_ALIASES for the legacy spellings
+            #: that keep working).
+            "theme": "pro-dark",
             "editor": {
                 "font_size": 13,
                 "font_family": "Consolas",
@@ -116,7 +119,7 @@ class AppConfig:
 
     @property
     def theme(self) -> str:
-        return self.get("theme", "light")
+        return self.get("theme", "pro-dark")
 
     @theme.setter
     def theme(self, t: str) -> None:

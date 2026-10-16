@@ -58,10 +58,26 @@ for mod in NEEDED:
         pass
 
 all_hidden.update([
+    "open_navicat.ui.themes",
     "open_navicat.ui.themes.pro_dark",
     "open_navicat.ui.themes.pro_light",
+    "open_navicat.ui.themes.acrylic",
     "shiboken6", "inspect",
     "PySide6.support.deprecated",
+    # Every engine driver, including the optional ones: the registry imports
+    # them lazily so PyInstaller would otherwise drop them from the binary and
+    # the user would meet a connect failure with no driver behind it.
+    "open_navicat.drivers", "open_navicat.drivers.registry",
+    "open_navicat.drivers.base_connector",
+    "open_navicat.drivers.mysql_connector",
+    "open_navicat.drivers.postgresql_connector",
+    "open_navicat.drivers.sqlite_connector",
+    "open_navicat.drivers.duckdb_connector",
+    "open_navicat.drivers.mongo_connector",
+    "open_navicat.drivers.redis_connector",
+    "open_navicat.drivers.sqlserver_connector",
+    "open_navicat.drivers.clickhouse_connector",
+    "open_navicat.drivers.oracle_connector",
 ])
 
 a = Analysis(

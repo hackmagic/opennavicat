@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from open_navicat.drivers.mongo_connector import MongoConnector, _python_type_to_str
+from open_navicat.errors import DriverNotFoundError
 from open_navicat.models import ConnectionInfo
 
 
@@ -46,11 +47,13 @@ class TestPythonTypeToStr:
 
 
 class TestMongoConnector:
-    async def test_connect_fails_without_motor(self, conn_info) -> None:
+    async def test_connect_without_motor_is_a_typed_driver_error(self, conn_info) -> None:
+        # Returning False hid the reason behind "Could not connect to the server.";
+        # a missing driver must raise DriverNotFoundError (AGENTS.md contract).
         c = MongoConnector(conn_info)
         with patch.dict("sys.modules", {"motor": None, "motor.motor_asyncio": None}):
-            result = await c.connect()
-            assert result is False
+            with pytest.raises(DriverNotFoundError):
+                await c.connect()
 
     async def test_disconnect_when_not_connected(self, conn_info) -> None:
         c = MongoConnector(conn_info)

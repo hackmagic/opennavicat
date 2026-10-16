@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import time
 
-import aiomysql
+try:
+    import aiomysql
+except ImportError:
+    aiomysql = None  # type: ignore[assignment]
 
 from open_navicat.drivers.base_connector import BaseConnector
+from open_navicat.errors import DriverNotFoundError
 from open_navicat.models import (
     ColumnInfo,
     ColumnMeta,
@@ -23,12 +27,18 @@ class MySQLConnector(BaseConnector):
     """Async MySQL connector backed by aiomysql."""
 
     def __init__(self, info: ConnectionInfo) -> None:
+        super().__init__()
         self._info = info
         self._pool: aiomysql.Pool | None = None
 
     # ---- connection lifecycle ----
 
     async def connect(self) -> bool:
+        if aiomysql is None:
+            raise DriverNotFoundError(
+                "MySQL driver (aiomysql) is not installed; "
+                "reinstall OpenNavicat to restore it"
+            )
         try:
             self._pool = await aiomysql.create_pool(
                 host=self._info.host,
@@ -117,6 +127,18 @@ class MySQLConnector(BaseConnector):
         try:
             rows = await self._fetch_all(sql, (database,))
             return [(str(r[0]), str(r[1]) if len(r) > 1 else "PROCEDURE") for r in rows]
+        except Exception:
+            return []
+
+    async def list_triggers(self, database: str) -> list[tuple[str, str]]:
+        """Trigger name paired with the table it fires on."""
+        sql = (
+            "SELECT TRIGGER_NAME, EVENT_OBJECT_TABLE FROM information_schema.TRIGGERS "
+            "WHERE TRIGGER_SCHEMA = %s ORDER BY TRIGGER_NAME"
+        )
+        try:
+            rows = await self._fetch_all(sql, (database,))
+            return [(str(r[0]), str(r[1])) for r in rows]
         except Exception:
             return []
 

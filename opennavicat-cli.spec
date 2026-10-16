@@ -48,10 +48,29 @@ a = Analysis(
         "open_navicat.cli", "open_navicat.cli.app",
         "open_navicat.dal", "open_navicat.dal.base_connector",
         "open_navicat.dal.connection_pool", "open_navicat.dal.local_config",
-        "open_navicat.dal.mysql_connector", "open_navicat.dal.postgresql_connector",
-        "open_navicat.dal.sqlite_connector", "open_navicat.dal.ssh_tunnel",
+        "open_navicat.dal.ssh_tunnel",
+        # The connectors live in open_navicat.drivers; the dal.* modules above
+        # are compatibility shims.  They are imported lazily through the
+        # registry (get_connector_class), so PyInstaller cannot discover them by
+        # static analysis — every engine must be listed here by hand.
+        "open_navicat.drivers", "open_navicat.drivers.registry",
+        "open_navicat.drivers.base_connector",
+        "open_navicat.drivers.mysql_connector",
+        "open_navicat.drivers.postgresql_connector",
+        "open_navicat.drivers.sqlite_connector",
+        "open_navicat.drivers.duckdb_connector",
+        "open_navicat.drivers.mongo_connector",
+        "open_navicat.drivers.redis_connector",
+        "open_navicat.drivers.sqlserver_connector",
+        "open_navicat.drivers.clickhouse_connector",
+        "open_navicat.drivers.oracle_connector",
         "open_navicat.models", "open_navicat.services",
         "open_navicat.config", "open_navicat.utils",
+        # The third-party driver packages.  They are imported inside connector
+        # functions, so name them explicitly or the shipped binary is missing
+        # the engine the user expects to work.
+        "aiomysql", "asyncpg", "aiosqlite", "duckdb", "motor", "redis",
+        "pyodbc", "clickhouse_connect", "oracledb",
     ],
     excludes=[
         "PySide6", "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",

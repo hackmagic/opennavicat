@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from open_navicat.drivers.base_connector import BaseConnector
+from open_navicat.errors import DriverNotFoundError
 from open_navicat.models import (
     ColumnInfo,
     ColumnMeta,
@@ -41,6 +42,7 @@ class MongoConnector(BaseConnector):
     """Async MongoDB connector using motor."""
 
     def __init__(self, info: ConnectionInfo) -> None:
+        super().__init__()
         self._info = info
         self._client: Any = None  # motor.motor_asyncio.AsyncIOMotorClient
 
@@ -48,8 +50,11 @@ class MongoConnector(BaseConnector):
         try:
             import motor.motor_asyncio as _motor  # noqa: F811
         except ImportError as exc:
-            self._last_error = exc
-            return False
+            raise DriverNotFoundError(
+                "MongoDB driver (motor) is not installed; "
+                "install with: pip install open-navicat[mongodb]",
+                from_exc=exc,
+            ) from exc
         try:
             auth = ""
             if self._info.user:

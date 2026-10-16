@@ -26,10 +26,12 @@ from PySide6.QtWidgets import (
 
 from open_navicat import __app_name__, __version__
 from open_navicat.config import config
+from open_navicat.drivers.registry import get_spec
+from open_navicat.errors import ERR_DRIVER_MISSING
 from open_navicat.i18n import t
 from open_navicat.ui.dialogs.connection_dialog import ConnectionDialog
 from open_navicat.ui.dialogs.settings_dialog import SettingsDialog
-from open_navicat.ui.themes import apply_theme
+from open_navicat.ui.themes import DEFAULT_THEME, apply_theme
 from open_navicat.ui.widgets import (
     AICopilotSidebar,
     BackupPanel,
@@ -50,9 +52,21 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        # Apply the active theme (pro-dark by default)
-        theme_name = config.get("theme", "pro-dark")
-        apply_theme(theme_name, QApplication.instance(), self)
+        # Apply the active theme.  A stale or unknown value in settings.json —
+        # and even a theme module that fails to load — must never stop the
+        # window from being created, so this is the one place that stays
+        # defensive: without a MainWindow the user has no way to fix anything.
+        theme_name = config.get("theme", DEFAULT_THEME)
+        try:
+            applied = apply_theme(theme_name, QApplication.instance(), self)
+            if applied != theme_name:
+                logger.warning(
+                    "Theme %r is not available in this build; applied %r instead.",
+                    theme_name,
+                    applied,
+                )
+        except Exception:
+            logger.exception("Failed to apply theme %r; continuing with the default style", theme_name)
         self._setup_window()
         self._setup_ui()
         self._restore_geometry()
@@ -602,7 +616,20 @@ class MainWindow(QMainWindow):
                 conn_name = info.name or info.host
                 self.record_cli("Open Connection", f"opennavicat conn open {conn_name}")
             else:
-                QMessageBox.warning(self, t("connection.conn_failed"), t("prompt.conn_failed", host=info.host))
+                # The pool records a structured NavicatError (code + redacted
+                # detail).  Showing only the generic prompt is what made
+                # "Could not connect to the server." impossible to act on.
+                err = connection_pool.last_error
+                detail = t("prompt.conn_failed", host=info.host)
+                if err is not None:
+                    detail = f"{detail}\n\n{err.render()}"
+                    if err.code == ERR_DRIVER_MISSING:
+                        # Without this the user is told the server is at fault
+                        # when the truth is that the build shipped no driver.
+                        spec = get_spec(info.engine)
+                        hint = spec.install_hint or t("connection.driver_missing_hint")
+                        detail = f"{detail}\n\n{hint}"
+                QMessageBox.warning(self, t("connection.conn_failed"), detail)
 
     @Slot()
     def _new_query(self) -> None:
@@ -1260,4 +1287,4 @@ class MainWindow(QMainWindow):
         # Window handle is now valid — re-apply the current theme's window setup
         # (acrylic/blur/title-bar colour) which may have failed in __init__
         from open_navicat.ui.themes import apply_theme_window
-        apply_theme_window(config.get("theme", "pro-dark"), self)
+        apply_theme_window(config.get("theme", DEFAULT_THEME), self)

@@ -20,6 +20,7 @@ from open_navicat.errors import (
     DatabaseConnectionError,
     NavicatError,
     SSHTunnelError,
+    redact,
 )
 from open_navicat.models.connection import ConnectionInfo
 
@@ -52,7 +53,7 @@ class ConnectionPool:
 
     def _fail(self, err: NavicatError, name: str) -> bool:
         self.last_error = err
-        logger.error("ConnectionPool.open(%s) FAILED %s", name, err.render())
+        logger.error("ConnectionPool.open(%s) FAILED %s", redact(name), err.render())
         return False
 
     def _engine_spec(self, info: ConnectionInfo):
@@ -64,9 +65,11 @@ class ConnectionPool:
     def open(self, info: ConnectionInfo) -> bool:
         """Open a connection, optionally via SSH tunnel, and cache the connector."""
         self.last_error = None
+        # `info.name` may be a DSN the user typed (``conn test <dsn>``), so it
+        # can carry a password; redact it before it reaches the log.
         logger.info(
             "ConnectionPool.open(%s) id=%s host=%s:%d user=%s db=%s",
-            info.name,
+            redact(info.name),
             info.id,
             info.host,
             info.port,
@@ -132,7 +135,13 @@ class ConnectionPool:
             ssl_key=info.ssl_key,
         )
 
-        connector = connector_cls(conn_info)
+        try:
+            connector = connector_cls(conn_info)
+        except Exception as exc:  # noqa: BLE001 - a broken connector must not crash the pool
+            return self._fail(
+                NavicatError.from_exception(exc, source=SOURCE_CONNECTION, stage=STAGE_CONNECT),
+                info.name,
+            )
         timeout = max(1, int(info.connect_timeout or CONNECT_TIMEOUT_FALLBACK))
         try:
             success = _get_loop().run_until_complete(asyncio.wait_for(connector.connect(), timeout))
@@ -160,7 +169,7 @@ class ConnectionPool:
                 self._tunnels[info.id] = tunnel
             logger.info(
                 "ConnectionPool.open(%s) SUCCESS — connectors cache has %d entry(s), keys=%s",
-                info.name,
+                redact(info.name),
                 len(self._connectors),
                 list(self._connectors.keys()),
             )

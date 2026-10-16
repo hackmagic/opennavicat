@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from open_navicat.drivers.base_connector import BaseConnector
+from open_navicat.errors import DriverNotFoundError
 from open_navicat.models import (
     ColumnInfo,
     ColumnMeta,
@@ -18,10 +19,66 @@ from open_navicat.models import (
 # ponytail: redis is optional — import guarded, fails at connect() if missing
 
 
+def _split_command(sql: str) -> list[str]:
+    """Split a Redis command line, honouring double-quoted arguments.
+
+    ``SET note "see you friday"`` must reach the server as three arguments, with
+    the last one intact - a plain ``str.split()`` would break it into four.
+    """
+    tokens: list[str] = []
+    current: list[str] = []
+    in_quotes = False
+    for char in sql.strip():
+        if char == '"':
+            in_quotes = not in_quotes
+            continue
+        if char.isspace() and not in_quotes:
+            if current:
+                tokens.append("".join(current))
+                current = []
+            continue
+        current.append(char)
+    if current:
+        tokens.append("".join(current))
+    return tokens
+
+
+def _shape_reply(reply: Any) -> tuple[list[list[Any]], list[ColumnMeta]]:
+    """Turn a raw Redis reply into ``(rows, columns)`` for the grid.
+
+    Redis replies come in a handful of shapes and the driver should not care
+    which: scalars, byte strings, lists (LRANGE, SMEMBERS, ...) and maps
+    (HGETALL).  Bytes are decoded because a result grid showing ``b"alpha"`` is
+    not what anyone wants.
+    """
+    if reply is None:
+        return [], []
+
+    def decode(value: Any) -> Any:
+        if isinstance(value, (bytes, bytearray)):
+            return bytes(value).decode("utf-8", errors="replace")
+        return value
+
+    if isinstance(reply, dict):
+        rows = [[decode(k), decode(v)] for k, v in reply.items()]
+        return rows, [
+            ColumnMeta(name="field", data_type="string"),
+            ColumnMeta(name="value", data_type="string"),
+        ]
+
+    if isinstance(reply, (list, tuple, set)):
+        items = list(reply)
+        rows = [[decode(v)] for v in items]
+        return rows, [ColumnMeta(name="value", data_type="string")]
+
+    return [[decode(reply)]], [ColumnMeta(name="value", data_type="string")]
+
+
 class RedisConnector(BaseConnector):
     """Async Redis connector using redis.asyncio."""
 
     def __init__(self, info: ConnectionInfo) -> None:
+        super().__init__()
         self._info = info
         self._redis: Any = None  # redis.asyncio.Redis
         self._db_index: int = 0
@@ -30,8 +87,11 @@ class RedisConnector(BaseConnector):
         try:
             import redis.asyncio as _aioredis  # noqa: F811
         except ImportError as exc:
-            self._last_error = exc
-            return False
+            raise DriverNotFoundError(
+                "Redis driver (redis) is not installed; "
+                "install with: pip install open-navicat[redis]",
+                from_exc=exc,
+            ) from exc
         try:
             # Parse database index from info.database (default 0)
             try:
@@ -50,11 +110,16 @@ class RedisConnector(BaseConnector):
                 kwargs["password"] = self._info.password
             if self._info.user:
                 kwargs["username"] = self._info.user
-            self._redis = _aioredis.Redis(**kwargs)
-            await self._redis.ping()
+            client = _aioredis.Redis(**kwargs)
+            await client.ping()
+            # Only publish the client once it has answered: leaving a half-built
+            # client on self makes is_connected() report True for a dead
+            # connection and leaks the socket pool.
+            self._redis = client
             return True
         except Exception as exc:
             self._last_error = exc
+            self._redis = None
             return False
 
     async def disconnect(self) -> None:
@@ -139,7 +204,7 @@ class RedisConnector(BaseConnector):
             return QueryResult(success=False, error_message="Not connected")
         start = time.monotonic()
         try:
-            parts = sql.strip().split()
+            parts = _split_command(sql)
             if not parts:
                 return QueryResult(success=False, error_message="Empty command")
             cmd = parts[0].upper()
@@ -225,9 +290,19 @@ class RedisConnector(BaseConnector):
                 elapsed = (time.monotonic() - start) * 1000
                 return QueryResult(success=True, row_count=1, execution_time_ms=elapsed)
             else:
+                # Not one of the shaped commands above.  Forward it rather than
+                # refusing: Redis has hundreds of commands and the client already
+                # knows how to speak them, so the driver should not be the
+                # thing that decides which ones are allowed.
+                reply = await self._redis.execute_command(cmd, *args)
+                elapsed = (time.monotonic() - start) * 1000
+                rows, columns = _shape_reply(reply)
                 return QueryResult(
-                    success=False,
-                    error_message=f"Unsupported Redis command: {cmd}. Supported: GET, SET, DEL, KEYS, DBSIZE, INFO, SELECT, FLUSHDB, PING",
+                    success=True,
+                    columns=columns,
+                    rows=rows,
+                    row_count=len(rows),
+                    execution_time_ms=elapsed,
                 )
         except Exception as e:
             elapsed = (time.monotonic() - start) * 1000

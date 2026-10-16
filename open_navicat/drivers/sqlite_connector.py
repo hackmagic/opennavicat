@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import time
+from decimal import Decimal
 
 import aiosqlite
+
+#: Values of ``ConnectionInfo.host`` that mean "no file path given".
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1", ""})
 
 from open_navicat.drivers.base_connector import BaseConnector
 from open_navicat.models import (
@@ -19,16 +24,53 @@ from open_navicat.models import (
 )
 
 
+def _adapt_params(params) -> tuple:
+    """Adapt values to sqlite3's binding types.
+
+    sqlite3 accepts only ``None``/int/float/str/bytes.  The migration layer
+    deliberately produces driver-agnostic values (``Decimal`` for NUMERIC
+    columns, native objects for JSON), so each connector must adapt them:
+    without this, ``executemany`` raises ``type 'decimal.Decimal' is not
+    supported`` and every numeric import batch fails.
+    """
+    if not params:
+        return tuple(params or ())
+    out = []
+    for value in params:
+        if isinstance(value, Decimal):
+            out.append(float(value))
+        elif isinstance(value, (dict, list)):
+            out.append(json.dumps(value, ensure_ascii=False, default=str))
+        else:
+            out.append(value)
+    return tuple(out)
+
+
 class SQLiteConnector(BaseConnector):
     """Async SQLite connector backed by aiosqlite."""
 
     def __init__(self, info: ConnectionInfo) -> None:
+        super().__init__()
         self._info = info
         self._db: aiosqlite.Connection | None = None
         # Historically the file path lived in `host`; `database` is the natural
         # field and is what the DSN parser fills in.  Accept both so old saved
         # connections keep working.
-        self._db_path: str = info.host or info.database
+        # Which field holds the file path?
+        #   * `database` is the documented home for it (and what the DSN parser
+        #     fills in), so it wins whenever it is set.
+        #   * older saved profiles kept it in `host`.  ConnectionInfo.host
+        #     defaults to "127.0.0.1", so a real path is only recognisable by
+        #     looking like one - otherwise every legacy profile would resolve to
+        #     "127.0.0.1" and quietly open an in-memory database instead.
+        if info.database:
+            self._db_path = info.database
+        elif info.host and info.host not in _LOOPBACK_HOSTS:
+            self._db_path = info.host
+        else:
+            # No file given at all: an in-memory database, not a file literally
+            # named after the loopback address.
+            self._db_path = ":memory:"
 
     # ---- connection lifecycle ----
 
@@ -83,6 +125,14 @@ class SQLiteConnector(BaseConnector):
         # SQLite has no stored procedures/functions
         return []
 
+    async def list_triggers(self, database: str) -> list[tuple[str, str]]:
+        """Triggers come from sqlite_master, the only catalog SQLite has."""
+        _ = database
+        rows = await self._fetch_all(
+            "SELECT name, tbl_name FROM sqlite_master WHERE type = 'trigger' ORDER BY name"
+        )
+        return [(str(r[0]), str(r[1])) for r in rows]
+
     async def get_table_info(self, database: str, table: str) -> TableInfo:
         # Columns
         rows = await self._fetch_all(f"PRAGMA table_info(`{table}`)")
@@ -93,9 +143,9 @@ class SQLiteConnector(BaseConnector):
                     name=str(r[1]),
                     data_type=str(r[2]),
                     nullable=not r[3],
-                    default_value=str(r[4]) if r[4] is not None else None,
-                    is_primary=bool(r[5]),
-                    auto_increment=False,  # SQLite auto_increment is via INTEGER PRIMARY KEY
+                    default=str(r[4]) if r[4] is not None else None,
+                    is_primary_key=bool(r[5]),
+                    is_auto_increment=False,  # SQLite auto_increment is via INTEGER PRIMARY KEY
                     comment="",
                     ordinal_position=r[0] + 1,
                 )
@@ -125,9 +175,9 @@ class SQLiteConnector(BaseConnector):
             foreign_keys.append(
                 ForeignKeyInfo(
                     name=f"fk_{table}_{fk_r[3]}",
-                    columns=[str(fk_r[3])],
+                    column=str(fk_r[3]),
                     ref_table=str(fk_r[2]),
-                    ref_columns=[str(fk_r[4])],
+                    ref_column=str(fk_r[4]),
                     on_update=str(fk_r[5]) if fk_r[5] else "NO ACTION",
                     on_delete=str(fk_r[6]) if fk_r[6] else "NO ACTION",
                 )
@@ -142,6 +192,7 @@ class SQLiteConnector(BaseConnector):
 
         return TableInfo(
             name=table,
+            database=database,
             columns=columns,
             indexes=indexes,
             foreign_keys=foreign_keys,
@@ -169,7 +220,7 @@ class SQLiteConnector(BaseConnector):
             )
 
             if is_select:
-                cursor = await self._db.execute(sql, params or ())
+                cursor = await self._db.execute(sql, _adapt_params(params))
                 rows = await cursor.fetchall()
                 columns = []
                 if cursor.description:
@@ -189,10 +240,9 @@ class SQLiteConnector(BaseConnector):
                     rows=[tuple(r) for r in rows],
                     row_count=len(rows),
                     execution_time_ms=elapsed,
-                    is_select=True,
                 )
             else:
-                cursor = await self._db.execute(sql, params or ())
+                cursor = await self._db.execute(sql, _adapt_params(params))
                 await self._db.commit()
                 elapsed = (time.monotonic() - start) * 1000
                 return QueryResult(
@@ -200,7 +250,6 @@ class SQLiteConnector(BaseConnector):
                     affected_rows=cursor.rowcount,
                     insert_id=cursor.lastrowid,
                     execution_time_ms=elapsed,
-                    is_select=False,
                 )
         except Exception as e:
             elapsed = (time.monotonic() - start) * 1000
@@ -213,7 +262,7 @@ class SQLiteConnector(BaseConnector):
     async def execute_many(self, sql: str, params_list: list[tuple]) -> int:
         if not self._db:
             return 0
-        cursor = await self._db.executemany(sql, params_list)
+        cursor = await self._db.executemany(sql, [_adapt_params(p) for p in params_list])
         await self._db.commit()
         return cursor.rowcount
 
