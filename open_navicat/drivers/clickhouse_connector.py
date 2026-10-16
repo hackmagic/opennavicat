@@ -130,9 +130,7 @@ class ClickHouseConnector(BaseConnector):
                 "install with: pip install open-navicat[clickhouse]"
             )
         try:
-            self._client = await self._run(
-                clickhouse_connect.get_client, **self._client_kwargs()
-            )
+            self._client = await self._run(clickhouse_connect.get_client, **self._client_kwargs())
             return True
         except Exception as exc:
             self._last_error = exc

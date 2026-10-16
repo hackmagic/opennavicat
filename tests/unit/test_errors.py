@@ -39,6 +39,21 @@ class TestRedaction:
     def test_masks_bearer_token(self) -> None:
         assert "bearer ***" in redact("Authorization: bearer abc.def.ghi")
 
+    def test_masks_scheme_less_userinfo(self) -> None:
+        assert redact("okpw:SECRET@h:1/db") == "okpw:***@h:1/db"
+
+    def test_masks_jdbc_url(self) -> None:
+        assert redact("jdbc:postgresql://user:pw@h:5432/db") == (
+            "jdbc:postgresql://user:***@h:5432/db"
+        )
+
+    def test_leaves_bare_user_without_password(self) -> None:
+        assert redact("user@h:1/db") == "user@h:1/db"
+
+    def test_leaves_ordinary_sql(self) -> None:
+        sql = "SELECT id, password FROM users WHERE password IS NOT NULL"
+        assert redact(sql) == sql
+
     def test_empty_and_none(self) -> None:
         assert redact("") == ""
         assert redact(None) == ""

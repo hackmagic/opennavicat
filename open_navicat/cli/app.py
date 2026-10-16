@@ -13,6 +13,7 @@ from open_navicat.cli.cloud_cmd import cloud_app
 from open_navicat.cli.conn_cmd import conn_app
 from open_navicat.cli.data_cmd import data_app
 from open_navicat.cli.init_cmd import init_app
+from open_navicat.cli.plugin_cmd import plugin_app
 from open_navicat.cli.query_cmd import query_app
 from open_navicat.cli.schema_cmd import schema_app
 from open_navicat.cli.snippet_cmd import snippet_app
@@ -30,6 +31,7 @@ app = typer.Typer(
 app.add_typer(init_app, name="init", help="Interactive setup wizard")
 app.add_typer(conn_app, name="conn", help="Connection management")
 app.add_typer(query_app, name="query", help="SQL query execution & natural-language query")
+app.add_typer(plugin_app, name="plugin", help="Plugin install, trust & lifecycle")
 app.add_typer(schema_app, name="schema", help="Database schema management & design")
 app.add_typer(data_app, name="data", help="Data browse, export, import & sync")
 app.add_typer(backup_app, name="backup", help="Backup, restore & scheduling")

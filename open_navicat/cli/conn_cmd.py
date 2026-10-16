@@ -14,7 +14,7 @@ from open_navicat.drivers.registry import (
     normalize_engine,
     supported_engines,
 )
-from open_navicat.errors import ConfigError, NavicatError
+from open_navicat.errors import ConfigError, NavicatError, redact
 from open_navicat.models.connection import ConnectionInfo
 from open_navicat.services.connection_manager import connection_manager
 from open_navicat.utils.output_formatter import format_output
@@ -128,17 +128,32 @@ def _report_connect_failure(context: str) -> None:
 
     ``context`` is a short human label, e.g. "Connection test failed" - it is
     framing, not part of the error contract.
+
+    Two things are sanitised before printing: credentials in any echoed DSN, and
+    the driver traceback, which for HTTP-based drivers (ClickHouse) is long
+    enough to bury the actual cause.  The first line is what matters, so only
+    that is shown unless the message is already short.
     """
     err = connection_manager.last_error
+    console.print(f"[red]Connection failed: {redact(context)}[/red]")
     if err is None:
-        console.print(f"[red]Connection failed: {context}[/red]")
         return
-    console.print(f"[red]Connection failed: {context}[/red]")
-    console.print(f"  [bold red]{err.code}[/bold red] {err.detail}")
+
+    console.print(f"  [bold red]{err.code}[/bold red] {redact(_first_line(err.detail))}")
     console.print(
         f"  [dim]source={err.source}  stage={err.stage}  "
         f"recoverable={err.recoverable}  retryable={err.retryable}[/dim]"
     )
+
+
+def _first_line(detail: str, limit: int = 200) -> str:
+    """The leading line of a driver message, truncated.
+
+    urllib3/requests nest the real cause several layers deep on one line; the
+    socket error at the end of it is what the user needs.
+    """
+    head = str(detail or "").strip().splitlines()[0] if str(detail or "").strip() else ""
+    return head if len(head) <= limit else head[: limit - 3] + "..."
 
 
 @conn_app.command("list")
@@ -521,3 +536,46 @@ def delete_group(
             raise typer.Exit()
     local_db.delete_group(name)
     console.print(f"[green]✓ Group '{name}' deleted.[/green]")
+
+
+@conn_app.command("import-from")
+def import_from_tool(
+    file: str = typer.Argument("", help="DBeaver data-sources.json or Navicat .ncx export"),
+    registry: bool = typer.Option(
+        False, "--registry", "-r", help="Read Navicat connections from the Windows registry"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", "-n", help="Show what would be imported without saving"
+    ),
+) -> None:
+    """Import connections from a DBeaver or Navicat export."""
+    from open_navicat.services.connection_import import (
+        import_file,
+        read_navicat_registry,
+        render_outcomes,
+        save_imported,
+    )
+
+    try:
+        result = read_navicat_registry() if registry else import_file(file)
+    except (OSError, ValueError) as exc:
+        _fail("conn import-from", NavicatError.from_exception(exc))
+        return
+
+    if not result.ok and not result.skipped:
+        console.print(f"[yellow]Nothing found in {result.source}.[/yellow]")
+        raise typer.Exit(1)
+    console.print(result.render())
+
+    outcomes = save_imported(result.connections, dry_run=dry_run)
+    console.print(render_outcomes(outcomes))
+    if dry_run:
+        console.print("[dim]Dry run - nothing was saved.[/dim]")
+    if any(o.status == "failed" for o in outcomes):
+        raise typer.Exit(1)
+    if not dry_run:
+        saved = [o for o in outcomes if o.status == "saved"]
+        console.print(f"[green]✓ {len(saved)} connection(s) imported.[/green]")
+        for outcome in saved:
+            if outcome.connection.note:
+                console.print(f"[yellow]  {outcome.connection.name}: {outcome.connection.note}[/yellow]")

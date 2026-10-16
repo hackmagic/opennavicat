@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, Slot
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -26,6 +27,16 @@ from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.dal.local_config import local_db
 from open_navicat.i18n import t
 from open_navicat.models.connection import ConnectionInfo
+from open_navicat.services.object_catalog import (
+    Catalog,
+    ObjectKind,
+    objects_from_names,
+    objects_from_routines,
+    objects_from_table_info,
+    objects_from_triggers,
+    search_across,
+)
+from open_navicat.sql.quoting import quote_identifier, quote_literal, quote_qualified
 from open_navicat.ui.dialogs.connection_dialog import ConnectionDialog
 
 logger = logging.getLogger("opennavicat.browser")
@@ -40,12 +51,83 @@ def _fmt_bytes(n: int | float) -> str:
     return f"{n:.1f} PB"
 
 
+def _maintenance_sql(engine: str, operation: str, database: str, table: str) -> str | None:
+    """Build the maintenance statement one engine accepts, or ``None``.
+
+    MySQL's CHECK/OPTIMIZE/REPAIR/ANALYZE have no universal equivalents, so each
+    engine gets the statements it actually supports instead of MySQL syntax
+    everywhere (a syntax error on every other engine).
+    """
+    ref = quote_qualified(table, engine, database)
+    if engine in ("mysql", "mariadb"):
+        verb = {
+            "check": "CHECK TABLE",
+            "optimize": "OPTIMIZE TABLE",
+            "repair": "REPAIR TABLE",
+            "analyze": "ANALYZE TABLE",
+        }.get(operation)
+        return f"{verb} {ref}" if verb else None
+    if engine == "postgresql":
+        if operation == "analyze":
+            return f"ANALYZE {ref}"
+        if operation == "vacuum":
+            return f"VACUUM (ANALYZE) {ref}"
+        return None
+    if engine == "sqlite":
+        # ANALYZE/REINDEX take a bare (attached-)schema object name.
+        if operation == "analyze":
+            return f"ANALYZE {quote_identifier(table, engine)}"
+        if operation == "reindex":
+            return f"REINDEX {quote_identifier(table, engine)}"
+        return None
+    if engine == "sqlserver":
+        if operation == "check":
+            # DBCC takes a quoted string, best-effort two-part reference.
+            return f"DBCC CHECKTABLE ('{database}.{table}')"
+        if operation == "analyze":
+            return f"UPDATE STATISTICS {ref}"
+        return None
+    if engine == "clickhouse" and operation == "optimize":
+        return f"OPTIMIZE TABLE {ref}"
+    if engine == "oracle" and operation == "analyze":
+        return f"ANALYZE TABLE {ref} COMPUTE STATISTICS"
+    return None
+
+
+def _maintenance_actions(engine: str) -> list[tuple[str, str]]:
+    """(operation key, i18n label key) pairs this engine actually supports."""
+    if engine in ("mysql", "mariadb"):
+        return [
+            ("check", "browser.check_table"),
+            ("optimize", "browser.optimize_table"),
+            ("repair", "browser.repair_table"),
+            ("analyze", "browser.analyze_table"),
+        ]
+    if engine == "postgresql":
+        return [("analyze", "browser.analyze_table"), ("vacuum", "browser.vacuum_table")]
+    if engine == "sqlite":
+        return [("analyze", "browser.analyze_table"), ("reindex", "browser.reindex_table")]
+    if engine == "sqlserver":
+        return [("check", "browser.check_table"), ("analyze", "browser.analyze_table")]
+    if engine == "clickhouse":
+        return [("optimize", "browser.optimize_table")]
+    if engine == "oracle":
+        return [("analyze", "browser.analyze_table")]
+    return []
+
+
 class ObjectBrowser(QTreeWidget):
     """Tree navigation pane showing all connections and their database objects."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._search_bar = QLineEdit(self)
+        # Object index per (connection, database), filled as databases are
+        # expanded.  The search box reads from it, so a search can reach objects
+        # the user never opened by hand.
+        self._catalogs: dict[tuple[str, str], Catalog] = {}
+        # Results of the last cross-database search, shown as a flat list.
+        self._search_results_item: QTreeWidgetItem | None = None
         self._setup_ui()
         self._load_saved_connections()
 
@@ -83,11 +165,15 @@ class ObjectBrowser(QTreeWidget):
 
         item = QTreeWidgetItem(parent)
         item.setText(0, info.display_name)
-        item.setData(0, Qt.ItemDataRole.UserRole, {
-            "type": "connection",
-            "id": info.id,
-            "info": info,
-        })
+        item.setData(
+            0,
+            Qt.ItemDataRole.UserRole,
+            {
+                "type": "connection",
+                "id": info.id,
+                "info": info,
+            },
+        )
         item.setToolTip(0, info.dsn)
         item.setExpanded(True)
         if info.color:
@@ -99,7 +185,9 @@ class ObjectBrowser(QTreeWidget):
 
         # Persist
         local_db.save_connection(info)
-        logger.info("ObjectBrowser.add_connection: tree item added, childCount=%d", item.childCount())
+        logger.info(
+            "ObjectBrowser.add_connection: tree item added, childCount=%d", item.childCount()
+        )
 
         # Auto-expand to load databases
         self._expand_connection(item)
@@ -142,12 +230,16 @@ class ObjectBrowser(QTreeWidget):
             for fav in favorites:
                 fav_child = QTreeWidgetItem(fav_item)
                 fav_child.setText(0, f"{fav['type']}: {fav['name']}")
-                fav_child.setData(0, Qt.ItemDataRole.UserRole, {
-                    "type": fav["type"],
-                    "id": fav.get("connection_id", ""),
-                    "name": fav["name"],
-                    "database": fav.get("database", ""),
-                })
+                fav_child.setData(
+                    0,
+                    Qt.ItemDataRole.UserRole,
+                    {
+                        "type": fav["type"],
+                        "id": fav.get("connection_id", ""),
+                        "name": fav["name"],
+                        "database": fav.get("database", ""),
+                    },
+                )
 
         # Add group folder items
         for group_name in sorted(groups):
@@ -163,14 +255,20 @@ class ObjectBrowser(QTreeWidget):
         for conn in ungrouped:
             self._create_connection_item(conn, self)
 
-    def _create_connection_item(self, conn: ConnectionInfo, parent: QTreeWidget | QTreeWidgetItem) -> QTreeWidgetItem:
+    def _create_connection_item(
+        self, conn: ConnectionInfo, parent: QTreeWidget | QTreeWidgetItem
+    ) -> QTreeWidgetItem:
         item = QTreeWidgetItem(parent)
         item.setText(0, conn.display_name)
-        item.setData(0, Qt.ItemDataRole.UserRole, {
-            "type": "connection",
-            "id": conn.id,
-            "info": conn,
-        })
+        item.setData(
+            0,
+            Qt.ItemDataRole.UserRole,
+            {
+                "type": "connection",
+                "id": conn.id,
+                "info": conn,
+            },
+        )
         item.setToolTip(0, conn.dsn)
         # Apply connection color
         if conn.color:
@@ -180,11 +278,86 @@ class ObjectBrowser(QTreeWidget):
     # ---- search / filter ----
 
     def _filter_connections(self, text: str) -> None:
-        """Filter tree items by search text."""
-        text = text.strip().lower()
+        """Search objects, falling back to filtering the tree.
+
+        Typing two or more characters searches the object index across every
+        database that has been expanded; anything shorter just filters the tree
+        by name, which is what a single letter is usually for.
+        """
+        query = text.strip()
+        if len(query) >= 2 and self._catalogs:
+            self._show_search_results(query)
+            return
+        self._clear_search_results()
+        lowered = query.lower()
         for i in range(self.topLevelItemCount()):
             item = self.topLevelItem(i)
-            self._apply_filter(item, text)
+            self._apply_filter(item, lowered)
+
+    def _clear_search_results(self) -> None:
+        """Remove the flat results tree, if one is showing."""
+        if self._search_results_item is None:
+            return
+        index = self.indexOfTopLevelItem(self._search_results_item)
+        if index >= 0:
+            self.takeTopLevelItem(index)
+        self._search_results_item = None
+        for i in range(self.topLevelItemCount()):
+            self.topLevelItem(i).setHidden(False)
+
+    def _show_search_results(self, query: str) -> None:
+        """Render matches as a flat list so they are visible without expanding."""
+        found = self.search_objects(query)
+        self._clear_search_results()
+
+        if not found:
+            # Show the miss explicitly: leaving the previous tree up would look
+            # like the search had silently done nothing.
+            root = QTreeWidgetItem(self)
+            root.setText(0, t("browser.search_none", query=query))
+            root.setData(0, Qt.ItemDataRole.UserRole, {"type": "search_root"})
+            self._search_results_item = root
+            for i in range(self.topLevelItemCount()):
+                item = self.topLevelItem(i)
+                if item is not root:
+                    item.setHidden(True)
+            return
+
+        root = QTreeWidgetItem(self)
+        total = sum(len(v) for v in found.values())
+        root.setText(0, t("browser.search_results") + f"  ({total})")
+        root.setData(0, Qt.ItemDataRole.UserRole, {"type": "search_root"})
+        root.setExpanded(True)
+
+        for conn_name, refs in found.items():
+            node = QTreeWidgetItem(root)
+            node.setText(0, conn_name)
+            node.setData(0, Qt.ItemDataRole.UserRole, {"type": "search_group"})
+            for ref in refs:
+                child = QTreeWidgetItem(node)
+                label = ref.qualified_name if ref.database else ref.name
+                if ref.parent:
+                    label += f"  ({ref.parent})"
+                child.setText(0, f"{label}  -  {ref.kind.value}")
+                child.setData(
+                    0,
+                    Qt.ItemDataRole.UserRole,
+                    {
+                        "type": ref.kind.value,
+                        "name": ref.name,
+                        "parent": ref.parent,
+                        "database": ref.database,
+                        "connection_id": ref.connection_id,
+                    },
+                )
+        self._search_results_item = root
+
+        # Hide the normal tree while a result list is showing, so the two do not
+        # interleave into something unreadable.
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            if item is not root:
+                item.setHidden(True)
 
     def _apply_filter(self, item: QTreeWidgetItem, text: str) -> bool:
         """Recursively apply filter, return True if item or any child matches."""
@@ -330,7 +503,9 @@ class ObjectBrowser(QTreeWidget):
             act_save = profile_menu.addAction(t("browser.save_profile"))
             act_save.triggered.connect(lambda: self._save_table_profile(item))
             profile_menu.addSeparator()
-            profiles = local_db.list_profiles(f"{data['connection_id']}/{data['database']}/{data['name']}")
+            profiles = local_db.list_profiles(
+                f"{data['connection_id']}/{data['database']}/{data['name']}"
+            )
             if profiles:
                 for p in profiles:
                     act = profile_menu.addAction(p["name"])
@@ -343,14 +518,11 @@ class ObjectBrowser(QTreeWidget):
             act_shortcut.triggered.connect(lambda: self._create_table_shortcut(item))
             menu.addSeparator()
             maint_menu = menu.addMenu(t("browser.maintenance"))
-            for label_key, meth in [
-                ("browser.check_table", self._check_table),
-                ("browser.optimize_table", self._optimize_table),
-                ("browser.repair_table", self._repair_table),
-                ("browser.analyze_table", self._analyze_table),
-            ]:
+            for op, label_key in _maintenance_actions(self._engine_of(data["connection_id"])):
                 act = maint_menu.addAction(t(label_key))
-                act.triggered.connect(lambda checked, m=meth: m(item))
+                act.triggered.connect(lambda checked, o=op: self._run_maintenance_sql(item, o))
+            if maint_menu.isEmpty():
+                maint_menu.addAction(t("browser.maintenance_unsupported")).setEnabled(False)
             menu.addSeparator()
             act_reverse = menu.addAction(t("browser.reverse_to_model"))
             act_reverse.triggered.connect(lambda: self._reverse_to_model(item))
@@ -360,7 +532,9 @@ class ObjectBrowser(QTreeWidget):
             act_copy_to = menu.addAction(t("browser.copy_object_to"))
             act_copy_to.triggered.connect(lambda: self._copy_object_to(item))
             act_refresh = menu.addAction(t("browser.refresh"))
-            act_refresh.triggered.connect(lambda: self._refresh_connection(item.parent() if item.parent() else item))
+            act_refresh.triggered.connect(
+                lambda: self._refresh_connection(item.parent() if item.parent() else item)
+            )
             menu.addSeparator()
             act_props = menu.addAction(t("browser.properties"))
             act_props.triggered.connect(lambda: self._show_properties(item))
@@ -380,15 +554,55 @@ class ObjectBrowser(QTreeWidget):
             act_props = menu.addAction(t("browser.properties"))
             act_props.triggered.connect(lambda: self._show_properties(item))
 
-        elif obj_type == "routine":
-            act_open = menu.addAction(t("browser.open_function"))
-            act_open.triggered.connect(lambda: self._open_function(item))
+        elif obj_type in ("routine", "procedure", "function"):
+            kind = "function" if obj_type == "function" else "procedure"
+            act_open = menu.addAction(t(f"browser.open_{kind}"))
+            act_open.triggered.connect(lambda k=kind: self._show_create_sql(item, k))
             menu.addSeparator()
-            act_drop = menu.addAction(t("browser.drop_function"))
-            act_drop.triggered.connect(lambda: self._drop_function(item))
+            act_drop = menu.addAction(t(f"browser.drop_{kind}"))
+            act_drop.triggered.connect(lambda: self._drop_routine(item))
             menu.addSeparator()
+            act_copy_name = menu.addAction(t("browser.copy_name"))
+            act_copy_name.triggered.connect(lambda: self._copy_object_name(item))
             act_copy_to = menu.addAction(t("browser.copy_object_to"))
             act_copy_to.triggered.connect(lambda: self._copy_object_to(item))
+            menu.addSeparator()
+            act_props = menu.addAction(t("browser.properties"))
+            act_props.triggered.connect(lambda: self._show_properties(item))
+
+        elif obj_type == "trigger":
+            act_open = menu.addAction(t("browser.open_trigger"))
+            act_open.triggered.connect(lambda: self._show_create_sql(item, "trigger"))
+            menu.addSeparator()
+            act_drop = menu.addAction(t("browser.drop_trigger"))
+            act_drop.triggered.connect(lambda: self._drop_trigger(item))
+            menu.addSeparator()
+            act_copy_name = menu.addAction(t("browser.copy_name"))
+            act_copy_name.triggered.connect(lambda: self._copy_object_name(item))
+            menu.addSeparator()
+            act_props = menu.addAction(t("browser.properties"))
+            act_props.triggered.connect(lambda: self._show_properties(item))
+
+        elif obj_type == "table_detail":
+            act_refresh = menu.addAction(t("browser.refresh"))
+            act_refresh.triggered.connect(lambda: self._refresh_node(item))
+            menu.addSeparator()
+            act_copy_name = menu.addAction(t("browser.copy_name"))
+            act_copy_name.triggered.connect(lambda: self._copy_object_name(item))
+            menu.addSeparator()
+            act_props = menu.addAction(t("browser.properties"))
+            act_props.triggered.connect(lambda: self._show_properties(item))
+
+        elif obj_type in ("column", "index", "constraint"):
+            act_copy_name = menu.addAction(t("browser.copy_name"))
+            act_copy_name.triggered.connect(lambda: self._copy_object_name(item))
+            menu.addSeparator()
+            act_props = menu.addAction(t("browser.properties"))
+            act_props.triggered.connect(lambda: self._show_properties(item))
+
+        elif obj_type == "category":
+            act_refresh = menu.addAction(t("browser.refresh"))
+            act_refresh.triggered.connect(lambda: self._refresh_node(item))
             menu.addSeparator()
             act_props = menu.addAction(t("browser.properties"))
             act_props.triggered.connect(lambda: self._show_properties(item))
@@ -418,7 +632,19 @@ class ObjectBrowser(QTreeWidget):
         elif obj_type == "category":
             self._open_category(item)
         elif obj_type == "table":
-            self._open_table(item)
+            self._expand_table_detail_for(item)
+        elif obj_type == "table_detail":
+            self._expand_table_detail(item)
+        elif obj_type in (
+            "index",
+            "constraint",
+            "column",
+            "trigger",
+            "procedure",
+            "function",
+            "view",
+        ):
+            self._open_object_tab(item)
         elif obj_type == "query":
             self._open_saved_query(item)
 
@@ -435,7 +661,8 @@ class ObjectBrowser(QTreeWidget):
 
         if "queries" in cat_key:
             from open_navicat.ui.widgets.query_manager import QueryManagerWidget
-            if hasattr(mw, '_workspace'):
+
+            if hasattr(mw, "_workspace"):
                 qm = QueryManagerWidget(conn_id, db_name, parent=mw._workspace)
                 idx = mw._workspace.addTab(qm, t("sql_editor.query_manager_tab", database=db_name))
                 mw._workspace.setCurrentIndex(idx)
@@ -446,9 +673,12 @@ class ObjectBrowser(QTreeWidget):
         """Open a tab showing table list with metadata columns."""
         from PySide6.QtWidgets import QHeaderView, QTableWidget
 
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
+
         mw = self.window()
-        if not hasattr(mw, '_workspace'):
+        if not hasattr(mw, "_workspace"):
             return
 
         connector = connection_pool.get(conn_id)
@@ -477,18 +707,26 @@ class ObjectBrowser(QTreeWidget):
         # Table widget
         table_widget = QTableWidget(container)
         table_widget.setColumnCount(5)
-        table_widget.setHorizontalHeaderLabels([
-            t("browser.col_name"), t("browser.col_auto_increment"),
-            t("browser.col_update_date"), t("browser.col_data_length"),
-            t("browser.col_engine")
-        ])
+        table_widget.setHorizontalHeaderLabels(
+            [
+                t("browser.col_name"),
+                t("browser.col_auto_increment"),
+                t("browser.col_update_date"),
+                t("browser.col_data_length"),
+                t("browser.col_engine"),
+            ]
+        )
         table_widget.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         table_widget.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table_widget.setAlternatingRowColors(True)
-        table_widget.doubleClicked.connect(lambda idx: self._open_table_from_list(table_widget, idx, conn_id, db_name))
+        table_widget.doubleClicked.connect(
+            lambda idx: self._open_table_from_list(table_widget, idx, conn_id, db_name)
+        )
         table_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        table_widget.customContextMenuRequested.connect(lambda pos: self._show_table_list_context_menu(pos, table_widget, conn_id, db_name))
+        table_widget.customContextMenuRequested.connect(
+            lambda pos: self._show_table_list_context_menu(pos, table_widget, conn_id, db_name)
+        )
 
         self._populate_table_list(table_widget, tables)
         layout.addWidget(table_widget)
@@ -509,7 +747,10 @@ class ObjectBrowser(QTreeWidget):
             table_widget.setItem(row, 4, QTableWidgetItem(info.get("engine", "")))
 
     def _reload_table_list(self, conn_id: str, db_name: str, table_widget: QTableWidget) -> None:
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
+
         connector = connection_pool.get(conn_id)
         if not connector:
             return
@@ -519,7 +760,9 @@ class ObjectBrowser(QTreeWidget):
         except Exception as e:
             logger.warning("_reload_table_list failed: %s", e)
 
-    def _show_table_list_context_menu(self, pos, table_widget: QTableWidget, conn_id: str, db_name: str) -> None:
+    def _show_table_list_context_menu(
+        self, pos, table_widget: QTableWidget, conn_id: str, db_name: str
+    ) -> None:
         """Right-click context menu for the table list panel."""
         row = table_widget.rowAt(pos.y())
         if row < 0:
@@ -531,49 +774,69 @@ class ObjectBrowser(QTreeWidget):
 
         menu = QMenu(self)
         act_open = menu.addAction(t("browser.open_table"))
-        act_open.triggered.connect(lambda: self._open_table_from_list(table_widget, table_widget.model().index(row, 0), conn_id, db_name))
+        act_open.triggered.connect(
+            lambda: self._open_table_from_list(
+                table_widget, table_widget.model().index(row, 0), conn_id, db_name
+            )
+        )
         act_design = menu.addAction(t("browser.design_table"))
-        act_design.triggered.connect(lambda: self._design_table_from_list(table_name, conn_id, db_name))
+        act_design.triggered.connect(
+            lambda: self._design_table_from_list(table_name, conn_id, db_name)
+        )
         menu.addSeparator()
         act_new = menu.addAction(t("browser.new_table"))
         act_new.triggered.connect(lambda: self._new_table_in_db(conn_id, db_name))
         act_drop = menu.addAction(t("browser.drop_table"))
-        act_drop.triggered.connect(lambda: self._drop_table_from_list(table_name, conn_id, db_name, table_widget))
+        act_drop.triggered.connect(
+            lambda: self._drop_table_from_list(table_name, conn_id, db_name, table_widget)
+        )
         act_truncate = menu.addAction(t("browser.truncate_table"))
-        act_truncate.triggered.connect(lambda: self._truncate_table_from_list(table_name, conn_id, db_name))
+        act_truncate.triggered.connect(
+            lambda: self._truncate_table_from_list(table_name, conn_id, db_name)
+        )
         act_empty = menu.addAction(t("browser.empty_table"))
-        act_empty.triggered.connect(lambda: self._empty_table_from_list(table_name, conn_id, db_name))
+        act_empty.triggered.connect(
+            lambda: self._empty_table_from_list(table_name, conn_id, db_name)
+        )
         menu.addSeparator()
         act_rename = menu.addAction(t("browser.rename"))
-        act_rename.triggered.connect(lambda: self._rename_table_from_list(table_name, conn_id, db_name, table_widget))
+        act_rename.triggered.connect(
+            lambda: self._rename_table_from_list(table_name, conn_id, db_name, table_widget)
+        )
         menu.addSeparator()
         act_dict = menu.addAction(t("browser.data_dictionary"))
         act_dict.triggered.connect(lambda: self._open_data_dictionary_from_list(conn_id, db_name))
         act_gen = menu.addAction(t("browser.generate_data"))
-        act_gen.triggered.connect(lambda: self._open_table_tab_from_list(table_name, conn_id, db_name))
+        act_gen.triggered.connect(
+            lambda: self._open_table_tab_from_list(table_name, conn_id, db_name)
+        )
         menu.addSeparator()
         # Maintenance submenu
         maint_menu = menu.addMenu(t("browser.maintenance"))
-        for label_key, meth in [
-            ("browser.check_table", lambda: self._run_maintenance_sql_from_list(table_name, conn_id, db_name, "CHECK")),
-            ("browser.optimize_table", lambda: self._run_maintenance_sql_from_list(table_name, conn_id, db_name, "OPTIMIZE")),
-            ("browser.repair_table", lambda: self._run_maintenance_sql_from_list(table_name, conn_id, db_name, "REPAIR")),
-            ("browser.analyze_table", lambda: self._run_maintenance_sql_from_list(table_name, conn_id, db_name, "ANALYZE")),
-        ]:
+        for op, label_key in _maintenance_actions(self._engine_of(conn_id)):
             act = maint_menu.addAction(t(label_key))
-            act.triggered.connect(meth)
+            act.triggered.connect(
+                lambda checked, o=op: self._maintenance(o, table_name, conn_id, db_name)
+            )
+        if maint_menu.isEmpty():
+            maint_menu.addAction(t("browser.maintenance_unsupported")).setEnabled(False)
         menu.addSeparator()
         act_bi = menu.addAction(t("browser.create_bi_workspace"))
-        act_bi.triggered.connect(lambda: self._create_bi_workspace_from_list(table_name, conn_id, db_name))
+        act_bi.triggered.connect(
+            lambda: self._create_bi_workspace_from_list(table_name, conn_id, db_name)
+        )
         menu.addSeparator()
         act_refresh = menu.addAction(t("browser.refresh"))
-        act_refresh.triggered.connect(lambda: self._reload_table_list(conn_id, db_name, table_widget))
+        act_refresh.triggered.connect(
+            lambda: self._reload_table_list(conn_id, db_name, table_widget)
+        )
 
         menu.exec(table_widget.viewport().mapToGlobal(pos))
 
     def _design_table_from_list(self, table_name: str, conn_id: str, db_name: str) -> None:
         mw = self.window()
         from open_navicat.ui.widgets.table_designer import TableDesignerWidget
+
         designer = TableDesignerWidget(conn_id, db_name, table_name, parent=mw._workspace)
         idx = mw._workspace.addTab(designer, f"📐 {table_name}")
         mw._workspace.setCurrentIndex(idx)
@@ -581,21 +844,29 @@ class ObjectBrowser(QTreeWidget):
     def _new_table_in_db(self, conn_id: str, db_name: str) -> None:
         mw = self.window()
         from open_navicat.ui.widgets.table_designer import TableDesignerWidget
+
         designer = TableDesignerWidget(conn_id, db_name, "", parent=mw._workspace)
         idx = mw._workspace.addTab(designer, t("design_table.default_title"))
         mw._workspace.setCurrentIndex(idx)
 
-    def _drop_table_from_list(self, table_name: str, conn_id: str, db_name: str, table_widget: QTableWidget) -> None:
+    def _drop_table_from_list(
+        self, table_name: str, conn_id: str, db_name: str, table_widget: QTableWidget
+    ) -> None:
         from PySide6.QtWidgets import QMessageBox
+
         ret = QMessageBox.warning(
-            self.window(), t("browser.drop_table"),
+            self.window(),
+            t("browser.drop_table"),
             t("browser.drop_confirm", name=table_name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if ret != QMessageBox.StandardButton.Yes:
             return
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
+
         connector = connection_pool.get(conn_id)
         if not connector:
             return
@@ -607,6 +878,7 @@ class ObjectBrowser(QTreeWidget):
 
     def _truncate_table_from_list(self, table_name: str, conn_id: str, db_name: str) -> None:
         from PySide6.QtWidgets import QCheckBox, QMessageBox
+
         dlg = QMessageBox(self.window())
         dlg.setWindowTitle(t("browser.truncate_table"))
         dlg.setText(t("browser.truncate_confirm", name=table_name))
@@ -616,8 +888,11 @@ class ObjectBrowser(QTreeWidget):
         dlg.setDefaultButton(QMessageBox.StandardButton.No)
         if dlg.exec() != QMessageBox.DialogCode.Accepted or not cb.isChecked():
             return
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
+
         connector = connection_pool.get(conn_id)
         if not connector:
             return
@@ -626,38 +901,40 @@ class ObjectBrowser(QTreeWidget):
         except Exception as e:
             logger.warning("truncate table failed: %s", e)
 
-    def _run_maintenance_sql_from_list(self, table_name: str, conn_id: str, db_name: str, operation: str) -> None:
+    def _run_maintenance_sql_from_list(
+        self, table_name: str, conn_id: str, db_name: str, operation: str
+    ) -> None:
         """Run a maintenance operation from the list view context menu."""
-        from open_navicat.dal.connection_pool import _loop as pool_loop
-        from open_navicat.dal.connection_pool import connection_pool
-        connector = connection_pool.get(conn_id)
-        if not connector:
-            return
-        try:
-            sql = f"{operation} TABLE `{db_name}`.`{table_name}`"
-            pool_loop.run_until_complete(connector.execute(sql))
-            QMessageBox.information(self.window(), t("common.success"), t("browser.maintenance_success", operation=operation, table=table_name))
-        except Exception as e:
-            QMessageBox.warning(self.window(), t("common.error"), t("browser.maintenance_failed", operation=operation, error=e))
+        self._maintenance(operation, table_name, conn_id, db_name)
 
     def _create_bi_workspace_from_list(self, table_name: str, conn_id: str, db_name: str) -> None:
         """Open BI workspace from list view context menu."""
         mw = self.window()
-        if hasattr(mw, '_show_bi_dashboard'):
+        if hasattr(mw, "_show_bi_dashboard"):
             mw._show_bi_dashboard()
 
-    def _rename_table_from_list(self, old_name: str, conn_id: str, db_name: str, table_widget: QTableWidget) -> None:
+    def _rename_table_from_list(
+        self, old_name: str, conn_id: str, db_name: str, table_widget: QTableWidget
+    ) -> None:
         from PySide6.QtWidgets import QInputDialog
-        new_name, ok = QInputDialog.getText(self.window(), t("browser.rename_table"), t("browser.new_table_name"), text=old_name)
+
+        new_name, ok = QInputDialog.getText(
+            self.window(), t("browser.rename_table"), t("browser.new_table_name"), text=old_name
+        )
         if not ok or not new_name.strip() or new_name.strip() == old_name:
             return
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
+
         connector = connection_pool.get(conn_id)
         if not connector:
             return
         try:
-            pool_loop.run_until_complete(connector.execute(f"RENAME TABLE `{old_name}` TO `{new_name.strip()}`"))
+            pool_loop.run_until_complete(
+                connector.execute(f"RENAME TABLE `{old_name}` TO `{new_name.strip()}`")
+            )
             self._reload_table_list(conn_id, db_name, table_widget)
         except Exception as e:
             logger.warning("rename table failed: %s", e)
@@ -665,21 +942,24 @@ class ObjectBrowser(QTreeWidget):
     def _open_data_dictionary_from_list(self, conn_id: str, db_name: str) -> None:
         mw = self.window()
         from open_navicat.ui.widgets.data_dictionary import DataDictionaryWidget
+
         panel = DataDictionaryWidget(conn_id, db_name, parent=mw._workspace)
         idx = mw._workspace.addTab(panel, t("tab.data_dictionary", db=db_name))
         mw._workspace.setCurrentIndex(idx)
 
     def _open_table_tab_from_list(self, table_name: str, conn_id: str, db_name: str) -> None:
         mw = self.window()
-        if hasattr(mw, 'open_table_tab'):
+        if hasattr(mw, "open_table_tab"):
             mw.open_table_tab(conn_id, db_name, table_name)
 
-    def _open_table_from_list(self, table_widget: QTableWidget, idx, conn_id: str, db_name: str) -> None:
+    def _open_table_from_list(
+        self, table_widget: QTableWidget, idx, conn_id: str, db_name: str
+    ) -> None:
         """Double-click a row in table list to open the table data view."""
         name_item = table_widget.item(idx.row(), 0)
         if name_item:
             mw = self.window()
-            if hasattr(mw, 'open_table_tab'):
+            if hasattr(mw, "open_table_tab"):
                 mw.open_table_tab(conn_id, db_name, name_item.text())
 
     def _expand_connection(self, item: QTreeWidgetItem) -> None:
@@ -695,8 +975,11 @@ class ObjectBrowser(QTreeWidget):
             # 尝试用保存的连接信息重新连接
             saved_info = data.get("info")
             if saved_info:
-                logger.info("_expand_connection: attempting reconnect with saved info id=%s host=%s",
-                            saved_info.id, saved_info.host)
+                logger.info(
+                    "_expand_connection: attempting reconnect with saved info id=%s host=%s",
+                    saved_info.id,
+                    saved_info.host,
+                )
                 ok = connection_pool.open(saved_info)
                 logger.info("_expand_connection: reconnect result=%s", ok)
                 if ok:
@@ -706,12 +989,19 @@ class ObjectBrowser(QTreeWidget):
                     return
             else:
                 item.setText(0, item.text(0) + " " + t("browser.disconnected"))
-                logger.warning("_expand_connection: no saved info in tree data, keys=%s",
-                               list(connection_pool._connectors.keys()) if hasattr(connection_pool, '_connectors') else 'N/A')
+                logger.warning(
+                    "_expand_connection: no saved info in tree data, keys=%s",
+                    list(connection_pool._connectors.keys())
+                    if hasattr(connection_pool, "_connectors")
+                    else "N/A",
+                )
                 return
 
         # 复用 connection_pool 的事件循环，否则 aiomysql 报 "attached to a different loop"
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
+
         try:
             dbs = pool_loop.run_until_complete(connector.list_databases())
         except Exception as e:
@@ -723,76 +1013,293 @@ class ObjectBrowser(QTreeWidget):
         for db in dbs:
             db_item = QTreeWidgetItem(item)
             db_item.setText(0, db.name)
-            db_item.setData(0, Qt.ItemDataRole.UserRole, {
-                "type": "database",
-                "name": db.name,
-                "connection_id": conn_id,
-            })
+            db_item.setData(
+                0,
+                Qt.ItemDataRole.UserRole,
+                {
+                    "type": "database",
+                    "name": db.name,
+                    "connection_id": conn_id,
+                },
+            )
             # Add sub-items placeholders
-            for category_key in ("browser.category_tables", "browser.category_views", "browser.category_routines", "browser.category_queries"):
+            for category_key in (
+                "browser.category_tables",
+                "browser.category_views",
+                "browser.category_procedures",
+                "browser.category_functions",
+                "browser.category_triggers",
+                "browser.category_queries",
+            ):
                 cat_item = QTreeWidgetItem(db_item)
                 cat_item.setText(0, t(category_key))
-                cat_item.setData(0, Qt.ItemDataRole.UserRole, {
-                    "type": "category",
-                    "category": category_key,
-                    "connection_id": conn_id,
-                    "database": db.name,
-                })
+                cat_item.setData(
+                    0,
+                    Qt.ItemDataRole.UserRole,
+                    {
+                        "type": "category",
+                        "category": category_key,
+                        "connection_id": conn_id,
+                        "database": db.name,
+                    },
+                )
 
     def _expand_database(self, item: QTreeWidgetItem) -> None:
-        """Expand database to show tables/views/routines."""
+        """Populate one database's object categories.
+
+        Listings are recorded into a :class:`Catalog` as they arrive, which is
+        what makes the search box able to find an object that was never expanded
+        by hand.
+        """
         data = item.data(0, Qt.ItemDataRole.UserRole)
         conn_id = data["connection_id"]
         db_name = data["name"]
         connector = connection_pool.get(conn_id)
-        if not connector:
+        if connector is None:
             return
 
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
+
+        catalog = self._catalog_for(conn_id, db_name)
+        conn_name = self._connection_name(conn_id)
 
         for i in range(item.childCount()):
             cat_item = item.child(i)
             cat_data = cat_item.data(0, Qt.ItemDataRole.UserRole)
-            cat_key = cat_data["category"]  # e.g. "browser.category_tables"
-            cat_item.takeChildren()  # Clear before re-adding
+            cat_key = cat_data["category"]
+            cat_item.takeChildren()
 
-            objects: list[str] = []
-            try:
-                if "tables" in cat_key:
-                    objects = pool_loop.run_until_complete(connector.list_tables(db_name))
-                elif "views" in cat_key:
-                    objects = pool_loop.run_until_complete(connector.list_views(db_name))
-                elif "routines" in cat_key:
-                    routines = pool_loop.run_until_complete(connector.list_routines(db_name))
-                    objects = [f"{name} ({rtype})" for name, rtype in routines]
-                elif "queries" in cat_key:
-                    saved = local_db.list_queries(conn_id, db_name)
-                    for q in saved:
-                        child = QTreeWidgetItem(cat_item)
-                        child.setText(0, q["name"])
-                        child.setData(0, Qt.ItemDataRole.UserRole, {
-                            "type": "query",
-                            "id": q["id"],
-                            "name": q["name"],
-                            "sql_text": q["sql_text"],
-                            "database": db_name,
-                            "connection_id": conn_id,
-                        })
-                    continue
-            except Exception as e:
-                logger.warning("_expand_database: failed to list %s: %s", cat_key, e)
-                objects = []
+            if "queries" in cat_key:
+                self._populate_saved_queries(cat_item, conn_id, db_name)
+                continue
 
-            for obj_name in objects:
+            objects = self._list_category(
+                connector, pool_loop, cat_key, db_name, conn_id, conn_name, catalog
+            )
+            if not objects:
+                # A category with nothing in it stays visible but plainly empty,
+                # so the user can tell "none exist" from "not loaded".
+                cat_item.setText(0, self._category_label(cat_key, 0))
+                continue
+
+            cat_item.setText(0, self._category_label(cat_key, len(objects)))
+            for obj in objects:
                 child = QTreeWidgetItem(cat_item)
-                child.setText(0, obj_name)
-                obj_type = "table" if "tables" in cat_key else ("routine" if "routines" in cat_key else "view")
-                child.setData(0, Qt.ItemDataRole.UserRole, {
-                    "type": obj_type,
-                    "name": obj_name,
+                child.setText(0, obj.display)
+                child.setData(
+                    0,
+                    Qt.ItemDataRole.UserRole,
+                    {
+                        "type": obj.kind.value,
+                        "name": obj.name,
+                        "parent": obj.parent,
+                        "database": db_name,
+                        "connection_id": conn_id,
+                    },
+                )
+                if obj.kind is ObjectKind.TABLE:
+                    self._add_table_children(child, conn_id, db_name, obj.name)
+
+    def _category_label(self, cat_key: str, count: int) -> str:
+        """Category row label, with its object count when it has one."""
+        label = t(cat_key)
+        return label if not count else f"{label}  ({count})"
+
+    def _list_category(
+        self, connector, pool_loop, cat_key, db_name, conn_id, conn_name, catalog
+    ) -> list:
+        """Fetch one category's objects and record them in the catalog."""
+        try:
+            if "tables" in cat_key:
+                names = pool_loop.run_until_complete(connector.list_tables(db_name))
+                catalog.add_all(
+                    objects_from_names(
+                        names,
+                        ObjectKind.TABLE,
+                        connection_id=conn_id,
+                        connection_name=conn_name,
+                        database=db_name,
+                    )
+                )
+                return [
+                    o
+                    for o in catalog.objects
+                    if o.kind is ObjectKind.TABLE and o.database == db_name
+                ]
+            if "views" in cat_key:
+                names = pool_loop.run_until_complete(connector.list_views(db_name))
+                catalog.add_all(
+                    objects_from_names(
+                        names,
+                        ObjectKind.VIEW,
+                        connection_id=conn_id,
+                        connection_name=conn_name,
+                        database=db_name,
+                    )
+                )
+                return [
+                    o
+                    for o in catalog.objects
+                    if o.kind is ObjectKind.VIEW and o.database == db_name
+                ]
+            if "procedures" in cat_key or "functions" in cat_key:
+                routines = pool_loop.run_until_complete(connector.list_routines(db_name))
+                refs = objects_from_routines(
+                    routines,
+                    connection_id=conn_id,
+                    connection_name=conn_name,
+                    database=db_name,
+                )
+                catalog.add_all(refs)
+                wanted = ObjectKind.PROCEDURE if "procedures" in cat_key else ObjectKind.FUNCTION
+                return [r for r in refs if r.kind is wanted]
+            if "triggers" in cat_key:
+                triggers = pool_loop.run_until_complete(connector.list_triggers(db_name))
+                refs = objects_from_triggers(
+                    triggers,
+                    connection_id=conn_id,
+                    connection_name=conn_name,
+                    database=db_name,
+                )
+                catalog.add_all(refs)
+                return refs
+        except Exception as exc:  # noqa: BLE001 - one category failing must not stop the rest
+            logger.warning("_expand_database: listing %s failed: %s", cat_key, exc)
+        return []
+
+    def _add_table_children(
+        self, table_item: QTreeWidgetItem, conn_id: str, db_name: str, table_name: str
+    ) -> None:
+        """Show a table's columns, indexes and constraints beneath it.
+
+        One ``get_table_info`` call covers all three, and it only runs when this
+        particular table is expanded — indexing every table up front would cost a
+        query per table.
+        """
+        for kind_key, kind in (
+            ("browser.category_columns", ObjectKind.COLUMN),
+            ("browser.category_indexes", ObjectKind.INDEX),
+            ("browser.category_constraints", ObjectKind.CONSTRAINT),
+        ):
+            node = QTreeWidgetItem(table_item)
+            node.setText(0, t(kind_key))
+            node.setData(
+                0,
+                Qt.ItemDataRole.UserRole,
+                {
+                    "type": "table_detail",
+                    "kind": kind.value,
+                    "table": table_name,
                     "database": db_name,
                     "connection_id": conn_id,
-                })
+                },
+            )
+            placeholder = QTreeWidgetItem(node)
+            placeholder.setText(0, "...")
+
+    def _expand_table_detail(self, item: QTreeWidgetItem) -> None:
+        """Load columns / indexes / constraints for one table node."""
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        conn_id = data["connection_id"]
+        db_name = data["database"]
+        table_name = data["table"]
+        wanted = ObjectKind(data["kind"])
+
+        connector = connection_pool.get(conn_id)
+        if connector is None:
+            return
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
+
+        item.takeChildren()
+        try:
+            info = pool_loop.run_until_complete(connector.get_table_info(db_name, table_name))
+        except Exception as exc:  # noqa: BLE001 - metadata is best effort
+            logger.warning("table detail for %s failed: %s", table_name, exc)
+            return
+
+        catalog = self._catalog_for(conn_id, db_name)
+        all_refs = objects_from_table_info(
+            info,
+            connection_id=conn_id,
+            connection_name=self._connection_name(conn_id),
+            database=db_name,
+        )
+        # Index everything this one call returned, so searching for an index name
+        # works even when the user only expanded the columns node.
+        catalog.add_all(all_refs)
+        for obj in [r for r in all_refs if r.kind is wanted]:
+            child = QTreeWidgetItem(item)
+            child.setText(0, obj.detail if obj.detail else obj.name)
+            if obj.detail and wanted in (ObjectKind.INDEX, ObjectKind.CONSTRAINT):
+                child.setText(0, f"{obj.name}  ({obj.detail})")
+            child.setData(
+                0,
+                Qt.ItemDataRole.UserRole,
+                {
+                    "type": obj.kind.value,
+                    "name": obj.name,
+                    "parent": table_name,
+                    "database": db_name,
+                    "connection_id": conn_id,
+                },
+            )
+
+    def _populate_saved_queries(
+        self, cat_item: QTreeWidgetItem, conn_id: str, db_name: str
+    ) -> None:
+        for query in local_db.list_queries(conn_id, db_name):
+            child = QTreeWidgetItem(cat_item)
+            child.setText(0, query["name"])
+            child.setData(
+                0,
+                Qt.ItemDataRole.UserRole,
+                {
+                    "type": "query",
+                    "id": query["id"],
+                    "name": query["name"],
+                    "sql_text": query["sql_text"],
+                    "database": db_name,
+                    "connection_id": conn_id,
+                },
+            )
+
+    # ---- catalog ----
+
+    def _connection_name(self, conn_id: str) -> str:
+        """Display name for a connection id, for search results."""
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            for child in self._iter_items(item):
+                data = child.data(0, Qt.ItemDataRole.UserRole)
+                if data and data.get("type") == "connection" and data.get("id") == conn_id:
+                    return child.text(0)
+        return conn_id
+
+    @staticmethod
+    def _iter_items(root: QTreeWidgetItem):
+        stack = [root]
+        while stack:
+            node = stack.pop()
+            yield node
+            stack.extend(node.child(i) for i in range(node.childCount()))
+
+    def _catalog_for(self, conn_id: str, db_name: str) -> Catalog:
+        """The (cached) object index for one database."""
+        return self._catalogs.setdefault((conn_id, db_name), Catalog())
+
+    def search_objects(self, query: str) -> dict[str, list]:
+        """Search every indexed database; returns results grouped by connection."""
+        if not query or len(query.strip()) < 2:
+            return {}
+        catalogs = [
+            (self._connection_name(conn_id), catalog)
+            for (conn_id, _db), catalog in self._catalogs.items()
+        ]
+        return search_across(catalogs, query)
 
     def _refresh_connection(self, item: QTreeWidgetItem) -> None:
         item.takeChildren()
@@ -802,15 +1309,26 @@ class ObjectBrowser(QTreeWidget):
 
     def _refresh_database(self, item: QTreeWidgetItem) -> None:
         item.takeChildren()
-        for cat_key in ("browser.category_tables", "browser.category_views", "browser.category_routines", "browser.category_queries"):
+        for cat_key in (
+            "browser.category_tables",
+            "browser.category_views",
+            "browser.category_routines",
+            "browser.category_queries",
+        ):
             cat_item = QTreeWidgetItem(item)
             cat_item.setText(0, t(cat_key))
-            cat_item.setData(0, Qt.ItemDataRole.UserRole, {
-                "type": "category",
-                "category": cat_key,
-                "connection_id": item.data(0, Qt.ItemDataRole.UserRole).get("connection_id", ""),
-                "database": item.data(0, Qt.ItemDataRole.UserRole).get("name", ""),
-            })
+            cat_item.setData(
+                0,
+                Qt.ItemDataRole.UserRole,
+                {
+                    "type": "category",
+                    "category": cat_key,
+                    "connection_id": item.data(0, Qt.ItemDataRole.UserRole).get(
+                        "connection_id", ""
+                    ),
+                    "database": item.data(0, Qt.ItemDataRole.UserRole).get("name", ""),
+                },
+            )
         # Reload contents
         self._expand_database(item)
 
@@ -843,8 +1361,12 @@ class ObjectBrowser(QTreeWidget):
                 self._load_saved_connections()
             else:
                 from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self.window(), t("connection.conn_failed"),
-                                    t("prompt.conn_failed", host=f"{info.host}:{info.port}"))
+
+                QMessageBox.warning(
+                    self.window(),
+                    t("connection.conn_failed"),
+                    t("prompt.conn_failed", host=f"{info.host}:{info.port}"),
+                )
 
     # ---- group management ----
 
@@ -861,8 +1383,12 @@ class ObjectBrowser(QTreeWidget):
                 self._load_saved_connections()
             else:
                 from PySide6.QtWidgets import QMessageBox
-                QMessageBox.warning(self.window(), t("connection.conn_failed"),
-                                    t("prompt.conn_failed", host=f"{info.host}:{info.port}"))
+
+                QMessageBox.warning(
+                    self.window(),
+                    t("connection.conn_failed"),
+                    t("prompt.conn_failed", host=f"{info.host}:{info.port}"),
+                )
 
     def _set_connection_group(self, item: QTreeWidgetItem, group_name: str) -> None:
         """Assign connection to a group."""
@@ -880,10 +1406,14 @@ class ObjectBrowser(QTreeWidget):
     def _rename_group(self, group_item: QTreeWidgetItem) -> None:
         """Rename a connection group."""
         from PySide6.QtWidgets import QInputDialog
+
         data = group_item.data(0, Qt.ItemDataRole.UserRole)
         old_name = data.get("name", "")
         new_name, ok = QInputDialog.getText(
-            self.window(), t("browser.rename_group"), t("browser.new_group_name"), text=old_name,
+            self.window(),
+            t("browser.rename_group"),
+            t("browser.new_group_name"),
+            text=old_name,
         )
         if ok and new_name and new_name != old_name:
             local_db.rename_group(old_name, new_name)
@@ -892,10 +1422,12 @@ class ObjectBrowser(QTreeWidget):
     def _delete_group(self, group_item: QTreeWidgetItem) -> None:
         """Delete a group (connections become ungrouped)."""
         from PySide6.QtWidgets import QMessageBox
+
         data = group_item.data(0, Qt.ItemDataRole.UserRole)
         name = data.get("name", "")
         reply = QMessageBox.question(
-            self.window(), t("browser.delete_group"),
+            self.window(),
+            t("browser.delete_group"),
             t("browser.delete_group_confirm", name=name),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
@@ -912,13 +1444,17 @@ class ObjectBrowser(QTreeWidget):
         if not saved_info:
             return
         from PySide6.QtWidgets import QInputDialog
+
         new_name, ok = QInputDialog.getText(
-            self.window(), t("browser.copy_connection"), t("browser.new_connection_name"),
+            self.window(),
+            t("browser.copy_connection"),
+            t("browser.new_connection_name"),
             text=f"{saved_info.name} (copy)",
         )
         if not ok or not new_name:
             return
         import uuid
+
         new_info = saved_info
         new_info.id = str(uuid.uuid4().hex[:8])
         new_info.name = new_name
@@ -928,8 +1464,12 @@ class ObjectBrowser(QTreeWidget):
             self._load_saved_connections()
         else:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self.window(), t("connection.conn_failed"),
-                                t("prompt.conn_failed", host=f"{new_info.host}:{new_info.port}"))
+
+            QMessageBox.warning(
+                self.window(),
+                t("connection.conn_failed"),
+                t("prompt.conn_failed", host=f"{new_info.host}:{new_info.port}"),
+            )
 
     def _run_sql_file(self, item: QTreeWidgetItem) -> None:
         """Execute a .sql file against the selected connection/database."""
@@ -941,8 +1481,11 @@ class ObjectBrowser(QTreeWidget):
         if not conn_id:
             return
         from PySide6.QtWidgets import QFileDialog, QProgressDialog
+
         path, _ = QFileDialog.getOpenFileName(
-            self.window(), t("browser.select_sql_file"), "",
+            self.window(),
+            t("browser.select_sql_file"),
+            "",
             t("browser.sql_filter"),
         )
         if not path:
@@ -951,13 +1494,21 @@ class ObjectBrowser(QTreeWidget):
             content = f.read()
         if not content.strip():
             return
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
+
         connector = connection_pool.get(conn_id)
         if not connector:
             return
         statements = [s.strip() for s in content.split(";") if s.strip()]
-        progress = QProgressDialog(t("browser.executing_count", count=len(statements)),
-                                    t("common.cancel"), 0, len(statements), self.window())
+        progress = QProgressDialog(
+            t("browser.executing_count", count=len(statements)),
+            t("common.cancel"),
+            0,
+            len(statements),
+            self.window(),
+        )
         progress.setWindowTitle(t("browser.run_sql_file"))
         progress.setWindowModality(Qt.WindowModality.WindowModal)
         progress.setMinimumDuration(0)
@@ -971,17 +1522,25 @@ class ObjectBrowser(QTreeWidget):
                     pool_loop.run_until_complete(connector.execute(f"USE `{database}`"))
                 pool_loop.run_until_complete(connector.execute(stmt))
             except Exception as e:
-                errors.append(f"{t('browser.statement_number', n=i+1)}: {e}")
+                errors.append(f"{t('browser.statement_number', n=i + 1)}: {e}")
         progress.setValue(len(statements))
         progress.close()
         if errors:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self.window(), t("browser.partial_failure"),
-                                t("browser.statement_errors", count=len(errors)) + "\n" + "\n".join(errors[:5]))
+
+            QMessageBox.warning(
+                self.window(),
+                t("browser.partial_failure"),
+                t("browser.statement_errors", count=len(errors)) + "\n" + "\n".join(errors[:5]),
+            )
         else:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(self.window(), t("browser.execution_complete"),
-                                    t("browser.statements_executed", count=len(statements)))
+
+            QMessageBox.information(
+                self.window(),
+                t("browser.execution_complete"),
+                t("browser.statements_executed", count=len(statements)),
+            )
 
     def _toggle_favorite(self, item: QTreeWidgetItem) -> None:
         """Toggle the favorite (star) status of a connection."""
@@ -1025,16 +1584,24 @@ class ObjectBrowser(QTreeWidget):
         ok = connection_pool.open(new_info)
         if not ok:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self.window(), t("connection.conn_failed"),
-                                t("browser.connect_failed_new_config", host=new_info.host))
+
+            QMessageBox.warning(
+                self.window(),
+                t("connection.conn_failed"),
+                t("browser.connect_failed_new_config", host=new_info.host),
+            )
 
         # Update tree item
         item.setText(0, new_info.display_name)
-        item.setData(0, Qt.ItemDataRole.UserRole, {
-            "type": "connection",
-            "id": new_info.id,
-            "info": new_info,
-        })
+        item.setData(
+            0,
+            Qt.ItemDataRole.UserRole,
+            {
+                "type": "connection",
+                "id": new_info.id,
+                "info": new_info,
+            },
+        )
         item.setToolTip(0, new_info.dsn)
 
         # Persist
@@ -1047,21 +1614,79 @@ class ObjectBrowser(QTreeWidget):
             loading.setText(0, "Loading…")
             item.setExpanded(True)
 
+    def _expand_table_detail_for(self, item: QTreeWidgetItem) -> None:
+        """First double-click on a table fills in its detail nodes.
+
+        Users expect the table to open its data grid, so this only populates the
+        nodes when they are still placeholders; a second double-click opens the
+        grid.
+        """
+        populated = False
+        for i in range(item.childCount()):
+            child = item.child(i)
+            child_data = child.data(0, Qt.ItemDataRole.UserRole)
+            if child_data and child_data.get("type") == "table_detail":
+                if child.childCount() == 1:
+                    placeholder = child.child(0).data(0, Qt.ItemDataRole.UserRole)
+                    if placeholder is None:
+                        self._expand_table_detail(child)
+                populated = True
+        if populated:
+            item.setExpanded(True)
+        self._open_table(item)
+
+    def _open_object_tab(self, item: QTreeWidgetItem) -> None:
+        """Open the data grid for a view, or the definition for other objects.
+
+        A view holds rows, so it behaves like a table.  Indexes, constraints,
+        triggers and routines have no grid: their definition is shown instead.
+        """
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if data.get("type") == "view":
+            self._open_table(item)
+            return
+        name = data.get("name", "")
+        parent = data.get("parent", "")
+        label = f"{parent}.{name}" if parent else name
+        self._show_definition(label, data)
+
+    def _show_definition(self, label: str, data: dict) -> None:
+        """Show what is known about an object the grid cannot display."""
+        lines = [f"{t('browser.category_tables')}: {label}", ""]
+        conn_id = data.get("connection_id", "")
+        db_name = data.get("database", "")
+        parent = data.get("parent", "")
+        if parent:
+            lines.append(f"table: {parent}")
+
+        catalog = self._catalogs.get((conn_id, db_name))
+        if catalog is not None:
+            for obj in catalog.objects:
+                if obj.name == data.get("name") and obj.parent == parent:
+                    lines.append(f"kind: {obj.kind.value}")
+                    if obj.detail:
+                        lines.append(f"detail: {obj.detail}")
+                    break
+
+        window = self.window()
+        if hasattr(window, "show_text_tab"):
+            window.show_text_tab(label, "\n".join(lines))
+            return
+        QMessageBox.information(self.window(), label, "\n".join(lines))
+
     def _open_table(self, item: QTreeWidgetItem) -> None:
         """Signal to open table in workspace — handled by MainWindow."""
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if data:
             mw = self.window()
-            if hasattr(mw, 'open_table_tab'):
-                mw.open_table_tab(
-                    data["connection_id"], data["database"], data["name"]
-                )
+            if hasattr(mw, "open_table_tab"):
+                mw.open_table_tab(data["connection_id"], data["database"], data["name"])
 
     def _open_query_tab(self, item: QTreeWidgetItem) -> None:
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if data:
             mw = self.window()
-            if hasattr(mw, 'open_query_tab'):
+            if hasattr(mw, "open_query_tab"):
                 conn_id = data.get("connection_id") or data.get("id", "")
                 db_name = data.get("database") or data.get("name", "")
                 mw.open_query_tab(conn_id, db_name)
@@ -1073,7 +1698,10 @@ class ObjectBrowser(QTreeWidget):
             return
         mw = self.window()
         from open_navicat.ui.widgets.table_designer import TableDesignerWidget
-        designer = TableDesignerWidget(data["connection_id"], data["database"], data["name"], parent=mw._workspace)
+
+        designer = TableDesignerWidget(
+            data["connection_id"], data["database"], data["name"], parent=mw._workspace
+        )
         idx = mw._workspace.addTab(designer, f"📐 {data['name']}")
         mw._workspace.setCurrentIndex(idx)
 
@@ -1084,6 +1712,7 @@ class ObjectBrowser(QTreeWidget):
             return
         mw = self.window()
         from open_navicat.ui.widgets.data_dictionary import DataDictionaryWidget
+
         conn_id = data.get("connection_id", "")
         db = data.get("database", "")
         if not conn_id or not db:
@@ -1098,7 +1727,7 @@ class ObjectBrowser(QTreeWidget):
         if not data:
             return
         mw = self.window()
-        if hasattr(mw, 'open_table_tab'):
+        if hasattr(mw, "open_table_tab"):
             mw.open_table_tab(data["connection_id"], data["database"], data["name"])
 
     def _truncate_table(self, item: QTreeWidgetItem) -> None:
@@ -1121,14 +1750,19 @@ class ObjectBrowser(QTreeWidget):
         btn_truncate = dlg.addButton(t("browser.truncate_btn"), QMessageBox.ButtonRole.AcceptRole)
         btn_cancel = dlg.addButton(t("common.cancel"), QMessageBox.ButtonRole.RejectRole)  # noqa: F841
         btn_truncate.setEnabled(False)
-        confirm_cb.stateChanged.connect(lambda state: btn_truncate.setEnabled(state == QtConst.CheckState.Checked.value))
+        confirm_cb.stateChanged.connect(
+            lambda state: btn_truncate.setEnabled(state == QtConst.CheckState.Checked.value)
+        )
 
         dlg.exec()
         if dlg.clickedButton() != btn_truncate:
             return
 
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
+
         connector = connection_pool.get(data["connection_id"])
         if connector:
             pool_loop.run_until_complete(
@@ -1155,23 +1789,34 @@ class ObjectBrowser(QTreeWidget):
         btn_empty = dlg.addButton(t("browser.empty_btn"), QMessageBox.ButtonRole.AcceptRole)
         btn_cancel = dlg.addButton(t("common.cancel"), QMessageBox.ButtonRole.RejectRole)  # noqa: F841
         btn_empty.setEnabled(False)
-        confirm_cb.stateChanged.connect(lambda state: btn_empty.setEnabled(state == QtConst.CheckState.Checked.value))
+        confirm_cb.stateChanged.connect(
+            lambda state: btn_empty.setEnabled(state == QtConst.CheckState.Checked.value)
+        )
 
         dlg.exec()
         if dlg.clickedButton() != btn_empty:
             return
 
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
+
         connector = connection_pool.get(data["connection_id"])
         if connector:
             try:
                 pool_loop.run_until_complete(
                     connector.execute(f"DELETE FROM `{data['database']}`.`{data['name']}`")
                 )
-                QMessageBox.information(self.window(), t("common.success"), t("browser.empty_success", name=data["name"]))
+                QMessageBox.information(
+                    self.window(),
+                    t("common.success"),
+                    t("browser.empty_success", name=data["name"]),
+                )
             except Exception as e:
-                QMessageBox.warning(self.window(), t("common.error"), t("browser.empty_failed", error=e))
+                QMessageBox.warning(
+                    self.window(), t("common.error"), t("browser.empty_failed", error=e)
+                )
 
     def _empty_table_from_list(self, table_name: str, conn_id: str, db_name: str) -> None:
         """Empty table from list view context menu."""
@@ -1190,23 +1835,32 @@ class ObjectBrowser(QTreeWidget):
         btn_empty = dlg.addButton(t("browser.empty_btn"), QMessageBox.ButtonRole.AcceptRole)
         btn_cancel = dlg.addButton(t("common.cancel"), QMessageBox.ButtonRole.RejectRole)  # noqa: F841
         btn_empty.setEnabled(False)
-        confirm_cb.stateChanged.connect(lambda state: btn_empty.setEnabled(state == QtConst.CheckState.Checked.value))
+        confirm_cb.stateChanged.connect(
+            lambda state: btn_empty.setEnabled(state == QtConst.CheckState.Checked.value)
+        )
 
         dlg.exec()
         if dlg.clickedButton() != btn_empty:
             return
 
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
+
         connector = connection_pool.get(conn_id)
         if connector:
             try:
                 pool_loop.run_until_complete(
                     connector.execute(f"DELETE FROM `{db_name}`.`{table_name}`")
                 )
-                QMessageBox.information(self.window(), t("common.success"), t("browser.empty_success", name=table_name))
+                QMessageBox.information(
+                    self.window(), t("common.success"), t("browser.empty_success", name=table_name)
+                )
             except Exception as e:
-                QMessageBox.warning(self.window(), t("common.error"), t("browser.empty_failed", error=e))
+                QMessageBox.warning(
+                    self.window(), t("common.error"), t("browser.empty_failed", error=e)
+                )
 
     def _drop_table(self, item: QTreeWidgetItem) -> None:
         """Drop the selected table with FK check and confirmation."""
@@ -1223,7 +1877,9 @@ class ObjectBrowser(QTreeWidget):
 
         layout = dlg.layout()
         fk_combo = QComboBox()
-        fk_combo.addItems([t("browser.fk_default"), t("browser.fk_enable"), t("browser.fk_disable")])
+        fk_combo.addItems(
+            [t("browser.fk_default"), t("browser.fk_enable"), t("browser.fk_disable")]
+        )
         fk_label = QLabel(t("browser.fk_check"))
         confirm_cb = QCheckBox(t("browser.irreversible_confirm"))
         layout.addWidget(fk_label)
@@ -1233,15 +1889,20 @@ class ObjectBrowser(QTreeWidget):
         btn_delete = dlg.addButton(t("browser.delete_btn"), QMessageBox.ButtonRole.AcceptRole)
         btn_cancel = dlg.addButton(t("common.cancel"), QMessageBox.ButtonRole.RejectRole)  # noqa: F841
         btn_delete.setEnabled(False)
-        confirm_cb.stateChanged.connect(lambda state: btn_delete.setEnabled(state == QtConst.CheckState.Checked.value))
+        confirm_cb.stateChanged.connect(
+            lambda state: btn_delete.setEnabled(state == QtConst.CheckState.Checked.value)
+        )
 
         dlg.exec()
         if dlg.clickedButton() != btn_delete:
             return
 
         fk_mode = fk_combo.currentIndex()
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
+
         connector = connection_pool.get(data["connection_id"])
         if connector:
             if fk_mode == 2:
@@ -1263,9 +1924,10 @@ class ObjectBrowser(QTreeWidget):
         if not data:
             return
         mw = self.window()
-        if hasattr(mw, 'open_query_tab'):
+        if hasattr(mw, "open_query_tab"):
             mw.open_query_tab(
-                data["connection_id"], data["database"],
+                data["connection_id"],
+                data["database"],
                 data.get("sql_text", ""),
                 query_id=data.get("id", 0),
             )
@@ -1276,8 +1938,12 @@ class ObjectBrowser(QTreeWidget):
         if not data:
             return
         from PySide6.QtWidgets import QInputDialog, QLineEdit
+
         name, ok = QInputDialog.getText(
-            self.window(), t("browser.rename_query"), t("common.rename_prompt"), QLineEdit.EchoMode.Normal,
+            self.window(),
+            t("browser.rename_query"),
+            t("common.rename_prompt"),
+            QLineEdit.EchoMode.Normal,
             data.get("name", ""),
         )
         if ok and name:
@@ -1293,9 +1959,11 @@ class ObjectBrowser(QTreeWidget):
         if not data:
             return
         from PySide6.QtWidgets import QMessageBox
+
         reply = QMessageBox.question(
-            self.window(),             t("browser.delete_query"),
-            t("browser.delete_query_confirm", name=data.get('name', '')),
+            self.window(),
+            t("browser.delete_query"),
+            t("browser.delete_query_confirm", name=data.get("name", "")),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
@@ -1311,6 +1979,7 @@ class ObjectBrowser(QTreeWidget):
         import json
 
         from PySide6.QtWidgets import QFileDialog
+
         path, _ = QFileDialog.getOpenFileName(
             self, t("browser.import_connection"), "", t("browser.json_filter")
         )
@@ -1323,6 +1992,7 @@ class ObjectBrowser(QTreeWidget):
                 configs = [configs]
             from open_navicat.dal.local_config import local_db
             from open_navicat.models.connection import ConnectionInfo
+
             count = 0
             for cfg in configs:
                 info = ConnectionInfo(
@@ -1350,10 +2020,13 @@ class ObjectBrowser(QTreeWidget):
                 count += 1
             self._load_saved_connections()
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(self, t("browser.import_success"),
-                                    t("browser.import_success_detail", count=count))
+
+            QMessageBox.information(
+                self, t("browser.import_success"), t("browser.import_success_detail", count=count)
+            )
         except Exception as e:
             from PySide6.QtWidgets import QMessageBox
+
             QMessageBox.critical(self, t("browser.import_failed"), str(e))
 
     def _wizard_export(self, item: QTreeWidgetItem) -> None:
@@ -1361,10 +2034,12 @@ class ObjectBrowser(QTreeWidget):
         import json
 
         from PySide6.QtWidgets import QFileDialog, QMessageBox
+
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data or data.get("type") != "connection":
             return
         from open_navicat.dal.local_config import local_db
+
         info = local_db.get_connection(data["id"])
         if not info:
             return
@@ -1397,34 +2072,46 @@ class ObjectBrowser(QTreeWidget):
             }
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=2, ensure_ascii=False)
-            QMessageBox.information(self, t("browser.export_success"),
-                                    t("browser.export_success_detail", path=path))
+            QMessageBox.information(
+                self, t("browser.export_success"), t("browser.export_success_detail", path=path)
+            )
         except Exception as e:
             QMessageBox.critical(self, t("browser.export_failed"), str(e))
 
     def _new_database(self, item: QTreeWidgetItem) -> None:
         from PySide6.QtWidgets import QInputDialog
-        name, ok = QInputDialog.getText(self.window(), t("browser.new_database"), t("browser.db_name_label"))
+
+        name, ok = QInputDialog.getText(
+            self.window(), t("browser.new_database"), t("browser.db_name_label")
+        )
         if ok and name:
             data = item.data(0, Qt.ItemDataRole.UserRole)
             connector = connection_pool.get(data["connection_id"])
             if connector:
-                from open_navicat.dal.connection_pool import _loop as pool_loop
+                from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+                pool_loop = _pool_loop_getter()
+
                 pool_loop.run_until_complete(connector.execute(f"CREATE DATABASE `{name.strip()}`"))
                 self._refresh_connection(item.parent() if item.parent() else item)
 
     def _drop_database(self, item: QTreeWidgetItem) -> None:
         from PySide6.QtWidgets import QMessageBox
+
         data = item.data(0, Qt.ItemDataRole.UserRole)
         reply = QMessageBox.question(
-            self.window(),             t("browser.drop_database"),
-            t("browser.confirm_drop_db", name=data['name']),
+            self.window(),
+            t("browser.drop_database"),
+            t("browser.confirm_drop_db", name=data["name"]),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
             connector = connection_pool.get(data["connection_id"])
             if connector:
-                from open_navicat.dal.connection_pool import _loop as pool_loop
+                from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+                pool_loop = _pool_loop_getter()
+
                 pool_loop.run_until_complete(connector.execute(f"DROP DATABASE `{data['name']}`"))
                 parent = item.parent()
                 if parent:
@@ -1433,40 +2120,60 @@ class ObjectBrowser(QTreeWidget):
     def _new_table(self, item: QTreeWidgetItem) -> None:
         data = item.data(0, Qt.ItemDataRole.UserRole)
         mw = self.window()
-        if hasattr(mw, '_workspace') and data:
+        if hasattr(mw, "_workspace") and data:
             from open_navicat.ui.widgets.table_designer import TableDesignerWidget
-            designer = TableDesignerWidget(data["connection_id"], data["database"], "", parent=mw._workspace)
+
+            designer = TableDesignerWidget(
+                data["connection_id"], data["database"], "", parent=mw._workspace
+            )
             idx = mw._workspace.addTab(designer, t("browser.new_table"))
             mw._workspace.setCurrentIndex(idx)
 
     def _copy_table(self, item: QTreeWidgetItem) -> None:
         from PySide6.QtWidgets import QInputDialog, QMessageBox
+
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        name, ok = QInputDialog.getText(self.window(), t("browser.copy_table"), t("browser.new_table_name"),
-                                        text=f"{data['name']}_copy")
+        name, ok = QInputDialog.getText(
+            self.window(),
+            t("browser.copy_table"),
+            t("browser.new_table_name"),
+            text=f"{data['name']}_copy",
+        )
         if ok and name:
             connector = connection_pool.get(data["connection_id"])
             if connector:
-                from open_navicat.dal.connection_pool import _loop as pool_loop
+                from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+                pool_loop = _pool_loop_getter()
+
                 try:
                     pool_loop.run_until_complete(
-                        connector.execute(f"CREATE TABLE `{data['database']}`.`{name.strip()}` LIKE `{data['database']}`.`{data['name']}`")
+                        connector.execute(
+                            f"CREATE TABLE `{data['database']}`.`{name.strip()}` LIKE `{data['database']}`.`{data['name']}`"
+                        )
                     )
                 except Exception as e:
                     QMessageBox.warning(self.window(), t("common.error"), str(e))
 
     def _rename_table(self, item: QTreeWidgetItem) -> None:
         from PySide6.QtWidgets import QInputDialog, QMessageBox
+
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        new_name, ok = QInputDialog.getText(self.window(), t("browser.rename_table"),
-                                            t("common.rename_prompt"), text=data["name"])
+        new_name, ok = QInputDialog.getText(
+            self.window(), t("browser.rename_table"), t("common.rename_prompt"), text=data["name"]
+        )
         if ok and new_name and new_name != data["name"]:
             connector = connection_pool.get(data["connection_id"])
             if connector:
-                from open_navicat.dal.connection_pool import _loop as pool_loop
+                from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+                pool_loop = _pool_loop_getter()
+
                 try:
                     pool_loop.run_until_complete(
-                        connector.execute(f"RENAME TABLE `{data['database']}`.`{data['name']}` TO `{data['database']}`.`{new_name.strip()}`")
+                        connector.execute(
+                            f"RENAME TABLE `{data['database']}`.`{data['name']}` TO `{data['database']}`.`{new_name.strip()}`"
+                        )
                     )
                     item.setText(0, new_name.strip())
                 except Exception as e:
@@ -1474,21 +2181,30 @@ class ObjectBrowser(QTreeWidget):
 
     def _dump_table_sql(self, item: QTreeWidgetItem) -> None:
         from PySide6.QtWidgets import QFileDialog
+
+        from open_navicat.services.metadata_service import metadata_service
+
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        path, _ = QFileDialog.getSaveFileName(self.window(), t("browser.dump_sql"),
-                                                f"{data['name']}.sql", t("browser.sql_filter_only"))
+        path, _ = QFileDialog.getSaveFileName(
+            self.window(),
+            t("browser.dump_sql"),
+            f"{data['name']}.sql",
+            t("browser.sql_filter_only"),
+        )
         if not path:
             return
         connector = connection_pool.get(data["connection_id"])
         if connector:
             try:
-                from open_navicat.services.metadata_service import metadata_service
-                ddl = metadata_service.get_create_table_sql(data["connection_id"], data["database"], data["name"])
+                ddl = metadata_service.get_create_table_sql(
+                    data["connection_id"], data["database"], data["name"]
+                )
                 if ddl:
                     with open(path, "w", encoding="utf-8") as f:
                         f.write(f"-- Dump table `{data['name']}`\n{ddl};\n")
             except Exception as e:
                 from PySide6.QtWidgets import QMessageBox
+
                 QMessageBox.warning(self.window(), t("common.error"), str(e))
 
     def _set_table_permissions(self, item: QTreeWidgetItem) -> None:
@@ -1497,7 +2213,9 @@ class ObjectBrowser(QTreeWidget):
             return
         from PySide6.QtWidgets import QDialog, QHBoxLayout, QLineEdit, QTextEdit, QVBoxLayout
 
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
 
         dlg = QDialog(self.window())
         dlg.setWindowTitle(t("browser.permissions_title"))
@@ -1525,7 +2243,9 @@ class ObjectBrowser(QTreeWidget):
             if not connector:
                 return
             try:
-                result = pool_loop.run_until_complete(connector.execute("SHOW GRANTS FOR CURRENT_USER"))
+                result = pool_loop.run_until_complete(
+                    connector.execute("SHOW GRANTS FOR CURRENT_USER")
+                )
                 text_area.setText("\n".join(str(r[0]) for r in (result.rows or [])))
             except Exception as e:
                 text_area.setText(str(e))
@@ -1550,13 +2270,13 @@ class ObjectBrowser(QTreeWidget):
     def _reverse_to_model(self, item: QTreeWidgetItem) -> None:
         data = item.data(0, Qt.ItemDataRole.UserRole)
         mw = self.window()
-        if hasattr(mw, '_show_model_designer') and data:
+        if hasattr(mw, "_show_model_designer") and data:
             mw._show_model_designer()
 
     def _create_bi_workspace(self, item: QTreeWidgetItem) -> None:
         data = item.data(0, Qt.ItemDataRole.UserRole)
         mw = self.window()
-        if hasattr(mw, '_show_bi_dashboard') and data:
+        if hasattr(mw, "_show_bi_dashboard") and data:
             mw._show_bi_dashboard()
 
     def _save_table_profile(self, item: QTreeWidgetItem) -> None:
@@ -1564,22 +2284,27 @@ class ObjectBrowser(QTreeWidget):
         if not data:
             return
         from PySide6.QtWidgets import QInputDialog
-        name, ok = QInputDialog.getText(self.window(), t("browser.save_profile"), t("browser.profile_save_hint"))
+
+        name, ok = QInputDialog.getText(
+            self.window(), t("browser.save_profile"), t("browser.profile_save_hint")
+        )
         if ok and name.strip():
-            local_db.save_profile({
-                "name": name.strip(),
-                "conn_id": data["connection_id"],
-                "database": data["database"],
-                "table": data["name"],
-                "columns": [],
-                "sort": [],
-                "filter": "",
-            })
+            local_db.save_profile(
+                {
+                    "name": name.strip(),
+                    "conn_id": data["connection_id"],
+                    "database": data["database"],
+                    "table": data["name"],
+                    "columns": [],
+                    "sort": [],
+                    "filter": "",
+                }
+            )
             QMessageBox.information(self.window(), t("common.success"), t("browser.profile_saved"))
 
     def _open_table_profile(self, item: QTreeWidgetItem, profile: dict) -> None:
         mw = self.window()
-        if hasattr(mw, 'open_table_tab'):
+        if hasattr(mw, "open_table_tab"):
             mw.open_table_tab(profile["conn_id"], profile["database"], profile["table"])
 
     def _share_table(self, item: QTreeWidgetItem) -> None:
@@ -1587,6 +2312,7 @@ class ObjectBrowser(QTreeWidget):
         if not data:
             return
         from PySide6.QtWidgets import QApplication
+
         uri = f"opennavicat://{data['connection_id']}/{data['database']}/{data['name']}"
         QApplication.clipboard().setText(uri)
         QMessageBox.information(self.window(), t("browser.share"), t("browser.share_copied"))
@@ -1595,6 +2321,7 @@ class ObjectBrowser(QTreeWidget):
         import os
         import platform
         import sys
+
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data:
             return
@@ -1609,14 +2336,18 @@ class ObjectBrowser(QTreeWidget):
         else:
             path = os.path.join(desktop, f"opennavicat_{table}.desktop")
             with open(path, "w") as f:
-                f.write(f"[Desktop Entry]\nType=Application\nName=OpenNavicat - {table}\nExec={exe} {args}\n")
+                f.write(
+                    f"[Desktop Entry]\nType=Application\nName=OpenNavicat - {table}\nExec={exe} {args}\n"
+                )
             os.chmod(path, 0o755)
-        QMessageBox.information(self.window(), t("browser.create_shortcut"), t("browser.shortcut_created"))
+        QMessageBox.information(
+            self.window(), t("browser.create_shortcut"), t("browser.shortcut_created")
+        )
 
     def open_table_tab(self, conn_id: str, database: str, table: str) -> None:
         """Open a data viewer tab for a table."""
         mw = self.window()
-        if hasattr(mw, 'open_table_tab'):
+        if hasattr(mw, "open_table_tab"):
             mw.open_table_tab(conn_id, database, table)
 
     def _open_view(self, item: QTreeWidgetItem) -> None:
@@ -1624,31 +2355,39 @@ class ObjectBrowser(QTreeWidget):
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if data:
             mw = self.window()
-            if hasattr(mw, 'open_table_tab'):
+            if hasattr(mw, "open_table_tab"):
                 mw.open_table_tab(data["connection_id"], data["database"], data["name"])
 
     def _design_view(self, item: QTreeWidgetItem) -> None:
         """Open view designer — reuses table designer for now."""
         data = item.data(0, Qt.ItemDataRole.UserRole)
         mw = self.window()
-        if hasattr(mw, '_workspace') and data:
+        if hasattr(mw, "_workspace") and data:
             from open_navicat.ui.widgets.table_designer import TableDesignerWidget
-            designer = TableDesignerWidget(data["connection_id"], data["database"], data["name"], parent=mw._workspace)
+
+            designer = TableDesignerWidget(
+                data["connection_id"], data["database"], data["name"], parent=mw._workspace
+            )
             idx = mw._workspace.addTab(designer, f"📐 {data['name']}")
             mw._workspace.setCurrentIndex(idx)
 
     def _drop_view(self, item: QTreeWidgetItem) -> None:
         from PySide6.QtWidgets import QMessageBox
+
         data = item.data(0, Qt.ItemDataRole.UserRole)
         reply = QMessageBox.question(
-            self.window(),             t("browser.drop_view"),
-            t("browser.confirm_drop_view", name=data['name']),
+            self.window(),
+            t("browser.drop_view"),
+            t("browser.confirm_drop_view", name=data["name"]),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
             connector = connection_pool.get(data["connection_id"])
             if connector:
-                from open_navicat.dal.connection_pool import _loop as pool_loop
+                from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+                pool_loop = _pool_loop_getter()
+
                 pool_loop.run_until_complete(
                     connector.execute(f"DROP VIEW IF EXISTS `{data['database']}`.`{data['name']}`")
                 )
@@ -1656,61 +2395,251 @@ class ObjectBrowser(QTreeWidget):
                 if parent:
                     parent.removeChild(item)
 
+    def _loop(self):
+        """The pool's asyncio loop — never the possibly-None module global."""
+        from open_navicat.dal.connection_pool import _get_loop
+
+        return _get_loop()
+
+    def _engine_of(self, conn_id: str) -> str:
+        """Engine slug of a pooled connection (mysql when unknown)."""
+        connector = connection_pool.get(conn_id)
+        info = getattr(connector, "_info", None)
+        return getattr(info, "engine", "") or "mysql"
+
     def _open_function(self, item: QTreeWidgetItem) -> None:
+        """Open a function's CREATE statement (kept for the legacy routine node)."""
+        self._show_create_sql(item, "function")
+
+    def _open_procedure(self, item: QTreeWidgetItem) -> None:
+        """Open a procedure's CREATE statement."""
+        self._show_create_sql(item, "procedure")
+
+    def _open_trigger(self, item: QTreeWidgetItem) -> None:
+        """Open a trigger's CREATE statement."""
+        self._show_create_sql(item, "trigger")
+
+    def _show_create_sql(self, item: QTreeWidgetItem, kind: str) -> None:
+        """Show an object's definition as a query tab, engine-aware.
+
+        ``SHOW CREATE`` is MySQL-only; every other engine gets the catalogue
+        query that returns the same thing instead of a guaranteed syntax error.
+        """
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data:
             return
         mw = self.window()
-        if hasattr(mw, 'open_query_tab'):
-            # Show function definition as a query
-            conn_id = data["connection_id"]
-            database = data["database"]
-            func_name = data["name"]
-            mw.open_query_tab(conn_id, database, f"SHOW CREATE FUNCTION `{database}`.`{func_name}`;\n")
+        if not hasattr(mw, "open_query_tab"):
+            return
+        engine = self._engine_of(data["connection_id"])
+        database = data["database"]
+        name = data["name"].split(" (")[0]  # strip the type suffix list_routines adds
+        ref = quote_qualified(name, engine, database)
+        lit = quote_literal(name)
+        sql: str | None = None
+        if kind in ("procedure", "function"):
+            if engine in ("mysql", "mariadb"):
+                sql = f"SHOW CREATE {kind.upper()} {ref};\n"
+            elif engine == "postgresql":
+                sql = (
+                    "SELECT pg_get_functiondef(p.oid)\n"
+                    "FROM pg_proc p\n"
+                    "JOIN pg_namespace n ON n.oid = p.pronamespace\n"
+                    f"WHERE p.proname = {lit} AND n.nspname = {quote_literal(database)};\n"
+                )
+            elif engine == "sqlserver":
+                sql = (
+                    "SELECT m.definition\n"
+                    "FROM sys.sql_modules m\n"
+                    "JOIN sys.objects o ON o.object_id = m.object_id\n"
+                    f"WHERE o.name = {lit};\n"
+                )
+        elif kind == "trigger":
+            if engine in ("mysql", "mariadb"):
+                sql = f"SHOW CREATE TRIGGER {ref};\n"
+            elif engine == "postgresql":
+                sql = f"SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname = {lit};\n"
+            elif engine == "sqlite":
+                sql = (
+                    "SELECT sql FROM sqlite_master\n"
+                    f"WHERE type = 'trigger' AND name = {lit};\n"
+                )
+            elif engine == "sqlserver":
+                sql = (
+                    "SELECT m.definition\n"
+                    "FROM sys.sql_modules m\n"
+                    "JOIN sys.triggers t ON t.object_id = m.object_id\n"
+                    f"WHERE t.name = {lit};\n"
+                )
+        if sql is None:
+            QMessageBox.information(
+                self.window(),
+                t("browser.properties"),
+                t("browser.definition_unsupported", kind=kind, engine=engine),
+            )
+            return
+        mw.open_query_tab(data["connection_id"], database, sql)
 
-    def _drop_function(self, item: QTreeWidgetItem) -> None:
-        from PySide6.QtWidgets import QMessageBox
+    def _drop_routine(self, item: QTreeWidgetItem) -> None:
+        """Drop a procedure or function — the verb comes from the node type.
+
+        The old code always emitted ``DROP PROCEDURE`` (wrong verb for function
+        nodes) with hard-coded MySQL backticks on every engine.
+        """
         data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        kind = "function" if data.get("type") == "function" else "procedure"
         reply = QMessageBox.question(
-            self.window(),             t("browser.drop_function"),
-            t("browser.confirm_drop_routine", name=data['name']),
+            self.window(),
+            t(f"browser.drop_{kind}"),
+            t("browser.confirm_drop_routine", name=data["name"]),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
-        if reply == QMessageBox.StandardButton.Yes:
-            connector = connection_pool.get(data["connection_id"])
-            if connector:
-                from open_navicat.dal.connection_pool import _loop as pool_loop
-                name = data["name"].split(" (")[0]  # strip type suffix
-                pool_loop.run_until_complete(
-                    connector.execute(f"DROP PROCEDURE IF EXISTS `{data['database']}`.`{name}`")
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        connector = connection_pool.get(data["connection_id"])
+        if not connector:
+            return
+        engine = self._engine_of(data["connection_id"])
+        name = data["name"].split(" (")[0]  # strip the type suffix list_routines adds
+        sql = f"DROP {kind.upper()} IF EXISTS {quote_qualified(name, engine, data['database'])}"
+        try:
+            self._loop().run_until_complete(connector.execute(sql))
+        except Exception as exc:  # noqa: BLE001 - surface the database's own error
+            QMessageBox.warning(self.window(), t("common.error"), str(exc))
+            return
+        parent = item.parent()
+        if parent:
+            parent.removeChild(item)
+
+    def _drop_trigger(self, item: QTreeWidgetItem) -> None:
+        """Drop a trigger — MySQL/SQLite need no table, PG/SQL Server do."""
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        reply = QMessageBox.question(
+            self.window(),
+            t("browser.drop_trigger"),
+            t("browser.confirm_drop_trigger", name=data["name"]),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        connector = connection_pool.get(data["connection_id"])
+        if not connector:
+            return
+        engine = self._engine_of(data["connection_id"])
+        name = data["name"]
+        table = data.get("parent") or ""
+        if engine in ("mysql", "mariadb"):
+            sql = f"DROP TRIGGER IF EXISTS {quote_qualified(name, engine, data['database'])}"
+        elif engine == "postgresql":
+            if not table:
+                QMessageBox.warning(
+                    self.window(), t("common.error"), t("browser.trigger_needs_table")
                 )
-                parent = item.parent()
-                if parent:
-                    parent.removeChild(item)
+                return
+            sql = (
+                f"DROP TRIGGER IF EXISTS {quote_identifier(name, engine)} "
+                f"ON {quote_qualified(table, engine, data['database'])}"
+            )
+        elif engine == "sqlserver":
+            if not table:
+                QMessageBox.warning(
+                    self.window(), t("common.error"), t("browser.trigger_needs_table")
+                )
+                return
+            sql = (
+                f"DROP TRIGGER IF EXISTS {quote_qualified(name, engine, table)} "
+                f"ON {quote_qualified(table, engine, data['database'])}"
+            )
+        elif engine == "sqlite":
+            sql = f"DROP TRIGGER IF EXISTS {quote_identifier(name, engine)}"
+        else:
+            QMessageBox.information(
+                self.window(),
+                t("browser.properties"),
+                t("browser.definition_unsupported", kind="trigger", engine=engine),
+            )
+            return
+        try:
+            self._loop().run_until_complete(connector.execute(sql))
+        except Exception as exc:  # noqa: BLE001 - surface the database's own error
+            QMessageBox.warning(self.window(), t("common.error"), str(exc))
+            return
+        parent = item.parent()
+        if parent:
+            parent.removeChild(item)
+
+    def _copy_object_name(self, item: QTreeWidgetItem) -> None:
+        """Copy the node's object name to the clipboard."""
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        QApplication.clipboard().setText(data.get("name", ""))
+
+    def _refresh_node(self, item: QTreeWidgetItem) -> None:
+        """Re-expand a node in place (context menu refresh)."""
+        data = item.data(0, Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        if data.get("type") == "table_detail":
+            self._expand_table_detail(item)
+            return
+        parent = item.parent()
+        if parent and data.get("type") == "category":
+            self._refresh_database(parent)
+        else:
+            self._refresh_connection(item)
 
     def _run_maintenance_sql(self, item: QTreeWidgetItem, operation: str) -> None:
+        """Run one maintenance statement for a table, engine-aware."""
         data = item.data(0, Qt.ItemDataRole.UserRole)
-        connector = connection_pool.get(data["connection_id"])
-        if connector:
-            from open_navicat.dal.connection_pool import _loop as pool_loop
-            sql = f"{operation} TABLE `{data['database']}`.`{data['name']}`"
-            try:
-                pool_loop.run_until_complete(connector.execute(sql))
-                QMessageBox.information(self.window(), t("common.success"), t("browser.maintenance_success", operation=operation, table=data["name"]))
-            except Exception as e:
-                QMessageBox.warning(self.window(), t("common.error"), t("browser.maintenance_failed", operation=operation, error=e))
+        if not data:
+            return
+        self._maintenance(operation, data["name"], data["connection_id"], data["database"])
+
+    def _maintenance(self, operation: str, table: str, conn_id: str, database: str) -> None:
+        """Build and run the maintenance statement this engine supports."""
+        connector = connection_pool.get(conn_id)
+        if not connector:
+            return
+        op = operation.lower()
+        engine = self._engine_of(conn_id)
+        sql = _maintenance_sql(engine, op, database, table)
+        if sql is None:
+            QMessageBox.warning(
+                self.window(),
+                t("common.error"),
+                t("browser.maintenance_unsupported", operation=op, engine=engine),
+            )
+            return
+        try:
+            self._loop().run_until_complete(connector.execute(sql))
+            QMessageBox.information(
+                self.window(),
+                t("common.success"),
+                t("browser.maintenance_success", operation=op, table=table),
+            )
+        except Exception as exc:  # noqa: BLE001 - surface the database's own error
+            QMessageBox.warning(
+                self.window(),
+                t("common.error"),
+                t("browser.maintenance_failed", operation=op, error=exc),
+            )
 
     def _check_table(self, item: QTreeWidgetItem) -> None:
-        self._run_maintenance_sql(item, "CHECK")
+        self._run_maintenance_sql(item, "check")
 
     def _optimize_table(self, item: QTreeWidgetItem) -> None:
-        self._run_maintenance_sql(item, "OPTIMIZE")
+        self._run_maintenance_sql(item, "optimize")
 
     def _repair_table(self, item: QTreeWidgetItem) -> None:
-        self._run_maintenance_sql(item, "REPAIR")
+        self._run_maintenance_sql(item, "repair")
 
     def _analyze_table(self, item: QTreeWidgetItem) -> None:
-        self._run_maintenance_sql(item, "ANALYZE")
+        self._run_maintenance_sql(item, "analyze")
 
     def _copy_object_to(self, item: QTreeWidgetItem) -> None:
         """Copy table/view to another database on the same connection."""
@@ -1727,16 +2656,23 @@ class ObjectBrowser(QTreeWidget):
             return
 
         from PySide6.QtWidgets import QInputDialog
+
         target_db, ok = QInputDialog.getItem(
-            self.window(), t("browser.copy_to_db"),
+            self.window(),
+            t("browser.copy_to_db"),
             t("browser.select_target_db", name=name),
-            self._get_databases(conn_id), 0, False,
+            self._get_databases(conn_id),
+            0,
+            False,
         )
         if not ok or not target_db:
             return
 
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
+
         connector = connection_pool.get(conn_id)
         if not connector:
             return
@@ -1745,22 +2681,32 @@ class ObjectBrowser(QTreeWidget):
             if obj_type == "table":
                 sql = f"CREATE TABLE `{target_db}`.`{name}` LIKE `{database}`.`{name}`"
                 pool_loop.run_until_complete(connector.execute(sql))
-                QMessageBox.information(self.window(), t("common.success"),
-                    t("browser.table_copied", name=name, target=target_db))
+                QMessageBox.information(
+                    self.window(),
+                    t("common.success"),
+                    t("browser.table_copied", name=name, target=target_db),
+                )
             elif obj_type == "view":
                 sql = f"CREATE VIEW `{target_db}`.`{name}` AS SELECT * FROM `{database}`.`{name}`"
                 pool_loop.run_until_complete(connector.execute(sql))
-                QMessageBox.information(self.window(), t("common.success"),
-                    t("browser.view_copied", name=name, target=target_db))
+                QMessageBox.information(
+                    self.window(),
+                    t("common.success"),
+                    t("browser.view_copied", name=name, target=target_db),
+                )
             else:
-                QMessageBox.information(self.window(), t("common.notice"),
-                    t("browser.unsupported_copy", type=obj_type))
+                QMessageBox.information(
+                    self.window(), t("common.notice"), t("browser.unsupported_copy", type=obj_type)
+                )
         except Exception as e:
             QMessageBox.warning(self.window(), t("browser.copy_failed"), str(e))
 
     def _get_databases(self, conn_id: str) -> list[str]:
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
+
         connector = connection_pool.get(conn_id)
         if not connector:
             return []
@@ -1776,6 +2722,7 @@ class ObjectBrowser(QTreeWidget):
         if not data:
             return
         from PySide6.QtWidgets import QMessageBox
+
         info_lines = [f"{k}: {v}" for k, v in data.items() if k != "info"]
         QMessageBox.information(self.window(), t("browser.properties"), "\n".join(info_lines))
 
@@ -1798,6 +2745,7 @@ class ObjectBrowser(QTreeWidget):
     def _enrich_item_labels(self) -> None:
         """Append type/badge info to every visible item's label."""
         from PySide6.QtWidgets import QTreeWidgetItemIterator
+
         it = QTreeWidgetItemIterator(self)
         while it.value():
             item = it.value()
@@ -1813,6 +2761,7 @@ class ObjectBrowser(QTreeWidget):
     def _restore_item_labels(self) -> None:
         """Restore original labels from UserRole data."""
         from PySide6.QtWidgets import QTreeWidgetItemIterator
+
         it = QTreeWidgetItemIterator(self)
         while it.value():
             item = it.value()
@@ -1825,6 +2774,7 @@ class ObjectBrowser(QTreeWidget):
         """Show or hide group container items."""
         self._groups_hidden = not visible
         from PySide6.QtWidgets import QTreeWidgetItemIterator
+
         it = QTreeWidgetItemIterator(self)
         while it.value():
             item = it.value()
@@ -1836,13 +2786,16 @@ class ObjectBrowser(QTreeWidget):
     def show_sort_menu(self) -> None:
         """Show a popup menu to select sort criterion for the tree."""
         from PySide6.QtWidgets import QMenu
+
         menu = QMenu(self)
         for label, key in [("Name", "name"), ("Type", "type"), ("Host", "host")]:
             act = menu.addAction(label)
             act.triggered.connect(lambda checked, k=key: self._sort_tree(k))
-        pos = (self.viewport().mapToGlobal(self.visualItemRect(self.currentItem()).topLeft())
-               if self.currentItem() else
-               self.mapToGlobal(self.rect().topLeft()))
+        pos = (
+            self.viewport().mapToGlobal(self.visualItemRect(self.currentItem()).topLeft())
+            if self.currentItem()
+            else self.mapToGlobal(self.rect().topLeft())
+        )
         menu.exec(pos)
 
     def _sort_tree(self, key: str) -> None:
@@ -1863,17 +2816,27 @@ class ObjectBrowser(QTreeWidget):
     def show_column_selector(self) -> None:
         """Show a dialog to select which columns appear in table-list view."""
         from PySide6.QtWidgets import QMessageBox
+
         QMessageBox.information(
-            self, "Select Columns",
+            self,
+            "Select Columns",
             "Column visibility can be adjusted in the table list's header context menu.",
         )
 
     def set_system_objects_visible(self, visible: bool) -> None:
         """Toggle visibility of system databases."""
         self._show_system_objects = visible
-        system_dbs = {"mysql", "sys", "information_schema", "performance_schema",
-                      "pg_catalog", "template0", "template1"}
+        system_dbs = {
+            "mysql",
+            "sys",
+            "information_schema",
+            "performance_schema",
+            "pg_catalog",
+            "template0",
+            "template1",
+        }
         from PySide6.QtWidgets import QTreeWidgetItemIterator
+
         it = QTreeWidgetItemIterator(self)
         while it.value():
             item = it.value()
@@ -1889,6 +2852,7 @@ class ObjectBrowser(QTreeWidget):
         conn_id = fav.get("connection_id", "")
         obj_name = fav.get("name", "")
         from PySide6.QtWidgets import QMessageBox, QTreeWidgetItemIterator
+
         it = QTreeWidgetItemIterator(self)
         while it.value():
             item = it.value()
@@ -1906,6 +2870,7 @@ class ObjectBrowser(QTreeWidget):
                     return
             it += 1
         QMessageBox.information(
-            self, "Not Found",
+            self,
+            "Not Found",
             f"Favorite '{obj_name}' not found in the object tree. Please connect first.",
         )

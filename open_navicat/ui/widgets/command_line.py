@@ -62,7 +62,13 @@ class CommandLineWidget(QWidget):
         input_layout.setContentsMargins(0, 0, 0, 0)
 
         engine = self._detect_engine()
-        prompt_text = f"{engine}> " if self._database is None else f"{engine}({self._database})> " if self._database else f"{engine}> "
+        prompt_text = (
+            f"{engine}> "
+            if self._database is None
+            else f"{engine}({self._database})> "
+            if self._database
+            else f"{engine}> "
+        )
         self._prompt_label = QLabel(prompt_text)
         self._prompt_label.setObjectName("accentLabel")
         input_layout.addWidget(self._prompt_label)
@@ -125,21 +131,33 @@ class CommandLineWidget(QWidget):
             return
 
         try:
-            from open_navicat.dal.connection_pool import _loop as pool_loop
+            from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+            pool_loop = _pool_loop_getter()
             result = pool_loop.run_until_complete(connector.execute(cmd))
             if result.success:
                 if result.columns and result.rows:
                     # Format as table
                     cols = [c.name for c in result.columns]
-                    widths = [max(len(c), max((len(str(r[i])) for r in result.rows), default=0)) for i, c in enumerate(cols)]
+                    widths = [
+                        max(len(c), max((len(str(r[i])) for r in result.rows), default=0))
+                        for i, c in enumerate(cols)
+                    ]
                     header = " | ".join(c.ljust(w) for c, w in zip(cols, widths))
                     sep = "-+-".join("-" * w for w in widths)
                     self._append_output(header)
                     self._append_output(sep)
                     for row in result.rows[:1000]:
-                        self._append_output(" | ".join(str(v).ljust(w) if v is not None else "NULL".ljust(w) for v, w in zip(row, widths)))
+                        self._append_output(
+                            " | ".join(
+                                str(v).ljust(w) if v is not None else "NULL".ljust(w)
+                                for v, w in zip(row, widths)
+                            )
+                        )
                     if len(result.rows) > 1000:
-                        self._append_output(t("command_line.output.truncated", count=len(result.rows)))
+                        self._append_output(
+                            t("command_line.output.truncated", count=len(result.rows))
+                        )
                     self._append_output(t("command_line.output.rows", count=len(result.rows)))
                 elif result.affected_rows is not None:
                     self._append_output(f"Query OK, {result.affected_rows} row(s) affected")

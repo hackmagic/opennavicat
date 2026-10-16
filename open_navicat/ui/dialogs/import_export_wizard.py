@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import itertools
 
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -21,37 +22,32 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
-from open_navicat.dal.connection_pool import _loop as pool_loop
-from open_navicat.dal.connection_pool import connection_pool
+from open_navicat.dal.connection_pool import _get_loop, connection_pool
 from open_navicat.i18n import t
 
 
 class FormatPage(QWizardPage):
     """Page 1: select import/export format."""
 
+    #: Only formats the streaming pipeline (formats.importers / exporters)
+    #: actually handles.  The legacy in-memory readers (txt/xml/html/dbf/mdb)
+    #: were removed together with their buggy whole-file parsing: picking an
+    #: unsupported format in the wizard now cannot silently mis-import data.
     FORMATS_IMPORT = [
-        ("txt", t("import_export.file_type.text")),
         ("csv", t("import_export.file_type.csv")),
+        ("tsv", t("import_export.file_type.tsv")),
         ("json", t("import_export.file_type.json")),
-        ("xml", t("import_export.file_type.xml")),
-        ("html", t("import_export.file_type.html")),
-        ("sql", t("import_export.file_type.sql")),
+        ("jsonl", t("import_export.file_type.jsonl")),
         ("xlsx", t("import_export.file_type.excel")),
-        ("dbf", "DBase (*.dbf)"),
-        ("mdb", "MS Access (*.mdb)"),
-        ("accdb", "MS Access (*.accdb)"),
-        ("px", "Paradox (*.db)"),
     ]
 
     FORMATS_EXPORT = [
-        ("txt", t("import_export.file_type.text")),
         ("csv", t("import_export.file_type.csv")),
+        ("tsv", t("import_export.file_type.tsv")),
         ("json", t("import_export.file_type.json")),
-        ("xml", t("import_export.file_type.xml")),
-        ("html", t("import_export.file_type.html")),
-        ("sql", t("import_export.file_type.sql")),
+        ("markdown", t("import_export.file_type.markdown")),
         ("xlsx", t("import_export.file_type.excel")),
-        ("dbf", "DBase (*.dbf)"),
+        ("sql", t("import_export.file_type.sql")),
     ]
 
     def __init__(self, is_import: bool = True) -> None:
@@ -91,13 +87,17 @@ class FilePage(QWizardPage):
 
     def _browse(self) -> None:
         if self._is_import:
-            filter_str = "文本文件 (*.txt);;CSV (*.csv);;JSON (*.json);;XML (*.xml);;HTML (*.html);;SQL (*.sql);;Excel (*.xlsx);;DBase (*.dbf);;MS Access (*.mdb *.accdb);;Paradox (*.db);;所有文件 (*)"
+            filter_str = "数据文件 (*.csv *.tsv *.json *.jsonl *.xlsx);;所有文件 (*)"
         else:
-            filter_str = "文本文件 (*.txt);;CSV (*.csv);;JSON (*.json);;XML (*.xml);;HTML (*.html);;SQL (*.sql);;Excel (*.xlsx);;DBase (*.dbf);;所有文件 (*)"
+            filter_str = "数据文件 (*.csv *.tsv *.json *.md *.xlsx *.sql);;所有文件 (*)"
         if self._is_import:
-            path, _ = QFileDialog.getOpenFileName(self, t("import_export.import_file_dialog"), "", filter_str)
+            path, _ = QFileDialog.getOpenFileName(
+                self, t("import_export.import_file_dialog"), "", filter_str
+            )
         else:
-            path, _ = QFileDialog.getSaveFileName(self, t("import_export.export_file_dialog"), "export", filter_str)
+            path, _ = QFileDialog.getSaveFileName(
+                self, t("import_export.export_file_dialog"), "export", filter_str
+            )
         if path:
             self._path_input.setText(path)
 
@@ -119,7 +119,14 @@ class OptionsPage(QWizardPage):
         layout.addRow(t("import_export.encoding") + ":", self._encoding_combo)
 
         self._delimiter_combo = QComboBox(self)
-        self._delimiter_combo.addItems([t("import_export.delimiter.comma"), t("import_export.delimiter.semicolon"), t("import_export.delimiter.tab"), t("import_export.delimiter.pipe")])
+        self._delimiter_combo.addItems(
+            [
+                t("import_export.delimiter.comma"),
+                t("import_export.delimiter.semicolon"),
+                t("import_export.delimiter.tab"),
+                t("import_export.delimiter.pipe"),
+            ]
+        )
         layout.addRow(t("import_export.delimiter") + ":", self._delimiter_combo)
 
         self._header_check = QCheckBox(t("import_export.has_header"), self)
@@ -193,174 +200,64 @@ class ImportWizard(QWizard):
         super().accept()
 
     def _run_import(self) -> None:
+        """Streamed, type-coerced, transactional import (sql/migration.py).
+
+        The old implementation slurped the whole file into a ``list[dict]``
+        and sent every value as ``str`` — no type coercion, no transaction,
+        no per-row error reporting.  The migration layer does all three, so
+        the wizard just forwards its options.
+        """
+        from open_navicat.formats.importers import ImportFileError
+        from open_navicat.sql.migration import MigrationOptions, run_migration
+
         path = self._file_page.file_path()
-        fmt = self._format_page.selected_format()
-        enc = self._options_page.encoding()
-        delim = self._options_page.delimiter()
         has_header = self._options_page.has_header()
         batch_size = self._options_page.batch_size()
+        delim = self._options_page.delimiter() or None
+        enc = self._options_page.encoding() or None
 
+        connector = connection_pool.get(self._connection_id)
+        if not connector:
+            self._confirm_page.set_result(t("import_export.msg.not_connected"))
+            return
+
+        options = MigrationOptions(
+            batch_size=batch_size,
+            transactional=True,
+            has_header=has_header,
+            delimiter=delim,
+            encoding=enc or "utf-8-sig",
+        )
         try:
-            rows = []
-            if fmt == "txt":
-                with open(path, "r", encoding=enc) as f:
-                    lines = f.readlines()
-                if has_header and lines:
-                    headers = lines[0].strip().split(delim)
-                    for line in lines[1:]:
-                        vals = line.strip().split(delim)
-                        rows.append(dict(zip(headers, vals)))
-                else:
-                    for line in lines:
-                        rows.append({"value": line.strip()})
-
-            elif fmt == "csv":
-                with open(path, "r", encoding=enc) as f:
-                    reader = csv.DictReader(f, delimiter=delim) if has_header else csv.DictReader(f, delimiter=delim, fieldnames=[])
-                    rows = [dict(r) for r in reader]
-
-            elif fmt == "json":
-                import json
-                with open(path, "r", encoding=enc) as f:
-                    data = json.load(f)
-                    rows = data if isinstance(data, list) else [data]
-
-            elif fmt == "xml":
-                import xml.etree.ElementTree as ElementTree
-                tree = ElementTree.parse(path)
-                root = tree.getroot()
-                for row_elem in root.findall("row"):
-                    row = {}
-                    for child in row_elem:
-                        row[child.tag] = child.text
-                    rows.append(row)
-
-            elif fmt == "html":
-                from html.parser import HTMLParser
-                class TableParser(HTMLParser):
-                    def __init__(self):
-                        super().__init__()
-                        self.headers = []
-                        self.rows = []
-                        self._in_th = False
-                        self._in_td = False
-                        self._current_row = []
-                        self._is_header = True
-                    def handle_starttag(self, tag, attrs):
-                        if tag == "th":
-                            self._in_th = True
-                        elif tag == "td":
-                            self._in_td = True
-                        elif tag == "tr":
-                            self._current_row = []
-                    def handle_endtag(self, tag):
-                        if tag == "th":
-                            self._in_th = False
-                        elif tag == "td":
-                            self._in_td = False
-                        elif tag == "tr":
-                            if self._is_header and not self.headers:
-                                self.headers = self._current_row
-                                self._is_header = False
-                            else:
-                                self.rows.append(self._current_row)
-                    def handle_data(self, data):
-                        if self._in_th:
-                            self.headers.append(data.strip())
-                        elif self._in_td:
-                            self._current_row.append(data.strip())
-                parser = TableParser()
-                with open(path, "r", encoding=enc) as f:
-                    parser.feed(f.read())
-                if has_header and parser.headers:
-                    for r in parser.rows:
-                        rows.append(dict(zip(parser.headers, r)))
-                else:
-                    for r in parser.rows:
-                        rows.append({str(i): v for i, v in enumerate(r)})
-
-            elif fmt == "sql":
-                with open(path, "r", encoding=enc) as f:
-                    content = f.read()
-                import re
-                inserts = re.findall(r"INSERT\s+INTO\s+`?(\w+)`?\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)", content, re.IGNORECASE)
-                if inserts:
-                    cols = [c.strip().strip("`") for c in inserts[0][1].split(",")]
-                    for match in inserts:
-                        vals_raw = match[2]
-                        vals = [v.strip().strip("'\"") for v in vals_raw.split(",")]
-                        rows.append(dict(zip(cols, vals)))
-
-            elif fmt == "xlsx":
-                from openpyxl import load_workbook
-                wb = load_workbook(path, read_only=True, data_only=True)
-                ws = wb.active
-                headers = [str(c.value) for c in next(ws.iter_rows(min_row=1, max_row=1))] if has_header else []
-                start = 2 if has_header else 1
-                for row in ws.iter_rows(min_row=start, values_only=True):
-                    row_data = dict(zip(headers, [str(v) if v is not None else None for v in row])) if has_header else {}
-                    if not has_header:
-                        row_data = {str(i): str(v) if v is not None else None for i, v in enumerate(row)}
-                    rows.append(row_data)
-
-            elif fmt == "dbf":
-                from dbfread import DBF
-                table = DBF(path, encoding=enc)
-                for record in table:
-                    rows.append({k: str(v) if v is not None else None for k, v in record.items()})
-
-            elif fmt == "mdb":
-                import pyodbc
-                conn_str = r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + path
-                with pyodbc.connect(conn_str) as conn:
-                    cursor = conn.cursor()
-                    # Get first table name
-                    tables = [row.table_name for row in cursor.tables(tableType="TABLE")]
-                    if tables:
-                        cursor.execute(f"SELECT * FROM [{tables[0]}]")
-                        cols = [desc[0] for desc in cursor.description]
-                        for row in cursor.fetchall():
-                            rows.append(dict(zip(cols, [str(v) if v is not None else None for v in row])))
-
-            elif fmt == "accdb":
-                import pyodbc
-                conn_str = r"DRIVER={Microsoft Access Driver (*.mdb, *.accdb)};DBQ=" + path
-                with pyodbc.connect(conn_str) as conn:
-                    cursor = conn.cursor()
-                    tables = [row.table_name for row in cursor.tables(tableType="TABLE")]
-                    if tables:
-                        cursor.execute(f"SELECT * FROM [{tables[0]}]")
-                        cols = [desc[0] for desc in cursor.description]
-                        for row in cursor.fetchall():
-                            rows.append(dict(zip(cols, [str(v) if v is not None else None for v in row])))
-
-            elif fmt == "px":
-                # Paradox files use .db extension; try dbfread as fallback
-                from dbfread import DBF
-                table = DBF(path, encoding=enc)
-                for record in table:
-                    rows.append({k: str(v) if v is not None else None for k, v in record.items()})
-
-            if not rows:
-                self._confirm_page.set_result(t("import_export.msg.file_empty"))
-                return
-
-            connector = connection_pool.get(self._connection_id)
-            if not connector:
-                self._confirm_page.set_result(t("import_export.msg.not_connected"))
-                return
-
-            total = 0
-            for i in range(0, len(rows), batch_size):
-                batch = rows[i:i + batch_size]
-                inserted = pool_loop.run_until_complete(
-                    connector.batch_insert(self._database, self._table, batch)
-                )
-                total += inserted
-
-            self._confirm_page.set_result(t("import_export.import_success", count=total))
-        except Exception as e:
+            result = _get_loop().run_until_complete(
+                run_migration(connector, self._database, self._table, path, options=options)
+            )
+        except ImportFileError as e:
             self._confirm_page.set_result(f"{t('import_export.msg.import_failed')}: {e}")
+            return
+        except Exception as e:  # noqa: BLE001 - the wizard reports any failure
+            self._confirm_page.set_result(f"{t('import_export.msg.import_failed')}: {e}")
+            return
+
+        if result.aborted:
+            reason = result.notes or "aborted"
+            self._confirm_page.set_result(f"{t('import_export.msg.import_failed')}: {reason}")
+            return
+        if result.rows_failed:
+            head = result.errors[0] if result.errors else None
+            detail = f"row {head.row_number}: {head.error}" if head else ""
+            self._confirm_page.set_result(
+                t(
+                    "import_export.import_partial",
+                    written=result.rows_written,
+                    failed=result.rows_failed,
+                    detail=detail,
+                )
+            )
+            return
+        self._confirm_page.set_result(
+            t("import_export.import_success", count=result.rows_written)
+        )
 
 
 class ExportWizard(QWizard):
@@ -387,11 +284,20 @@ class ExportWizard(QWizard):
         super().accept()
 
     def _run_export(self) -> None:
+        """Streamed export through formats.exporters (paged SELECT).
+
+        The old implementation ran one ``SELECT *`` and built the whole
+        result in memory, with MySQL backtick quoting hardcoded.  Now each
+        page is one ``query_engine`` round-trip and identifiers are quoted
+        per engine.
+        """
+        from open_navicat.formats.exporters import ExportFormat, export_rows
+        from open_navicat.sql.quoting import limit_clause, quote_qualified
+
         path = self._file_page.file_path()
         fmt = self._format_page.selected_format()
-        enc = self._options_page.encoding()
-        delim = self._options_page.delimiter()
         has_header = self._options_page.has_header()
+        batch_size = max(1, self._options_page.batch_size())
 
         connector = connection_pool.get(self._connection_id)
         if not connector:
@@ -399,112 +305,52 @@ class ExportWizard(QWizard):
             return
 
         try:
-            sql = f"SELECT * FROM `{self._database}`.`{self._table}`"
-            result = pool_loop.run_until_complete(connector.execute(sql))
-            if not result.columns:
+            kind = ExportFormat(fmt)
+        except ValueError:
+            self._confirm_page.set_result(
+                f"{t('import_export.msg.export_failed')}: unknown format {fmt!r}"
+            )
+            return
+
+        info = getattr(connector, "_info", None)
+        engine = getattr(info, "engine", "mysql") if info else "mysql"
+        ref = quote_qualified(self._table, engine, self._database)
+        header: list[str] = []
+
+        def _pages():
+            """Yield one page at a time; peak memory is a single batch."""
+            offset = 0
+            while True:
+                result = _get_loop().run_until_complete(
+                    connector.execute(
+                        f"SELECT * FROM {ref} " + limit_clause(batch_size, offset, engine)
+                    )
+                )
+                if not getattr(result, "columns", None):
+                    return
+                rows = [list(row) for row in result.rows]
+                if not rows:
+                    return
+                if not offset:
+                    header[:] = [c.name for c in result.columns]
+                yield rows
+                offset += len(rows)
+
+        try:
+            pages = _pages()
+            first = next(pages, None)
+            if first is None:
                 self._confirm_page.set_result(t("import_export.msg.no_data"))
                 return
-
-            cols = [c.name for c in result.columns]
-
-            if fmt == "txt":
-                with open(path, "w", encoding=enc) as f:
-                    if has_header:
-                        f.write(delim.join(cols) + "\n")
-                    for row in result.rows:
-                        f.write(delim.join(str(v) if v is not None else "" for v in row) + "\n")
-
-            elif fmt == "csv":
-                with open(path, "w", newline="", encoding=enc) as f:
-                    writer = csv.writer(f, delimiter=delim)
-                    if has_header:
-                        writer.writerow(cols)
-                    for row in result.rows:
-                        writer.writerow([str(v) if v is not None else "" for v in row])
-
-            elif fmt == "json":
-                import json
-                data = [dict(zip(cols, [str(v) if v is not None else None for v in row])) for row in result.rows]
-                with open(path, "w", encoding=enc) as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-
-            elif fmt == "xml":
-                lines = ['<?xml version="1.0" encoding="UTF-8"?>', f"<{self._table}>"]
-                for row in result.rows:
-                    lines.append("  <row>")
-                    for c, v in zip(cols, row):
-                        val = str(v) if v is not None else ""
-                        lines.append(f"    <{c}>{val}</{c}>")
-                    lines.append("  </row>")
-                lines.append(f"</{self._table}>")
-                with open(path, "w", encoding=enc) as f:
-                    f.write("\n".join(lines))
-
-            elif fmt == "html":
-                lines = [
-                    "<!DOCTYPE html><html><head>",
-                    f"<meta charset='{enc}'>",
-                    f"<title>{self._table}</title>",
-                    "<style>table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px 8px}th{background:#f5f5f5}</style>",
-                    "</head><body>",
-                    "<table><thead><tr>",
-                ]
-                if has_header:
-                    lines.append("".join(f"<th>{c}</th>" for c in cols))
-                lines.append("</tr></thead><tbody>")
-                for row in result.rows:
-                    lines.append("<tr>" + "".join(f"<td>{str(v) if v is not None else ''}</td>" for v in row) + "</tr>")
-                lines.append("</tbody></table></body></html>")
-                with open(path, "w", encoding=enc) as f:
-                    f.write("\n".join(lines))
-
-            elif fmt == "sql":
-                lines = [f"-- Export table `{self._table}`", ""]
-                for row in result.rows:
-                    vals = ", ".join(f"'{str(v).replace(chr(39), chr(39)*2)}'" if v is not None else "NULL" for v in row)
-                    lines.append(f"INSERT INTO `{self._table}` ({', '.join(f'`{c}`' for c in cols)}) VALUES ({vals});")
-                with open(path, "w", encoding=enc) as f:
-                    f.write("\n".join(lines))
-
-            elif fmt == "xlsx":
-                from openpyxl import Workbook
-                wb = Workbook()
-                ws = wb.active
-                ws.title = self._table
-                if has_header:
-                    ws.append(cols)
-                for row in result.rows:
-                    ws.append([v for v in row])
-                wb.save(path)
-
-            elif fmt == "dbf":
-                import struct
-                # Create DBF file
-                with open(path, 'wb') as f:
-                    # DBF header
-                    f.write(b'\x03')  # Version
-                    f.write(struct.pack('BBB', 0, 0, 0))  # Date
-                    f.write(struct.pack('<I', len(result.rows)))  # Number of records
-                    header_len = 32 + 32 * len(cols) + 1
-                    rec_len = 1 + sum(32 for _ in cols)  # Simplified
-                    f.write(struct.pack('<HH', header_len, rec_len))
-                    # Fields
-                    for c in cols:
-                        field_name = c[:10].ljust(10, '\x00').encode('ascii')
-                        f.write(field_name)
-                        f.write(b'C')  # Type
-                        f.write(b'\x00' * 4)
-                        f.write(struct.pack('B', 255))  # Length
-                        f.write(b'\x00' * 14)
-                    f.write(b'\r')  # Header terminator
-                    # Records
-                    for row in result.rows:
-                        f.write(b'\x20')  # Space = valid record
-                        for v in row:
-                            val = str(v) if v is not None else ''
-                            f.write(val[:255].encode(enc, errors='replace').ljust(255, b'\x20'))
-                    f.write(b'\x1a')  # EOF marker
-
-            self._confirm_page.set_result(t("import_export.export_success", count=len(result.rows), path=path))
-        except Exception as e:
+            out_header = list(header) if has_header else []
+            written = export_rows(
+                path, out_header, itertools.chain([first], pages), kind, table=self._table
+            )
+            if not written:
+                self._confirm_page.set_result(t("import_export.msg.no_data"))
+                return
+            self._confirm_page.set_result(
+                t("import_export.export_success", count=written, path=path)
+            )
+        except Exception as e:  # noqa: BLE001 - the wizard reports any failure
             self._confirm_page.set_result(f"{t('import_export.msg.export_failed')}: {e}")

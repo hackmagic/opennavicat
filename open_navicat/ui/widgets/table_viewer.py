@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QFont
@@ -27,15 +28,42 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QTextEdit,
     QToolBar,
     QVBoxLayout,
     QWidget,
 )
 
-from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+pool_loop = _pool_loop_getter()
 from open_navicat.dal.connection_pool import connection_pool
+from open_navicat.formats import (
+    PANEL_KEY,
+    ExportFormat,
+    Filter,
+    build_filter_clause,
+    export_rows,
+)
 from open_navicat.i18n import t
 from open_navicat.models import QueryResult
+from open_navicat.sql.quoting import (
+    limit_clause,
+    quote_identifier,
+    quote_literal,
+    quote_qualified,
+)
+from open_navicat.ui.widgets.grid_editor import (
+    MAX_PINNED_COLUMNS,
+    ChangeKind,
+    PendingChange,
+    cell_value_from_text,
+    copy_as_where,
+    merge_cell_edits,
+    order_columns,
+    plan_changes,
+    toggle_pin,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -108,7 +136,9 @@ class FilterRow(QWidget):
         op_value = self._combo_op.currentData()
         hide_value = op_value in ("IS NULL", "IS NOT NULL")
         self._edit_value.setVisible(not hide_value)
-        self._chk_negate.setVisible(op_value not in ("IS NULL", "IS NOT NULL", "IN", "NOT IN", "BETWEEN"))
+        self._chk_negate.setVisible(
+            op_value not in ("IS NULL", "IS NOT NULL", "IN", "NOT IN", "BETWEEN")
+        )
 
     def to_sql(self) -> str | None:
         """Convert this filter row to a SQL WHERE fragment."""
@@ -156,7 +186,9 @@ class FilterRow(QWidget):
             # =, !=, >, <, >=, <=
             if not val:
                 return None
-            actual_op = f"NOT {op}" if negate and op == "=" else ("!=" if negate and op == "!=" else op)
+            actual_op = (
+                f"NOT {op}" if negate and op == "=" else ("!=" if negate and op == "!=" else op)
+            )
             if negate and op == "=":
                 clause = f"`{col}` != '{val}'"
             elif negate and op == "!=":
@@ -265,15 +297,45 @@ class FilterPanel(QWidget):
             row.set_columns(columns)
 
     def _add_row(self) -> None:
-        if not self._columns:
+        """Insert a row of defaults, then reload.
+
+        The column list is read from the table metadata rather than assumed, so
+        a table with NOT NULL columns without defaults still gets a valid
+        statement (with explicit NULLs) and works on every engine.
+        """
+        connector = connection_pool.get(self._connection_id)
+        if connector is None:
             return
-        row = FilterRow(self._columns, self)
-        row._btn_remove.clicked.connect(lambda: self._remove_row(row))
-        self._rows.append(row)
-        self._rows_layout.addWidget(row)
-        # Auto-expand when adding first condition
-        if self._collapsed:
-            self._toggle_visibility()
+
+        engine = self._engine()
+        try:
+            info = pool_loop.run_until_complete(
+                connector.get_table_info(self._database, self._table)
+            )
+        except Exception as exc:
+            self._status_msg.setText(t("table_viewer.add_row_failed", error=exc))
+            return
+
+        if not info.columns:
+            self._status_msg.setText(t("table_viewer.add_row_failed", error="no columns"))
+            return
+
+        columns = [c.name for c in info.columns]
+        # Every column gets an explicit value: an empty column list is not valid
+        # on most engines, and leaving columns out lets the server apply its own
+        # defaults, which is exactly what "add a blank row" means.
+        literals = ", ".join(quote_literal(None, engine) for _ in columns)
+        col_list = ", ".join(quote_identifier(c, engine) for c in columns)
+        sql = f"INSERT INTO {self._table_ref()} ({col_list}) VALUES ({literals})"
+
+        try:
+            result = pool_loop.run_until_complete(connector.execute(sql))
+            if result.insert_id:
+                self._status_msg.setText(t("table_viewer.inserted_row", id=result.insert_id))
+            self._current_page = 0
+            self._load_page()
+        except Exception as exc:
+            self._status_msg.setText(t("table_viewer.add_row_failed", error=exc))
 
     def _remove_row(self, row: FilterRow) -> None:
         if row in self._rows:
@@ -298,7 +360,11 @@ class FilterPanel(QWidget):
 
         if conditions:
             self._active_label.setText(
-                t("filter.active_filters", count=len(conditions), conditions=" AND ".join(conditions))
+                t(
+                    "filter.active_filters",
+                    count=len(conditions),
+                    conditions=" AND ".join(conditions),
+                )
             )
             self._active_label.setStyleSheet("color: #4fc3f7; font-size: 11px;")
         else:
@@ -338,6 +404,25 @@ class FilterPanel(QWidget):
         return bool(self.get_sql_conditions())
 
 
+class _HeaderCapturingBatches:
+    """Wraps the export batch generator and remembers the first header.
+
+    ``_export_batches`` yields ``(columns, rows)``; the export layer only wants
+    rows, but the column names are needed for the header.  Capturing them here
+    avoids a second query when the table has data.
+    """
+
+    def __init__(self, source) -> None:
+        self._source = source
+        self.header: list[str] = []
+
+    def __iter__(self):
+        for columns, rows in self._source:
+            if not self.header and columns:
+                self.header = [c.name for c in columns]
+            yield rows
+
+
 class TableViewerWidget(QWidget):
     """Displays table data in a spreadsheet-like grid with filtering and pagination."""
 
@@ -356,7 +441,10 @@ class TableViewerWidget(QWidget):
         self._table = table
 
         from open_navicat.config import config as _cfg
-        self._page_size = _cfg.get("records.limit", 500) if _cfg.get("records.limit_enabled", True) else 500
+
+        self._page_size = (
+            _cfg.get("records.limit", 500) if _cfg.get("records.limit_enabled", True) else 500
+        )
         self._current_page = 0
         self._total_rows = 0
         self._filters: dict[str, str] = {}
@@ -371,6 +459,15 @@ class TableViewerWidget(QWidget):
         self._edit_pos: int = -1
         self._dirty: bool = False
         self._original_values: dict[tuple[int, int], str] = {}
+
+        # Primary-key columns, learned from the table's metadata.  Row edits and
+        # deletes are addressed by these, not by "whatever is in column 0" as
+        # before - on a table whose first column is not the key, that silently
+        # wrote to the wrong row.
+        self._primary_keys: list[str] = []
+
+        # Columns the user pinned to the leading edge.
+        self._pinned_columns: list[str] = []
 
         self._format_rules: list[dict] = []
 
@@ -431,6 +528,11 @@ class TableViewerWidget(QWidget):
         self._btn_redo.clicked.connect(self._redo)
         self._btn_redo.setEnabled(False)
         toolbar.addWidget(self._btn_redo)
+
+        # Review the statements before running them
+        self._btn_preview = QPushButton(t("table_viewer.preview_sql"), self)
+        self._btn_preview.clicked.connect(self._show_sql_preview)
+        toolbar.addWidget(self._btn_preview)
 
         # Batch Commit / Rollback
         self._btn_batch_commit = QPushButton(t("data_viewer.commit"), self)
@@ -536,14 +638,11 @@ class TableViewerWidget(QWidget):
         # Page 0: Table grid
         self._table_widget = QTableWidget(self)
         from open_navicat.config import config as _cfg
+
         stripe = _cfg.get("records.row_stripe", t("settings.stripe.every_3"))
         self._table_widget.setAlternatingRowColors(stripe != t("settings.stripe.none"))
-        self._table_widget.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self._table_widget.setSelectionMode(
-            QAbstractItemView.SelectionMode.ExtendedSelection
-        )
+        self._table_widget.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._table_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._table_widget.horizontalHeader().setStretchLastSection(True)
         self._table_widget.horizontalHeader().setSectionsMovable(True)
         self._table_widget.setSortingEnabled(True)
@@ -552,8 +651,12 @@ class TableViewerWidget(QWidget):
         self._table_widget.cellDoubleClicked.connect(self._on_cell_double_click)
         self._table_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table_widget.customContextMenuRequested.connect(self._show_table_context_menu)
-        self._table_widget.horizontalHeader().setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self._table_widget.horizontalHeader().customContextMenuRequested.connect(self._show_table_header_menu)
+        self._table_widget.horizontalHeader().setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self._table_widget.horizontalHeader().customContextMenuRequested.connect(
+            self._show_table_header_menu
+        )
         self._view_stack.addWidget(self._table_widget)
 
         # Page 1: Form view
@@ -631,6 +734,65 @@ class TableViewerWidget(QWidget):
         self._current_page = 0
         self._load_page()
 
+    # ---- statement building helpers ----
+
+    def _engine(self) -> str:
+        """The engine of the connection being browsed."""
+        connector = connection_pool.get(self._connection_id)
+        info = getattr(connector, "_info", None)
+        return str(getattr(info, "engine", "") or "mysql")
+
+    def _quote(self, name: str) -> str:
+        """Quote an identifier for the current engine."""
+        return quote_identifier(name, self._engine())
+
+    def _table_ref(self) -> str:
+        """The `db`.`table` reference for the current engine."""
+        return quote_qualified(self._table, self._engine(), self._database or None)
+
+    def _load_primary_keys(self) -> None:
+        """Remember which columns form the primary key.
+
+        Row edits and deletes are addressed by these.  Without this the widget
+        used column 0, which is only correct by luck.
+        """
+        self._primary_keys = []
+        connector = connection_pool.get(self._connection_id)
+        if connector is None or not self._table:
+            return
+        try:
+            info = pool_loop.run_until_complete(
+                connector.get_table_info(self._database, self._table)
+            )
+        except Exception as exc:  # noqa: BLE001 - metadata is best effort
+            _log.debug("could not read primary key for %s.%s: %s", self._database, self._table, exc)
+            return
+        self._primary_keys = [c.name for c in info.columns if c.is_primary_key]
+
+    def _key_for_row(self, row: int) -> tuple[tuple[str, ...], dict[str, Any]]:
+        """Primary-key columns and values for a displayed row.
+
+        Returns empty containers when the key cannot be determined; callers must
+        refuse to act rather than guess.
+        """
+        if not self._primary_keys:
+            return (), {}
+        values: dict[str, Any] = {}
+        for name in self._primary_keys:
+            if name not in self._loaded_column_names:
+                return (), {}
+            col = self._loaded_column_names.index(name)
+            if row >= len(self._loaded_rows) or col >= len(self._loaded_rows[row]):
+                return (), {}
+            values[name] = self._loaded_rows[row][col]
+        return tuple(self._primary_keys), values
+
+    def _reference_for(self, row: int, col: int) -> Any:
+        """The original value of a cell, used to infer the edited value's type."""
+        if row < len(self._loaded_rows) and col < len(self._loaded_rows[row]):
+            return self._loaded_rows[row][col]
+        return None
+
     def _load_page(self) -> None:
         # Clear pending edits on reload
         self._edit_stack.clear()
@@ -642,7 +804,10 @@ class TableViewerWidget(QWidget):
         if not connector:
             return
 
+        self._load_primary_keys()
+
         # Build WHERE clause from filters
+        engine = self._engine()
         where_clause = ""
         if self._filters:
             where_parts = []
@@ -650,25 +815,33 @@ class TableViewerWidget(QWidget):
                 if k == "__panel__":
                     # Visual filter panel conditions (already SQL)
                     where_parts.append(f"({v})")
-                elif any(v.startswith(op) for op in [">=", "<=", "!=", ">", "<", "LIKE", "IN", "BETWEEN"]):
-                    where_parts.append(f"`{k}` {v}")
+                elif any(
+                    v.startswith(op) for op in [">=", "<=", "!=", ">", "<", "LIKE", "IN", "BETWEEN"]
+                ):
+                    where_parts.append(f"{quote_identifier(k, engine)} {v}")
                 else:
-                    where_parts.append(f"`{k}` = '{v}'")
+                    # Bound-safe enough for the grid's simple equality filter;
+                    # the panel route above exists for anything more complex.
+                    where_parts.append(
+                        f"{quote_identifier(k, engine)} = {quote_literal(v, engine)}"
+                    )
             where_clause = "WHERE " + " AND ".join(where_parts)
 
         try:
-            # Count total first
-            count_sql = f"SELECT COUNT(*) FROM `{self._database}`.`{self._table}` {where_clause}"
+            table_ref = self._table_ref()
+            count_sql = f"SELECT COUNT(*) FROM {table_ref} {where_clause}"
             count_result = pool_loop.run_until_complete(connector.execute(count_sql))
             self._total_rows = count_result.rows[0][0] if count_result.rows else 0
 
             # Fetch page
             offset = self._current_page * self._page_size
-            order = f"ORDER BY `{self._order_by}` {self._order_dir}" if self._order_by else ""
-            page_sql = (
-                f"SELECT * FROM `{self._database}`.`{self._table}` {where_clause} "
-                f"{order} LIMIT {self._page_size} OFFSET {offset}"
+            order = (
+                f"ORDER BY {quote_identifier(self._order_by, engine)} {self._order_dir}"
+                if self._order_by
+                else ""
             )
+            paging = limit_clause(self._page_size, offset, engine)
+            page_sql = f"SELECT * FROM {table_ref} {where_clause} {order} {paging}".strip()
             result = pool_loop.run_until_complete(connector.execute(page_sql))
 
             self._render(result)
@@ -682,6 +855,7 @@ class TableViewerWidget(QWidget):
         self._table_widget.blockSignals(True)
 
         from open_navicat.config import config as _cfg
+
         thousand_sep = _cfg.get("records.thousand_sep", False)
         null_str = _cfg.get("data_viewer.null_string", "(NULL)")
 
@@ -727,14 +901,22 @@ class TableViewerWidget(QWidget):
 
             # Apply conditional formatting rules
             for rule in self._format_rules:
-                col_idx = self._loaded_column_names.index(rule["col"]) if rule["col"] in self._loaded_column_names else -1
+                col_idx = (
+                    self._loaded_column_names.index(rule["col"])
+                    if rule["col"] in self._loaded_column_names
+                    else -1
+                )
                 if col_idx < 0:
                     continue
                 op = rule["op"]
                 val = rule["val"]
                 color = QColor(rule["color"])
                 for row_idx in range(len(result.rows)):
-                    cell_val = str(result.rows[row_idx][col_idx]) if result.rows[row_idx][col_idx] is not None else ""
+                    cell_val = (
+                        str(result.rows[row_idx][col_idx])
+                        if result.rows[row_idx][col_idx] is not None
+                        else ""
+                    )
                     match = False
                     if op == ">":
                         try:
@@ -785,7 +967,9 @@ class TableViewerWidget(QWidget):
                 "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS "
                 "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION"
             )
-            result = pool_loop.run_until_complete(connector.execute(sql, (self._database, self._table)))
+            result = pool_loop.run_until_complete(
+                connector.execute(sql, (self._database, self._table))
+            )
             return {row[0]: row[1].lower() for row in (result.rows or [])}
         except Exception:
             return {}
@@ -817,8 +1001,11 @@ class TableViewerWidget(QWidget):
         if item and item.data(Qt.ItemDataRole.UserRole) is not None:
             blob_data = item.data(Qt.ItemDataRole.UserRole)
             if isinstance(blob_data, bytes):
-                col_name = self._loaded_column_names[col] if col < len(self._loaded_column_names) else ""
+                col_name = (
+                    self._loaded_column_names[col] if col < len(self._loaded_column_names) else ""
+                )
                 from open_navicat.ui.dialogs.blob_viewer import BlobViewerDialog
+
                 dlg = BlobViewerDialog(blob_data, col_name, self.window())
                 dlg.exec()
                 return
@@ -871,7 +1058,9 @@ class TableViewerWidget(QWidget):
 
         row = rows[self._form_current_row]
         cols = self._loaded_column_names
-        self._form_row_label.setText(t("table_viewer.form_row_info", current=self._form_current_row + 1, total=len(rows)))
+        self._form_row_label.setText(
+            t("table_viewer.form_row_info", current=self._form_current_row + 1, total=len(rows))
+        )
         self._form_prev.setEnabled(self._form_current_row > 0)
         self._form_next.setEnabled(self._form_current_row < len(rows) - 1)
 
@@ -887,9 +1076,7 @@ class TableViewerWidget(QWidget):
             else:
                 widget = QLabel(str(val), self._form_fields)
                 widget.setWordWrap(True)
-                widget.setTextInteractionFlags(
-                    Qt.TextInteractionFlag.TextSelectableByMouse
-                )
+                widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             self._form_fields_layout.addRow(f"{col_name}:", widget)
 
     def _blob_form_widget(self, data: bytes, col_name: str) -> QWidget:
@@ -907,6 +1094,7 @@ class TableViewerWidget(QWidget):
 
     def _open_blob_viewer(self, data: bytes, col_name: str) -> None:
         from open_navicat.ui.dialogs.blob_viewer import BlobViewerDialog
+
         dlg = BlobViewerDialog(data, col_name, self.window())
         dlg.exec()
 
@@ -981,6 +1169,7 @@ class TableViewerWidget(QWidget):
             else:
                 # Check for LIKE / IN / BETWEEN
                 import re
+
                 m = re.match(r"(\w+)\s+(LIKE|IN|BETWEEN)\s+(.+)", filter_text, re.IGNORECASE)
                 if m:
                     self._filters[m.group(1)] = f"{m.group(2)} {m.group(3).strip()}"
@@ -1007,15 +1196,21 @@ class TableViewerWidget(QWidget):
         # Save original value on first edit
         key = (row, col)
         if key not in self._original_values:
-            self._original_values[key] = self._loaded_rows[row][col] if row < len(self._loaded_rows) and col < len(self._loaded_rows[row]) else ""
+            self._original_values[key] = (
+                self._loaded_rows[row][col]
+                if row < len(self._loaded_rows) and col < len(self._loaded_rows[row])
+                else ""
+            )
 
         old_value = self._original_values[key]
         if new_value == old_value:
             return  # unchanged
 
         # Truncate redo entries beyond current position
-        del self._edit_stack[self._edit_pos + 1:]
-        self._edit_stack.append({"row": row, "col": col, "old": old_value, "new": new_value, "col_name": col_name})
+        del self._edit_stack[self._edit_pos + 1 :]
+        self._edit_stack.append(
+            {"row": row, "col": col, "old": old_value, "new": new_value, "col_name": col_name}
+        )
         self._edit_pos = len(self._edit_stack) - 1
         self._update_dirty_state()
 
@@ -1056,38 +1251,124 @@ class TableViewerWidget(QWidget):
             self._table_widget.blockSignals(False)
         self._update_dirty_state()
 
+    def _pending_changes(self) -> list[PendingChange]:
+        """Turn the edit stack into structured, typed changes.
+
+        Values are coerced to the type the column already holds, so an integer
+        key goes back as an int rather than the string the grid displayed.
+        """
+        if self._edit_pos < 0:
+            return []
+
+        changes: list[PendingChange] = []
+        for edit in self._edit_stack[: self._edit_pos + 1]:
+            row, col = edit["row"], edit["col"]
+            key_cols, key_values = self._key_for_row(row)
+            if not key_cols:
+                # Without the key we cannot say which row this edit means.
+                # Skipping is the only safe option.
+                _log.warning("skipping edit at (%s,%s): primary key unavailable", row, col)
+                continue
+            reference = self._reference_for(row, col)
+            value = cell_value_from_text(str(edit["new"]), reference)
+            changes.append(
+                PendingChange(
+                    kind=ChangeKind.UPDATE,
+                    table=self._table,
+                    database=self._database,
+                    key_columns=key_cols,
+                    key_values=key_values,
+                    values={edit["col_name"]: value},
+                )
+            )
+        return changes
+
+    def preview_sql(self) -> str:
+        """The statements the pending edits would run, for review.
+
+        Read-only text: values are inlined and escaped so the user can see the
+        effect.  Execution always goes through bound parameters, never this.
+        """
+        previews = plan_changes(self._pending_changes(), self._engine())
+        if not previews:
+            return ""
+        return "\n\n".join(p.sql_with_values for p in previews)
+
+    def _show_sql_preview(self) -> None:
+        """Show the statements the pending edits would run.
+
+        Nothing is executed here; the point is that a destructive-looking commit
+        can be read before it happens.
+        """
+        sql = self.preview_sql()
+        if not sql:
+            self._status_msg.setText(t("table_viewer.no_pending_changes"))
+            return
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(t("table_viewer.preview_sql"))
+        dialog.resize(720, 420)
+        layout = QVBoxLayout(dialog)
+        view = QTextEdit(dialog)
+        view.setReadOnly(True)
+        view.setPlainText(sql)
+        try:
+            view.setFont(QFont("Consolas", 10))
+        except Exception:  # noqa: BLE001 - font is cosmetic
+            pass
+        layout.addWidget(view)
+
+        from PySide6.QtWidgets import QDialogButtonBox
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, dialog)
+        buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+        dialog.exec()
+
     def _commit_batch(self) -> None:
-        """Flush all pending edits to the database."""
+        """Apply all pending edits.
+
+        Builds the statements in :mod:`grid_editor` (engine-aware, primary-key
+        addressed) and runs them with bound parameters.
+        """
         if self._edit_pos < 0:
             return
         connector = connection_pool.get(self._connection_id)
-        if not connector:
+        if connector is None:
             return
-        pending = self._edit_stack[:self._edit_pos + 1]
-        pk_col = self._table_widget.horizontalHeaderItem(0).text() if self._table_widget.columnCount() else "id"
+
+        changes = merge_cell_edits(self._pending_changes())
+        if not changes:
+            self._edit_stack.clear()
+            self._edit_pos = -1
+            self._original_values.clear()
+            self._update_dirty_state()
+            self._status_msg.setText(t("table_viewer.commit_errors", errors=len(self._edit_stack)))
+            return
+
+        previews = plan_changes(changes, self._engine())
+        applied = 0
         errors = 0
-        seen = set()
-        for edit in pending:
-            pk_item = self._table_widget.item(edit["row"], 0)
-            pk_val = pk_item.text() if pk_item else ""
-            key = (edit["row"], edit["col"])
-            if key in seen:
-                continue
-            seen.add(key)
+        for preview in previews:
             try:
-                sql = f"UPDATE `{self._database}`.`{self._table}` SET `{edit['col_name']}` = %s WHERE `{pk_col}` = %s"
-                pool_loop.run_until_complete(connector.execute(sql, (edit["new"], pk_val)))
-            except Exception as e:
+                pool_loop.run_until_complete(connector.execute(preview.sql, preview.params or None))
+                applied += 1
+            except Exception as exc:
                 errors += 1
-                _log.warning("Commit cell (%s,%s) failed: %s", edit["row"], edit["col"], e)
+                _log.warning("commit failed for %s: %s", preview.sql, exc)
+
         if errors:
             self._status_msg.setText(t("table_viewer.commit_errors", errors=errors))
         else:
-            self._status_msg.setText(t("table_viewer.commit_success", count=len(pending)))
+            self._status_msg.setText(t("table_viewer.commit_success", count=applied))
+
         self._edit_stack.clear()
         self._edit_pos = -1
         self._original_values.clear()
         self._update_dirty_state()
+        if not errors:
+            self._load_page()
 
     def _rollback_batch(self) -> None:
         """Discard all pending edits and reload from database."""
@@ -1136,97 +1417,180 @@ class TableViewerWidget(QWidget):
                 self._status_msg.setText(t("table_viewer.add_row_failed", error=e2))
 
     def _delete_selected(self) -> None:
-        """Delete selected rows from the table."""
+        """Delete the selected rows, addressed by primary key.
+
+        The confirmation shows the statements that will run, so a delete is never
+        a leap of faith.
+        """
         selected = self._table_widget.selectedItems()
         if not selected:
             return
 
-        rows_to_delete = set()
-        for item in selected:
-            rows_to_delete.add(item.row())
-
-        if not rows_to_delete:
+        rows = sorted({item.row() for item in selected})
+        if not rows:
             return
 
+        changes: list[PendingChange] = []
+        for row in rows:
+            key_cols, key_values = self._key_for_row(row)
+            if not key_cols:
+                self._status_msg.setText(t("table_viewer.delete_no_key"))
+                return
+            changes.append(
+                PendingChange(
+                    kind=ChangeKind.DELETE,
+                    table=self._table,
+                    database=self._database,
+                    key_columns=key_cols,
+                    key_values=key_values,
+                )
+            )
+
+        previews = plan_changes(changes, self._engine())
         from PySide6.QtWidgets import QMessageBox
+
         reply = QMessageBox.question(
-            self, t("browser.truncate_table"),
-            t("table_viewer.confirm_delete_rows", count=len(rows_to_delete)),
+            self,
+            t("browser.truncate_table"),
+            t("table_viewer.confirm_delete_rows", count=len(changes))
+            + "\n\n"
+            + "\n".join(p.sql_with_values for p in previews),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
 
         connector = connection_pool.get(self._connection_id)
-        if not connector:
+        if connector is None:
             return
 
-        pk_col = self._table_widget.horizontalHeaderItem(0).text()
         deleted = 0
-        for row_idx in sorted(rows_to_delete, reverse=True):
-            pk_item = self._table_widget.item(row_idx, 0)
-            if not pk_item:
-                continue
-            pk_val = pk_item.text()
-            sql = f"DELETE FROM `{self._database}`.`{self._table}` WHERE `{pk_col}` = %s"
+        failures = 0
+        for preview in previews:
             try:
-                result = pool_loop.run_until_complete(connector.execute(sql, (pk_val,)))
+                result = pool_loop.run_until_complete(
+                    connector.execute(preview.sql, preview.params or None)
+                )
                 deleted += result.affected_rows
-            except Exception as e:
-                self._status_msg.setText(t("table_viewer.delete_failed", error=e))
+            except Exception as exc:
+                failures += 1
+                self._status_msg.setText(t("table_viewer.delete_failed", error=exc))
 
-        self._status_msg.setText(t("table_viewer.deleted_rows", count=deleted))
-        self._load_page()
+        if not failures:
+            self._status_msg.setText(t("table_viewer.deleted_rows", count=deleted))
+            self._load_page()
 
-    # ---- export / import ----
+    def _export_filters(self) -> list[Filter]:
+        """The active filters, in a form the export layer can quote safely."""
+        filters: list[Filter] = []
+        for key, value in self._filters.items():
+            if key == "__panel__":
+                filters.append(Filter(PANEL_KEY, value, "RAW"))
+                continue
+            for op in (">=", "<=", "!=", ">", "<", "LIKE", "NOT LIKE", "IN", "BETWEEN"):
+                if value.startswith(op):
+                    filters.append(Filter(key, value[len(op) :].strip(), op))
+                    break
+            else:
+                filters.append(Filter(key, value))
+        return filters
+
+    def _export_batches(self, connector, chunk_rows: int = 5000):
+        """Yield row batches, paging the table instead of loading it whole.
+
+        A single ``SELECT *`` used to be materialised in RAM before writing a
+        byte, so exporting a large table could exhaust memory.  Paging keeps peak
+        usage at one batch.
+        """
+        engine = self._engine()
+        where = build_filter_clause(self._export_filters(), engine)
+        clause = f"WHERE {where}" if where else ""
+        order = (
+            f"ORDER BY {quote_identifier(self._order_by, engine)} {self._order_dir}"
+            if self._order_by
+            else ""
+        )
+        table_ref = self._table_ref()
+
+        offset = 0
+        while True:
+            paging = limit_clause(chunk_rows, offset, engine)
+            sql = f"SELECT * FROM {table_ref} {clause} {order} {paging}".strip()
+            result = pool_loop.run_until_complete(connector.execute(sql))
+            if not result.success or not result.rows:
+                break
+            yield result.columns, result.rows
+            if len(result.rows) < chunk_rows:
+                break
+            offset += chunk_rows
 
     def _export_data(self) -> None:
-        """Export current page or all data to CSV or Excel."""
+        """Export the table (respecting filters) to a chosen format.
+
+        Rows are streamed batch by batch, so a large export does not have to fit
+        in memory.
+        """
         from PySide6.QtWidgets import QFileDialog, QMessageBox
-        path, _ = QFileDialog.getSaveFileName(
-            self, t("table_viewer.export"), f"{self._table}",
-            "CSV 文件 (*.csv);;Excel 文件 (*.xlsx);;所有文件 (*)",
+
+        path, _selected = QFileDialog.getSaveFileName(
+            self,
+            t("table_viewer.export"),
+            f"{self._table}",
+            "CSV (*.csv);;TSV (*.tsv);;JSON (*.json);;Markdown (*.md);;"
+            "Excel (*.xlsx);;SQL (*.sql);;All files (*)",
         )
         if not path:
             return
 
         connector = connection_pool.get(self._connection_id)
-        if not connector:
+        if connector is None:
             return
 
+        suffix = path.rsplit(".", 1)[-1].lower() if "." in path else "csv"
+        fmt_map = {
+            "csv": ExportFormat.CSV,
+            "tsv": ExportFormat.TSV,
+            "json": ExportFormat.JSON,
+            "md": ExportFormat.MARKDOWN,
+            "markdown": ExportFormat.MARKDOWN,
+            "xlsx": ExportFormat.XLSX,
+            "sql": ExportFormat.SQL,
+        }
+        fmt = fmt_map.get(suffix, ExportFormat.CSV)
+
         try:
-            sql = f"SELECT * FROM `{self._database}`.`{self._table}`"
-            where = ""
-            if self._filters:
-                where = " WHERE " + " AND ".join(f"{k} = '{v}'" for k, v in self._filters.items() if not any(v.startswith(op) for op in [">=", "<=", "!=", ">", "<", "LIKE", "IN"]))
-                for k, v in self._filters.items():
-                    if any(v.startswith(op) for op in [">=", "<=", "!=", ">", "<", "LIKE", "IN"]):
-                        where = f" WHERE `{k}` {v}"
-            sql += where
-            result = pool_loop.run_until_complete(connector.execute(sql))
+            # The header comes from the first batch's column metadata; only an
+            # empty result needs a separate probe.
+            writer = _HeaderCapturingBatches(self._export_batches(connector))
+            first_batch = next(writer, None)
+            header = writer.header or self._export_columns(connector)
 
-            if not result.columns:
-                return
+            def batches():
+                if first_batch is not None:
+                    yield first_batch
+                yield from writer
 
-            if path.endswith(".xlsx"):
-                self._export_excel(path, result)
-            else:
-                self._export_csv(path, result)
+            written = export_rows(path, header, batches(), fmt, table=self._table)
+            self._status_msg.setText(t("table_viewer.export_success", count=written, path=path))
+        except Exception as exc:
+            QMessageBox.warning(self, t("table_viewer.export_failed"), str(exc))
 
-            self._status_msg.setText(t("table_viewer.export_success", count=len(result.rows), path=path))
-        except Exception as e:
-            QMessageBox.warning(self, t("table_viewer.export_failed"), str(e))
+    def _export_columns(self, connector) -> list[str]:
+        """Column names for the export header.
 
-    def _export_csv(self, path: str, result) -> None:
-        import csv
-        with open(path, "w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.writer(f)
-            writer.writerow([c.name for c in result.columns])
-            for row in result.rows:
-                writer.writerow([str(v) if v is not None else "" for v in row])
+        Only an empty page needs this: with rows in hand the header comes from the
+        driver's own column metadata.
+        """
+        engine = self._engine()
+        where = build_filter_clause(self._export_filters(), engine)
+        clause = f"WHERE {where}" if where else ""
+        sql = (f"SELECT * FROM {self._table_ref()} {clause} {limit_clause(1, 0, engine)}").strip()
+        result = pool_loop.run_until_complete(connector.execute(sql))
+        return [c.name for c in result.columns] if result.success else []
 
     def _export_excel(self, path: str, result) -> None:
         from openpyxl import Workbook
+
         wb = Workbook()
         ws = wb.active
         ws.title = self._table
@@ -1238,8 +1602,11 @@ class TableViewerWidget(QWidget):
     def _import_data(self) -> None:
         """Import data from CSV or Excel file into the table."""
         from PySide6.QtWidgets import QFileDialog, QMessageBox
+
         path, _ = QFileDialog.getOpenFileName(
-            self, t("table_viewer.import"), "",
+            self,
+            t("table_viewer.import"),
+            "",
             "CSV 文件 (*.csv);;Excel 文件 (*.xlsx);;所有文件 (*)",
         )
         if not path:
@@ -1249,19 +1616,25 @@ class TableViewerWidget(QWidget):
             rows = []
             if path.endswith(".xlsx"):
                 from openpyxl import load_workbook
+
                 wb = load_workbook(path, read_only=True, data_only=True)
                 ws = wb.active
                 headers = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
                 for row in ws.iter_rows(min_row=2, values_only=True):
-                    rows.append(dict(zip(headers, [str(v) if v is not None else None for v in row])))
+                    rows.append(
+                        dict(zip(headers, [str(v) if v is not None else None for v in row]))
+                    )
             else:
                 import csv
+
                 with open(path, "r", encoding="utf-8-sig") as f:
                     reader = csv.DictReader(f)
                     rows = [dict(r) for r in reader]
 
             if not rows:
-                QMessageBox.information(self, t("table_viewer.import_action"), t("table_viewer.file_empty"))
+                QMessageBox.information(
+                    self, t("table_viewer.import_action"), t("table_viewer.file_empty")
+                )
                 return
 
             connector = connection_pool.get(self._connection_id)
@@ -1271,7 +1644,7 @@ class TableViewerWidget(QWidget):
             batch_size = 100
             total = 0
             for i in range(0, len(rows), batch_size):
-                batch = rows[i:i + batch_size]
+                batch = rows[i : i + batch_size]
                 inserted = pool_loop.run_until_complete(
                     connector.batch_insert(self._database, self._table, batch)
                 )
@@ -1286,7 +1659,9 @@ class TableViewerWidget(QWidget):
         """Generate test data using pattern-based generator or AI."""
         from PySide6.QtWidgets import QInputDialog
 
-        count, ok = QInputDialog.getInt(self, t("table_viewer.generate_data"), t("table_viewer.generate_rows"), 10, 1, 1000)
+        count, ok = QInputDialog.getInt(
+            self, t("table_viewer.generate_data"), t("table_viewer.generate_rows"), 10, 1, 1000
+        )
         if not ok:
             return
 
@@ -1298,18 +1673,27 @@ class TableViewerWidget(QWidget):
         try:
             # Get table info for schema
             info_sql = "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION"
-            rows = pool_loop.run_until_complete(connector._fetch_all(info_sql, (self._database, self._table)))
+            rows = pool_loop.run_until_complete(
+                connector._fetch_all(info_sql, (self._database, self._table))
+            )
             from open_navicat.models.table_schema import ColumnInfo, TableInfo
+
             table_info = TableInfo(name=self._table, database=self._database)
             for r in rows:
-                table_info.columns.append(ColumnInfo(
-                    name=r[0], data_type=r[1], nullable=(r[2] == "YES"),
-                    default=r[3], is_auto_increment="auto_increment" in (r[4] or ""),
-                    comment=r[5] or "",
-                ))
+                table_info.columns.append(
+                    ColumnInfo(
+                        name=r[0],
+                        data_type=r[1],
+                        nullable=(r[2] == "YES"),
+                        default=r[3],
+                        is_auto_increment="auto_increment" in (r[4] or ""),
+                        comment=r[5] or "",
+                    )
+                )
 
             # Use pattern-based generator (fast, no AI needed)
             from open_navicat.services.data_generator import data_generator
+
             generated = data_generator.generate(table_info, count)
 
             if not generated:
@@ -1341,7 +1725,9 @@ class TableViewerWidget(QWidget):
             )
             r = pool_loop.run_until_complete(connector.execute(sql, (self._database, self._table)))
             if not r.rows:
-                QMessageBox.information(self, t("table_viewer.table_info"), t("table_viewer.table_info_unavailable"))
+                QMessageBox.information(
+                    self, t("table_viewer.table_info"), t("table_viewer.table_info_unavailable")
+                )
                 return
             row = r.rows[0]
             dlg = QDialog(self)
@@ -1379,20 +1765,33 @@ class TableViewerWidget(QWidget):
     def _save_view_profile(self) -> None:
         """Save current view configuration (columns, sort, filter) as a profile."""
         from PySide6.QtWidgets import QInputDialog
-        name, ok = QInputDialog.getText(self, t("data_viewer.save_view_profile"), t("data_viewer.profile_name"))
+
+        name, ok = QInputDialog.getText(
+            self, t("data_viewer.save_view_profile"), t("data_viewer.profile_name")
+        )
         if not ok or not name.strip():
             return
 
         # Get current column order
-        headers = [self._table.horizontalHeaderItem(i).text() for i in range(self._table.columnCount())]
+        headers = [
+            self._table.horizontalHeaderItem(i).text() for i in range(self._table.columnCount())
+        ]
 
         # Get current sort
         sort_col = self._table.horizontalHeader().sortIndicatorSection()
-        sort_order = "asc" if self._table.horizontalHeader().sortIndicatorOrder() == Qt.SortOrder.AscendingOrder else "desc"
+        sort_order = (
+            "asc"
+            if self._table.horizontalHeader().sortIndicatorOrder() == Qt.SortOrder.AscendingOrder
+            else "desc"
+        )
         sort = [{"column": headers[sort_col], "order": sort_order}] if sort_col >= 0 else []
 
         # Get current filter
-        filter_sql = self._filter_panel._build_where_clause() if hasattr(self._filter_panel, '_build_where_clause') else ""
+        filter_sql = (
+            self._filter_panel._build_where_clause()
+            if hasattr(self._filter_panel, "_build_where_clause")
+            else ""
+        )
 
         profile = {
             "name": name.strip(),
@@ -1405,22 +1804,36 @@ class TableViewerWidget(QWidget):
         }
 
         from open_navicat.dal.local_config import local_db
+
         local_db.save_profile(profile)
-        QMessageBox.information(self, t("data_viewer.profile_saved"), t("data_viewer.profile_saved_msg", name=name))
+        QMessageBox.information(
+            self, t("data_viewer.profile_saved"), t("data_viewer.profile_saved_msg", name=name)
+        )
 
     def _load_view_profile(self) -> None:
         """Load a saved view profile."""
         from open_navicat.dal.local_config import local_db
+
         table_ref = f"{self._connection_id}/{self._database}/{self._table_name}"
         profiles = local_db.list_profiles(table_ref)
 
         if not profiles:
-            QMessageBox.information(self, t("data_viewer.no_profiles"), t("data_viewer.no_profiles_msg"))
+            QMessageBox.information(
+                self, t("data_viewer.no_profiles"), t("data_viewer.no_profiles_msg")
+            )
             return
 
         from PySide6.QtWidgets import QInputDialog
+
         names = [p["name"] for p in profiles]
-        name, ok = QInputDialog.getItem(self, t("data_viewer.load_view_profile"), t("data_viewer.select_profile"), names, 0, False)
+        name, ok = QInputDialog.getItem(
+            self,
+            t("data_viewer.load_view_profile"),
+            t("data_viewer.select_profile"),
+            names,
+            0,
+            False,
+        )
         if not ok:
             return
 
@@ -1437,10 +1850,16 @@ class TableViewerWidget(QWidget):
         if profile.get("sort"):
             sort_info = profile["sort"][0]
             col_name = sort_info.get("column", "")
-            headers = [self._table.horizontalHeaderItem(i).text() for i in range(self._table.columnCount())]
+            headers = [
+                self._table.horizontalHeaderItem(i).text() for i in range(self._table.columnCount())
+            ]
             if col_name in headers:
                 col_idx = headers.index(col_name)
-                order = Qt.SortOrder.AscendingOrder if sort_info.get("order") == "asc" else Qt.SortOrder.DescendingOrder
+                order = (
+                    Qt.SortOrder.AscendingOrder
+                    if sort_info.get("order") == "asc"
+                    else Qt.SortOrder.DescendingOrder
+                )
                 self._table.sortByColumn(col_idx, order)
 
     def _commit_transaction(self) -> None:
@@ -1518,6 +1937,7 @@ class TableViewerWidget(QWidget):
         is_json = False
         try:
             import json
+
             json.loads(current_val)
             is_json = True
         except (json.JSONDecodeError, ValueError):
@@ -1537,6 +1957,7 @@ class TableViewerWidget(QWidget):
         text_edit = QLineEdit(dlg) if len(current_val) < 200 else None
         if text_edit is None:
             from PySide6.QtWidgets import QTextEdit
+
             text_edit = QTextEdit(dlg)
             text_edit.setPlainText(current_val)
             text_edit.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
@@ -1576,12 +1997,14 @@ class TableViewerWidget(QWidget):
     def _format_json_in_editor(self, editor) -> None:
         """Format JSON content in the editor."""
         from PySide6.QtWidgets import QTextEdit
+
         if isinstance(editor, QTextEdit):
             text = editor.toPlainText()
         else:
             text = editor.text()
         try:
             import json
+
             parsed = json.loads(text)
             formatted = json.dumps(parsed, indent=2, ensure_ascii=False)
             if isinstance(editor, QTextEdit):
@@ -1599,9 +2022,7 @@ class TableViewerWidget(QWidget):
             )
             self._status_msg.setText(t("table_viewer.cell_edit_on"))
         else:
-            self._table_widget.setEditTriggers(
-                QAbstractItemView.EditTrigger.NoEditTriggers
-            )
+            self._table_widget.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
             self._status_msg.setText(t("table_viewer.cell_edit_off"))
 
     def _show_conditional_formatting(self) -> None:
@@ -1625,7 +2046,12 @@ class TableViewerWidget(QWidget):
         fl.addRow(t("table_viewer.value"), ed_val)
 
         cb_color = QComboBox(dlg)
-        for name, code in [("红色", "#ff4444"), ("绿色", "#44ff44"), ("黄色", "#ffff44"), ("蓝色", "#4444ff")]:
+        for name, code in [
+            ("红色", "#ff4444"),
+            ("绿色", "#44ff44"),
+            ("黄色", "#ffff44"),
+            ("蓝色", "#4444ff"),
+        ]:
             cb_color.addItem(t(f"table_viewer.color.{name}"), code)
         fl.addRow(t("table_viewer.color"), cb_color)
 
@@ -1655,11 +2081,13 @@ class TableViewerWidget(QWidget):
 
     def _get_current_result(self):
         from open_navicat.models import QueryResult
+
         cols = [type("Col", (), {"name": n})() for n in self._loaded_column_names]
         return QueryResult(rows=self._loaded_rows, columns=cols, is_select=True)
 
     def _show_sort_popup(self) -> None:
         from PySide6.QtWidgets import QMenu
+
         menu = QMenu(self)
         for i in range(self._table_widget.columnCount()):
             h = self._table_widget.horizontalHeaderItem(i)
@@ -1682,6 +2110,7 @@ class TableViewerWidget(QWidget):
 
     def _show_columns_manager(self) -> None:
         from PySide6.QtWidgets import QMenu
+
         menu = QMenu(self)
         actions = []
         for i in range(self._table_widget.columnCount()):
@@ -1693,7 +2122,9 @@ class TableViewerWidget(QWidget):
             act.setChecked(not self._table_widget.isColumnHidden(i))
             actions.append((i, act))
         for idx, act in actions:
-            act.triggered.connect(lambda checked, col=idx: self._table_widget.setColumnHidden(col, not checked))
+            act.triggered.connect(
+                lambda checked, col=idx: self._table_widget.setColumnHidden(col, not checked)
+            )
         btn = self.sender()
         if btn:
             menu.exec(btn.mapToGlobal(btn.rect().bottomLeft()))
@@ -1721,25 +2152,45 @@ class TableViewerWidget(QWidget):
             pool_loop.run_until_complete(connector.execute(stats_sql))
 
             # Per-column stats via information_schema
-            info_sql = ("SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, "
-                        "CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE "
-                        "FROM information_schema.COLUMNS "
-                        "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
-                        "ORDER BY ORDINAL_POSITION")
+            info_sql = (
+                "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, "
+                "CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE "
+                "FROM information_schema.COLUMNS "
+                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
+                "ORDER BY ORDINAL_POSITION"
+            )
             col_meta = pool_loop.run_until_complete(
-                connector.execute(info_sql, (self._database, self._table)))
+                connector.execute(info_sql, (self._database, self._table))
+            )
             col_types = {}
-            for r in (col_meta.rows or []):
+            for r in col_meta.rows or []:
                 col_types[r[0]] = r[1].lower() if r[1] else "text"
 
             # Build column stats
             overview.setColumnCount(6)
             overview.setHorizontalHeaderLabels(
-                [t("table_viewer.col_header.col_name"), t("table_viewer.col_header.type"), t("table_viewer.col_header.row_count"), t("table_viewer.col_header.non_null"), t("table_viewer.col_header.unique"), t("table_viewer.col_header.null_count")])
+                [
+                    t("table_viewer.col_header.col_name"),
+                    t("table_viewer.col_header.type"),
+                    t("table_viewer.col_header.row_count"),
+                    t("table_viewer.col_header.non_null"),
+                    t("table_viewer.col_header.unique"),
+                    t("table_viewer.col_header.null_count"),
+                ]
+            )
             overview.setRowCount(len(self._loaded_column_names))
 
-            numeric_types = {"int", "tinyint", "smallint", "mediumint", "bigint",
-                             "float", "double", "decimal", "real"}
+            numeric_types = {
+                "int",
+                "tinyint",
+                "smallint",
+                "mediumint",
+                "bigint",
+                "float",
+                "double",
+                "decimal",
+                "real",
+            }
             data = []
             for i, col_name in enumerate(self._loaded_column_names):
                 dtype = col_types.get(col_name, "text")
@@ -1764,11 +2215,28 @@ class TableViewerWidget(QWidget):
                             if r2.rows and r2.rows[0][0] is not None:
                                 overview.setColumnCount(9)
                                 overview.setHorizontalHeaderLabels(
-                                    [t("table_viewer.col_header.col_name"), t("table_viewer.col_header.type"), t("table_viewer.col_header.row_count"), t("table_viewer.col_header.non_null"), t("table_viewer.col_header.unique"), t("table_viewer.col_header.null_count"), t("table_viewer.col_header.min"), t("table_viewer.col_header.max"), t("table_viewer.col_header.avg")])
+                                    [
+                                        t("table_viewer.col_header.col_name"),
+                                        t("table_viewer.col_header.type"),
+                                        t("table_viewer.col_header.row_count"),
+                                        t("table_viewer.col_header.non_null"),
+                                        t("table_viewer.col_header.unique"),
+                                        t("table_viewer.col_header.null_count"),
+                                        t("table_viewer.col_header.min"),
+                                        t("table_viewer.col_header.max"),
+                                        t("table_viewer.col_header.avg"),
+                                    ]
+                                )
                                 mn, mx, avg = r2.rows[0]
                                 overview.setItem(i, 6, QTableWidgetItem(str(mn)))
                                 overview.setItem(i, 7, QTableWidgetItem(str(mx)))
-                                overview.setItem(i, 8, QTableWidgetItem(f"{avg:.4f}" if isinstance(avg, float) else str(avg)))
+                                overview.setItem(
+                                    i,
+                                    8,
+                                    QTableWidgetItem(
+                                        f"{avg:.4f}" if isinstance(avg, float) else str(avg)
+                                    ),
+                                )
                 except Exception as e:
                     _log.debug("Column stats query failed for %s: %s", col_name, e)
             overview.resizeColumnsToContents()
@@ -1782,9 +2250,11 @@ class TableViewerWidget(QWidget):
             freq_parts: list[list[str]] = []
             for col_name in self._loaded_column_names:
                 try:
-                    q = (f"SELECT `{col_name}`, COUNT(*) as cnt FROM {db_table} "
-                         f"WHERE `{col_name}` IS NOT NULL "
-                         f"GROUP BY `{col_name}` ORDER BY cnt DESC LIMIT 10")
+                    q = (
+                        f"SELECT `{col_name}`, COUNT(*) as cnt FROM {db_table} "
+                        f"WHERE `{col_name}` IS NOT NULL "
+                        f"GROUP BY `{col_name}` ORDER BY cnt DESC LIMIT 10"
+                    )
                     r = pool_loop.run_until_complete(connector.execute(q))
                     if r.rows:
                         freq_parts.append(f"── {col_name} ──")
@@ -1812,7 +2282,8 @@ class TableViewerWidget(QWidget):
         btn = QPushButton(t("common.close"), dlg)
         btn.setStyleSheet(
             "background: #3c3c3c; color: #ccc; border: 1px solid #555; "
-            "border-radius: 3px; padding: 4px 16px;")
+            "border-radius: 3px; padding: 4px 16px;"
+        )
         btn.clicked.connect(dlg.accept)
         layout.addWidget(btn, 0, Qt.AlignmentFlag.AlignRight)
         dlg.exec()
@@ -1840,7 +2311,8 @@ class TableViewerWidget(QWidget):
 
         if cell and single:
             menu.addAction(t("context.copy_cell")).triggered.connect(
-                lambda: QApplication.clipboard().setText(cell.text()))
+                lambda: QApplication.clipboard().setText(cell.text())
+            )
             menu.addSeparator()
 
         menu.addAction(t("context.selected_rows", count=count)).setEnabled(False)
@@ -1848,30 +2320,46 @@ class TableViewerWidget(QWidget):
 
         if single:
             menu.addAction(t("context.copy_row_json")).triggered.connect(
-                lambda: QApplication.clipboard().setText(str(single).replace("'", '"')))
+                lambda: QApplication.clipboard().setText(str(single).replace("'", '"'))
+            )
         else:
             menu.addAction(t("context.copy_rows_json", count=count)).triggered.connect(
                 lambda: QApplication.clipboard().setText(
-                    "[\n" + ",\n".join(str(d).replace("'", '"') for d in rows_data) + "\n]"))
+                    "[\n" + ",\n".join(str(d).replace("'", '"') for d in rows_data) + "\n]"
+                )
+            )
         menu.addSeparator()
 
-        menu.addAction(t("context.copy_as_insert")).triggered.connect(lambda: self._copy_insert(rows_data))
-        menu.addAction(t("context.copy_as_update")).triggered.connect(lambda: self._copy_update(rows_data))
+        menu.addAction(t("context.copy_as_insert")).triggered.connect(
+            lambda: self._copy_insert(rows_data)
+        )
+        menu.addAction(t("context.copy_as_update")).triggered.connect(
+            lambda: self._copy_update(rows_data)
+        )
         menu.addSeparator()
 
         if rows_data:
             fc = list(rows_data[0].keys())[0]
             menu.addAction(t("context.where_in", column=fc)).triggered.connect(
-                lambda: self._copy_where_in(rows_data))
-            menu.addAction(t("context.copy_as_select")).triggered.connect(lambda: self._copy_select(rows_data))
+                lambda: self._copy_where_in(rows_data)
+            )
+            menu.addAction(t("context.copy_as_select")).triggered.connect(
+                lambda: self._copy_select(rows_data)
+            )
             menu.addSeparator()
-            menu.addAction(t("context.copy_as_where")).triggered.connect(lambda: self._copy_where(rows_data))
+            menu.addAction(t("context.copy_as_where")).triggered.connect(
+                lambda: self._copy_where(rows_data)
+            )
         menu.addSeparator()
 
-        menu.addAction(t("context.copy_as_csv")).triggered.connect(lambda: self._copy_csv(rows_data))
+        menu.addAction(t("context.copy_as_csv")).triggered.connect(
+            lambda: self._copy_csv(rows_data)
+        )
         menu.addAction(t("context.copy_as_json")).triggered.connect(
             lambda: QApplication.clipboard().setText(
-                "[\n" + ",\n".join(str(d).replace("'", '"') for d in rows_data) + "\n]"))
+                "[\n" + ",\n".join(str(d).replace("'", '"') for d in rows_data) + "\n]"
+            )
+        )
         menu.exec(self._table_widget.viewport().mapToGlobal(pos))
 
     def _show_table_header_menu(self, pos) -> None:
@@ -1879,32 +2367,126 @@ class TableViewerWidget(QWidget):
         if col < 0:
             return
         col_name = self._table_widget.horizontalHeaderItem(col).text()
+        engine = self._engine()
         menu = QMenu(self)
         menu.addAction(t("context.column_name", name=col_name)).setEnabled(False)
         menu.addSeparator()
 
-        vals = []
+        # Pin / unpin: keeps the column at the leading edge. QTableWidget has no
+        # frozen panes, so this is a reorder rather than a true freeze.
+        pinned = col_name in self._pinned_columns
+        menu.addAction(
+            t("table_viewer.unpin_column") if pinned else t("table_viewer.pin_column")
+        ).triggered.connect(lambda: self._toggle_pinned_column(col_name))
+        if pinned:
+            menu.addAction(t("table_viewer.unpin_all_columns")).triggered.connect(
+                self._clear_pinned_columns
+            )
+        menu.addSeparator()
+
+        values = self._column_values(col, col_name)
+        if not values:
+            menu.exec(self._table_widget.horizontalHeader().viewport().mapToGlobal(pos))
+            return
+
+        menu.addAction(t("table_viewer.select_matching", count=len(values))).triggered.connect(
+            lambda: self._select_rows_matching(col, set(values))
+        )
+        menu.addSeparator()
+
+        # Statements are rendered for the connection's engine, not hard-coded
+        # for MySQL as they used to be.
+        menu.addAction(
+            t("context.where_in_values", column=col_name, count=len(values))
+        ).triggered.connect(
+            lambda: QApplication.clipboard().setText(
+                copy_as_where([col_name], [[v] for v in values], [col_name], engine)
+            )
+        )
+        quoted = quote_identifier(col_name, engine)
+        menu.addAction(t("table_viewer.copy_in_list", column=col_name)).triggered.connect(
+            lambda: QApplication.clipboard().setText(
+                quoted + " IN (" + ", ".join(quote_literal(v, engine) for v in values) + ")"
+            )
+        )
+
+        for value in sorted(values)[:20]:
+            menu.addAction(t("context.filter_value", value=value)).triggered.connect(
+                lambda checked, v=value: QApplication.clipboard().setText(
+                    quoted + " = " + quote_literal(v, engine)
+                )
+            )
+        menu.exec(self._table_widget.horizontalHeader().viewport().mapToGlobal(pos))
+
+    def _column_values(self, col: int, col_name: str) -> list:
+        """Distinct non-empty values in a column, from the selection or the page."""
+        values = []
         for row_data in self._selected_rows_data():
-            v = row_data.get(col_name, "")
-            if v and v != "NULL":
-                vals.append(v)
-        if not vals:
+            value = row_data.get(col_name, "")
+            if value and value != "NULL":
+                values.append(value)
+        if not values:
             for row in range(self._table_widget.rowCount()):
                 item = self._table_widget.item(row, col)
                 if item and item.text() and item.text() != "(NULL)":
-                    vals.append(item.text())
-        if not vals:
+                    values.append(item.text())
+        return list(dict.fromkeys(values))
+
+    def _select_rows_matching(self, col: int, wanted: set) -> None:
+        """Select every displayed row whose cell value is in ``wanted``.
+
+        This is what makes a bulk delete or export practical: the filter column
+        menu picks the rows, then the toolbar acts on the selection.
+        """
+        self._table_widget.clearSelection()
+        selected = 0
+        for row in range(self._table_widget.rowCount()):
+            item = self._table_widget.item(row, col)
+            if item and item.text() in wanted:
+                for c in range(self._table_widget.columnCount()):
+                    cell = self._table_widget.item(row, c)
+                    if cell:
+                        cell.setSelected(True)
+                selected += 1
+        self._status_msg.setText(t("table_viewer.selected_rows", count=selected))
+
+    # ---- pinned columns ----
+
+    def _toggle_pinned_column(self, col_name: str) -> None:
+        before = list(self._pinned_columns)
+        self._pinned_columns = toggle_pin(self._pinned_columns, col_name)
+        if self._pinned_columns == before:
+            if len(before) >= MAX_PINNED_COLUMNS:
+                self._status_msg.setText(t("table_viewer.pin_limit", count=MAX_PINNED_COLUMNS))
             return
+        self._apply_column_order()
 
-        esc_vals = ", ".join(self._esc(v) for v in vals)
-        menu.addAction(t("context.where_in_values", column=col_name, count=len(vals))).triggered.connect(
-            lambda: QApplication.clipboard().setText(f"`{col_name}` IN ({esc_vals})"))
+    def _clear_pinned_columns(self) -> None:
+        if not self._pinned_columns:
+            return
+        self._pinned_columns = []
+        self._apply_column_order()
 
-        for v in sorted(set(vals))[:20]:
-            ev = self._esc(v)
-            menu.addAction(t("context.filter_value", value=ev)).triggered.connect(
-                lambda checked, x=ev: QApplication.clipboard().setText(f"`{col_name}` = {x}"))
-        menu.exec(self._table_widget.horizontalHeader().viewport().mapToGlobal(pos))
+    def _apply_column_order(self) -> None:
+        """Reorder the grid columns so pinned ones lead."""
+        header = self._table_widget.horizontalHeader()
+        current = [
+            self._table_widget.horizontalHeaderItem(i).text()
+            for i in range(self._table_widget.columnCount())
+        ]
+        if not current:
+            return
+        wanted = order_columns(current, self._pinned_columns)
+        self._table_widget.blockSignals(True)
+        try:
+            for target, name in enumerate(wanted):
+                index = current.index(name)
+                if target != index:
+                    header.moveSection(index, target)
+                    current.insert(target, current.pop(index))
+        finally:
+            self._table_widget.blockSignals(False)
+        self._update_dirty_state()
 
     def _esc(self, v: str) -> str:
         if not v or v == "NULL":
@@ -1916,7 +2498,10 @@ class TableViewerWidget(QWidget):
             return "'" + v.replace("'", "\\'") + "'"
 
     def _selected_rows_data(self) -> list[dict[str, str]]:
-        headers = [self._table_widget.horizontalHeaderItem(c).text() for c in range(self._table_widget.columnCount())]
+        headers = [
+            self._table_widget.horizontalHeaderItem(c).text()
+            for c in range(self._table_widget.columnCount())
+        ]
         rows = set()
         data = []
         for item in self._table_widget.selectedItems():
@@ -1935,8 +2520,12 @@ class TableViewerWidget(QWidget):
         if not rows_data:
             return
         cols = ",\n  ".join(f"`{k}`" for k in rows_data[0])
-        vals = ",\n".join("  (" + ", ".join(self._esc(v) for v in d.values()) + ")" for d in rows_data)
-        QApplication.clipboard().setText(f"INSERT INTO `{self._table}` (\n  {cols}\n) VALUES\n{vals};")
+        vals = ",\n".join(
+            "  (" + ", ".join(self._esc(v) for v in d.values()) + ")" for d in rows_data
+        )
+        QApplication.clipboard().setText(
+            f"INSERT INTO `{self._table}` (\n  {cols}\n) VALUES\n{vals};"
+        )
 
     def _copy_update(self, rows_data: list[dict]) -> None:
         if not rows_data:
@@ -1946,7 +2535,9 @@ class TableViewerWidget(QWidget):
         stmts = []
         for d in rows_data:
             sets = ",\n  ".join(f"`{k}` = {self._esc(v)}" for k, v in d.items() if k != pk_col)
-            stmts.append(f"UPDATE `{self._table}`\nSET\n  {sets}\nWHERE `{pk_col}` = {self._esc(d[pk_col])};")
+            stmts.append(
+                f"UPDATE `{self._table}`\nSET\n  {sets}\nWHERE `{pk_col}` = {self._esc(d[pk_col])};"
+            )
         QApplication.clipboard().setText("\n\n".join(stmts))
 
     def _copy_where_in(self, rows_data: list[dict]) -> None:
@@ -1962,7 +2553,9 @@ class TableViewerWidget(QWidget):
             return
         fc = list(rows_data[0].keys())[0]
         vals = [self._esc(d[fc]) for d in rows_data if fc in d and d[fc] != "NULL"]
-        where = f"WHERE `{fc}` IN ({', '.join(vals)})" if len(vals) > 1 else f"WHERE `{fc}` = {vals[0]}"
+        where = (
+            f"WHERE `{fc}` IN ({', '.join(vals)})" if len(vals) > 1 else f"WHERE `{fc}` = {vals[0]}"
+        )
         QApplication.clipboard().setText(f"SELECT * FROM `{self._table}` {where};")
 
     def _copy_where(self, rows_data: list[dict]) -> None:
@@ -1999,8 +2592,11 @@ class TableViewerWidget(QWidget):
 
     def _show_bi_workspace(self) -> None:
         mw = self.window()
-        if hasattr(mw, '_show_bi_dashboard'):
+        if hasattr(mw, "_show_bi_dashboard"):
             mw._show_bi_dashboard()
         else:
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.information(self, t("data_viewer.bi_workspace"), t("table_viewer.coming_soon"))
+
+            QMessageBox.information(
+                self, t("data_viewer.bi_workspace"), t("table_viewer.coming_soon")
+            )

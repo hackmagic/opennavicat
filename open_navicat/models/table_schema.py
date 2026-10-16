@@ -22,6 +22,7 @@ class ObjectType(Enum):
 @dataclass
 class DatabaseInfo:
     """Represents a database within a connection."""
+
     name: str
     charset: str = "utf8mb4"
     collation: str = "utf8mb4_general_ci"
@@ -32,6 +33,7 @@ class DatabaseInfo:
 @dataclass
 class ColumnInfo:
     """Column (field) metadata."""
+
     name: str
     data_type: str  # e.g. VARCHAR, INT, TEXT
     char_max_length: int | None = None
@@ -45,11 +47,14 @@ class ColumnInfo:
     comment: str = ""
     character_set: str = ""
     collation: str = ""
+    #: 1-based position in the table, used to render schemas in declared order.
+    ordinal_position: int = 0
 
 
 @dataclass
 class IndexInfo:
     """Index metadata."""
+
     name: str
     columns: list[str] = field(default_factory=list)
     is_unique: bool = False
@@ -61,6 +66,7 @@ class IndexInfo:
 @dataclass
 class ForeignKeyInfo:
     """Foreign key constraint metadata."""
+
     name: str
     column: str
     ref_table: str
@@ -72,6 +78,7 @@ class ForeignKeyInfo:
 @dataclass
 class TableInfo:
     """Complete table schema."""
+
     name: str
     database: str
     engine: str = "InnoDB"
@@ -85,3 +92,6 @@ class TableInfo:
     foreign_keys: list[ForeignKeyInfo] = field(default_factory=list)
     create_time: str = ""
     update_time: str = ""
+    #: Approximate on-disk size in bytes, as reported by the engine's
+    #: metadata view.  0 when the engine does not expose it.
+    data_length: int = 0

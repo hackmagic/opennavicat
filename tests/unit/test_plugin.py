@@ -39,26 +39,26 @@ class TestPluginManager:
     def test_register_plugin(self) -> None:
         mgr = PluginManager()
         p = _TestPlugin()
-        mgr._register(p)
+        mgr._register(p, _all_permissions=True)
         assert "test_plugin" in mgr.plugins
 
     def test_register_skips_duplicates(self) -> None:
         mgr = PluginManager()
-        mgr._register(_TestPlugin())
+        mgr._register(_TestPlugin(), _all_permissions=True)
         assert len(mgr.plugins) == 1
-        mgr._register(_TestPlugin())
+        mgr._register(_TestPlugin(), _all_permissions=True)
         assert len(mgr.plugins) == 1
 
     def test_get_export_formats(self) -> None:
         mgr = PluginManager()
-        mgr._register(_TestPlugin())
+        mgr._register(_TestPlugin(), _all_permissions=True)
         fmts = mgr.get_export_formats()
         assert "test_fmt" in fmts
         assert fmts["test_fmt"]([], "") == "test output"
 
     def test_get_mask_rules(self) -> None:
         mgr = PluginManager()
-        mgr._register(_TestPlugin())
+        mgr._register(_TestPlugin(), _all_permissions=True)
         rules = mgr.get_mask_rules()
         assert "custom_key" in rules
         assert rules["custom_key"]("anything") == "MASKED"
@@ -69,7 +69,7 @@ class TestPluginManager:
 
     def test_unload_all(self) -> None:
         mgr = PluginManager()
-        mgr._register(_TestPlugin())
+        mgr._register(_TestPlugin(), _all_permissions=True)
         mgr.unload_all()
         assert len(mgr.plugins) == 0
 

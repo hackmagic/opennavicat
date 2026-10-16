@@ -24,7 +24,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+pool_loop = _pool_loop_getter()
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.i18n import t
 from open_navicat.services.connection_manager import connection_manager
@@ -35,11 +37,13 @@ _log = logging.getLogger(__name__)
 
 class _TransferWorker(QThread):
     """Background thread for executing transfer."""
+
     progress = Signal(int, str)
     finished = Signal(int, list)
 
-    def __init__(self, src_id: str, tgt_id: str, src_db: str, tgt_db: str,
-                 tables: list[str], opts: dict) -> None:
+    def __init__(
+        self, src_id: str, tgt_id: str, src_db: str, tgt_db: str, tables: list[str], opts: dict
+    ) -> None:
         super().__init__()
         self._src_id = src_id
         self._tgt_id = tgt_id
@@ -79,10 +83,14 @@ class _TransferWorker(QThread):
         # 1. Get source structure
         if opts.get("structure", True):
             from open_navicat.services.metadata_service import metadata_service
+
             # Use connection_id-based approach if available, otherwise fallback
             result = pool_loop.run_until_complete(
-                src.execute(f"SHOW CREATE TABLE {sq}{table}{sq}" if src_engine != "postgresql"
-                           else f"SELECT pg_get_tabledef('{table}')")
+                src.execute(
+                    f"SHOW CREATE TABLE {sq}{table}{sq}"
+                    if src_engine != "postgresql"
+                    else f"SELECT pg_get_tabledef('{table}')"
+                )
             )
             if result.rows and result.rows[0]:
                 ddl = result.rows[0][1] if src_engine != "postgresql" else result.rows[0][0]
@@ -94,9 +102,7 @@ class _TransferWorker(QThread):
 
         # 2. Copy data
         if opts.get("data", True):
-            result = pool_loop.run_until_complete(
-                src.execute(f"SELECT * FROM {sq}{table}{sq}")
-            )
+            result = pool_loop.run_until_complete(src.execute(f"SELECT * FROM {sq}{table}{sq}"))
             if not result.rows:
                 return
 
@@ -113,7 +119,7 @@ class _TransferWorker(QThread):
                 pool_loop.run_until_complete(tgt.execute(f"TRUNCATE TABLE `{table}`"))
 
             for start in range(0, len(result.rows), batch_size):
-                batch = result.rows[start:start + batch_size]
+                batch = result.rows[start : start + batch_size]
                 for row in batch:
                     try:
                         pool_loop.run_until_complete(tgt.execute(insert_sql, list(row)))
@@ -192,7 +198,9 @@ class DataTransferWidget(QWidget):
 
         self._table = QTableWidget()
         self._table.setColumnCount(2)
-        self._table.setHorizontalHeaderLabels([t("data_transfer.table_header_empty"), t("data_transfer.table_header_name")])
+        self._table.setHorizontalHeaderLabels(
+            [t("data_transfer.table_header_empty"), t("data_transfer.table_header_name")]
+        )
         self._table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         tbl_layout.addWidget(self._table)
@@ -337,8 +345,11 @@ class DataTransferWidget(QWidget):
 
         tgt_conn_name = self._tgt_conn.currentText()
         reply = QMessageBox.question(
-            self, t("data_transfer.msg.confirm"),
-            t("data_transfer.confirm_detail", n=len(tables)) + "\n" + "\n".join(f"  {tbl}" for tbl in tables[:10])
+            self,
+            t("data_transfer.msg.confirm"),
+            t("data_transfer.confirm_detail", n=len(tables))
+            + "\n"
+            + "\n".join(f"  {tbl}" for tbl in tables[:10])
             + ("\n  ..." if len(tables) > 10 else "")
             + t("data_transfer.confirm_to", conn=tgt_conn_name, db=tgt_db),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
@@ -365,10 +376,18 @@ class DataTransferWidget(QWidget):
         self._progress.hide()
         self._btn_transfer.setEnabled(True)
         if errors:
-            QMessageBox.warning(self, t("data_transfer.msg.partial_failure"),
-                                t("data_transfer.partial_failure_detail", errors=len(errors), total=total) + "\n" + "\n".join(errors[:5]))
+            QMessageBox.warning(
+                self,
+                t("data_transfer.msg.partial_failure"),
+                t("data_transfer.partial_failure_detail", errors=len(errors), total=total)
+                + "\n"
+                + "\n".join(errors[:5]),
+            )
             self._status.setText(t("data_transfer.status_partial_failure", n=len(errors)))
         else:
-            QMessageBox.information(self, t("data_transfer.msg.complete"),
-                                    t("data_transfer.transfer_complete", total=total))
+            QMessageBox.information(
+                self,
+                t("data_transfer.msg.complete"),
+                t("data_transfer.transfer_complete", total=total),
+            )
             self._status.setText(t("data_transfer.status_complete", total=total))

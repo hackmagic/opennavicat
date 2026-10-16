@@ -19,7 +19,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+pool_loop = _pool_loop_getter()
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.i18n import t
 
@@ -64,7 +66,14 @@ class DataDictionaryWidget(QWidget):
         # Table list
         self._table_list = QTableWidget()
         self._table_list.setColumnCount(4)
-        self._table_list.setHorizontalHeaderLabels([t("data_dictionary.column.table_name"), t("data_dictionary.column.engine"), t("data_dictionary.column.row_count"), t("data_dictionary.column.comment")])
+        self._table_list.setHorizontalHeaderLabels(
+            [
+                t("data_dictionary.column.table_name"),
+                t("data_dictionary.column.engine"),
+                t("data_dictionary.column.row_count"),
+                t("data_dictionary.column.comment"),
+            ]
+        )
         self._table_list.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._table_list.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table_list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -83,7 +92,17 @@ class DataDictionaryWidget(QWidget):
 
         self._col_table = QTableWidget()
         self._col_table.setColumnCount(7)
-        self._col_table.setHorizontalHeaderLabels([t("data_dictionary.column_detail.field_name"), t("data_dictionary.column_detail.type"), t("data_dictionary.column_detail.nullable"), t("data_dictionary.column_detail.default"), t("data_dictionary.column_detail.primary_key"), t("data_dictionary.column_detail.auto_increment"), t("data_dictionary.column_detail.comment")])
+        self._col_table.setHorizontalHeaderLabels(
+            [
+                t("data_dictionary.column_detail.field_name"),
+                t("data_dictionary.column_detail.type"),
+                t("data_dictionary.column_detail.nullable"),
+                t("data_dictionary.column_detail.default"),
+                t("data_dictionary.column_detail.primary_key"),
+                t("data_dictionary.column_detail.auto_increment"),
+                t("data_dictionary.column_detail.comment"),
+            ]
+        )
         self._col_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self._col_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._col_table.setAlternatingRowColors(True)
@@ -137,12 +156,17 @@ class DataDictionaryWidget(QWidget):
                 self._col_table.setItem(i, 2, QTableWidgetItem("YES" if col.nullable else "NO"))
                 self._col_table.setItem(i, 3, QTableWidgetItem(str(col.default or "")))
                 self._col_table.setItem(i, 4, QTableWidgetItem("PRI" if col.is_primary_key else ""))
-                self._col_table.setItem(i, 5, QTableWidgetItem("AUTO" if col.is_auto_increment else ""))
+                self._col_table.setItem(
+                    i, 5, QTableWidgetItem("AUTO" if col.is_auto_increment else "")
+                )
                 self._col_table.setItem(i, 6, QTableWidgetItem(col.comment))
 
             # DDL
             from open_navicat.services.metadata_service import metadata_service
-            ddl = metadata_service.get_create_table_sql(self._connection_id, self._database, table_name)
+
+            ddl = metadata_service.get_create_table_sql(
+                self._connection_id, self._database, table_name
+            )
             if ddl:
                 self._ddl_text.setPlainText(ddl)
         except Exception as e:
@@ -150,7 +174,13 @@ class DataDictionaryWidget(QWidget):
 
     def _export_html(self) -> None:
         from PySide6.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getSaveFileName(self, t("data_dictionary.export.dialog"), f"{self._database}_dictionary.html", t("data_dictionary.export.html_filter"))
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            t("data_dictionary.export.dialog"),
+            f"{self._database}_dictionary.html",
+            t("data_dictionary.export.html_filter"),
+        )
         if not path:
             return
 
@@ -165,15 +195,17 @@ class DataDictionaryWidget(QWidget):
         for info in self._tables:
             lines.append(f"<h2>{info['name']}</h2>")
             lines.append(f"<p>{t('data_dictionary.column.engine')}: {info.get('engine', '')}</p>")
-            ths = "</th><th>".join([
-                t("data_dictionary.column_detail.field_name"),
-                t("data_dictionary.column_detail.type"),
-                t("data_dictionary.column_detail.nullable"),
-                t("data_dictionary.column_detail.default"),
-                t("data_dictionary.column_detail.primary_key"),
-                t("data_dictionary.column_detail.auto_increment"),
-                t("data_dictionary.column_detail.comment"),
-            ])
+            ths = "</th><th>".join(
+                [
+                    t("data_dictionary.column_detail.field_name"),
+                    t("data_dictionary.column_detail.type"),
+                    t("data_dictionary.column_detail.nullable"),
+                    t("data_dictionary.column_detail.default"),
+                    t("data_dictionary.column_detail.primary_key"),
+                    t("data_dictionary.column_detail.auto_increment"),
+                    t("data_dictionary.column_detail.comment"),
+                ]
+            )
             lines.append(f"<table><tr><th>{ths}</th></tr>")
 
             try:
@@ -182,12 +214,14 @@ class DataDictionaryWidget(QWidget):
                     connector.get_table_info(self._database, info["name"])
                 )
                 for col in table_info.columns:
-                    lines.append(f"<tr><td>{col.name}</td><td>{col.data_type}</td>"
-                                 f"<td>{'YES' if col.nullable else 'NO'}</td>"
-                                 f"<td>{col.default or ''}</td>"
-                                 f"<td>{'PRI' if col.is_primary_key else ''}</td>"
-                                 f"<td>{'AUTO' if col.is_auto_increment else ''}</td>"
-                                 f"<td>{col.comment}</td></tr>")
+                    lines.append(
+                        f"<tr><td>{col.name}</td><td>{col.data_type}</td>"
+                        f"<td>{'YES' if col.nullable else 'NO'}</td>"
+                        f"<td>{col.default or ''}</td>"
+                        f"<td>{'PRI' if col.is_primary_key else ''}</td>"
+                        f"<td>{'AUTO' if col.is_auto_increment else ''}</td>"
+                        f"<td>{col.comment}</td></tr>"
+                    )
             except Exception as e:
                 _log.debug("Failed to export column %s: %s", col.name, e)
         lines.append("</table>")
@@ -198,11 +232,18 @@ class DataDictionaryWidget(QWidget):
 
     def _export_pdf(self) -> None:
         from PySide6.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getSaveFileName(self, t("data_dictionary.export.dialog_pdf"), f"{self._database}_dictionary.pdf", t("data_dictionary.export.pdf_filter"))
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            t("data_dictionary.export.dialog_pdf"),
+            f"{self._database}_dictionary.pdf",
+            t("data_dictionary.export.pdf_filter"),
+        )
         if not path:
             return
         from PySide6.QtGui import QTextDocument
         from PySide6.QtPrintSupport import QPrinter
+
         html_lines = [
             "<html><head><meta charset='utf-8'><style>"
             "body{font-family:sans-serif;margin:20px}"
@@ -214,26 +255,32 @@ class DataDictionaryWidget(QWidget):
         ]
         for info in self._tables:
             html_lines.append(f"<h2>{info['name']}</h2>")
-            ths = "</th><th>".join([
-                t("data_dictionary.column_detail.field_name"),
-                t("data_dictionary.column_detail.type"),
-                t("data_dictionary.column_detail.nullable"),
-                t("data_dictionary.column_detail.default"),
-                t("data_dictionary.column_detail.primary_key"),
-                t("data_dictionary.column_detail.auto_increment"),
-                t("data_dictionary.column_detail.comment"),
-            ])
+            ths = "</th><th>".join(
+                [
+                    t("data_dictionary.column_detail.field_name"),
+                    t("data_dictionary.column_detail.type"),
+                    t("data_dictionary.column_detail.nullable"),
+                    t("data_dictionary.column_detail.default"),
+                    t("data_dictionary.column_detail.primary_key"),
+                    t("data_dictionary.column_detail.auto_increment"),
+                    t("data_dictionary.column_detail.comment"),
+                ]
+            )
             html_lines.append(f"<table><tr><th>{ths}</th></tr>")
             try:
                 connector = connection_pool.get(self._connection_id)
-                table_info = pool_loop.run_until_complete(connector.get_table_info(self._database, info["name"]))
+                table_info = pool_loop.run_until_complete(
+                    connector.get_table_info(self._database, info["name"])
+                )
                 for col in table_info.columns:
-                    html_lines.append(f"<tr><td>{col.name}</td><td>{col.data_type}</td>"
-                                     f"<td>{'YES' if col.nullable else 'NO'}</td>"
-                                     f"<td>{col.default or ''}</td>"
-                                     f"<td>{'PRI' if col.is_primary_key else ''}</td>"
-                                     f"<td>{'AUTO' if col.is_auto_increment else ''}</td>"
-                                     f"<td>{col.comment}</td></tr>")
+                    html_lines.append(
+                        f"<tr><td>{col.name}</td><td>{col.data_type}</td>"
+                        f"<td>{'YES' if col.nullable else 'NO'}</td>"
+                        f"<td>{col.default or ''}</td>"
+                        f"<td>{'PRI' if col.is_primary_key else ''}</td>"
+                        f"<td>{'AUTO' if col.is_auto_increment else ''}</td>"
+                        f"<td>{col.comment}</td></tr>"
+                    )
             except Exception:
                 pass
             html_lines.append("</table>")

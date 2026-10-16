@@ -50,10 +50,7 @@ class MetadataService:
         if not connection_id:
             self._cache.clear()
             return
-        self._cache = {
-            k: v for k, v in self._cache.items()
-            if not k.startswith(connection_id)
-        }
+        self._cache = {k: v for k, v in self._cache.items() if not k.startswith(connection_id)}
 
     # ---- databases ----
 
@@ -118,7 +115,7 @@ class MetadataService:
             if result.success and result.rows:
                 return result.rows[0][0] or ""
             # Fallback: use pg_dump-style DDL
-            qtn = f'{self._quote(database, engine)}.{self._quote(table, engine)}'
+            qtn = f"{self._quote(database, engine)}.{self._quote(table, engine)}"
             result = _pool_loop().run_until_complete(
                 connector.execute(f"SELECT pg_get_tabledef('{database}', '{table}')")
             )

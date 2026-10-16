@@ -338,26 +338,83 @@ desktop / web / cli / mcp
 **Phase 3 遗留（已知，非本轮范围）：** 新引擎的真库集成测试需要 CI 容器；`docs/` 里 SQL Server 的 `TrustServerCertificate=yes` 待改为可 pin CA；`data_transfer` / `server_monitor` / `user_manager` 等面板仍按 `getattr(info,"engine","mysql")` 回落，属各功能域自身范围。
 
 
-### Phase 4：数据网格（2–3 周）
+### Phase 4：数据网格 — **编辑链路已完成（2026-09-29）**
 
-- 行内编辑 + 保存前 SQL 预览（`ui/widgets/table_viewer.py`）。
-- 列过滤、排序、搜索、固定列、分页。
+- **`open_navicat/sql/quoting.py`（新增）**：跨引擎的标识符/字面量/分页引用层。MySQL 反引号、PG/SQLite 双引号、SQL Server 方括号；SQL Server 用 `OFFSET…FETCH NEXT` 而非 `LIMIT`。这是所有 SQL 生成的地基。
+- **`open_navicat/ui/widgets/grid_editor.py`（新增）**：编辑意图 → 可预览语句的纯逻辑层（不 import Qt，全部可单测）。修掉三个真缺陷：
+  1. **主键原本硬编码为第 0 列** —— 第一列不是主键的表，编辑和删除会打到错误的行；现在主键来自表元数据。
+  2. **值一律按字符串发送** —— `WHERE id = '7'` 匹配不上整数主键；现在按列的既有类型强制转换（int/float/bool/datetime/date/Decimal），空单元格 = NULL。
+  3. **SQL 只在 MySQL 上能跑** —— 现在按引擎生成。
+  - 缺主键时**拒绝构造语句**而不是猜（避免 DELETE 命中全表）。
+  - 支持复合主键、可选乐观锁谓词（`where_extra`）、同单元格多次编辑合并为一条 UPDATE。
+- **`table_viewer.py` 接线**：`_load_page` / `_commit_batch` / `_delete_selected` / `_add_row` 全部改走新层；新增「预览 SQL」按钮 + 对话框，删除前也展示将执行的语句。
+- **`utils/sql_generator.py` 改为引擎感知**：`ENGINE=` / `CHARSET=` / `UNIQUE KEY` 是 MySQL 专属语法，之前会被 `sync_engine` 用到跨引擎同步里生成出无法解析的 DDL；现在非 MySQL 输出 `CONSTRAINT … UNIQUE (…)` 并省略 MySQL 表选项。
+
+**顺带修掉 `sql_generator` 的一个注入面**：`DEFAULT` / `COMMENT` 的值此前直接拼进 DDL，现在走 `quote_literal`。
+
+**验收：** 全量 `pytest` **837 passed / 17 skipped**（上轮 730，新增 107）；ruff 全清；依赖矩阵 250 边、0 违规。
+
+**Phase 4 收尾（同轮完成）：**
+
+- **`open_navicat/formats/exporters.py`（新增）**：流式导出 CSV/TSV/JSON/Markdown/XLSX/SQL。原来 `_export_data` 跑一条 `SELECT *` 把整表读进内存再写盘；现在按批分页，峰值内存是一批而不是整表。
+  - 顺带修掉导出过滤条件里的**注入面**：原来 `WHERE` 是用字符串拼 `f"{k} = '{v}'"`，现在走 `build_filter_clause` 按引擎引用标识符与字面量。
+  - 视觉过滤面板的 `__panel__` 片段是**成品 SQL**，不能被再次引用——用 `PANEL_KEY` 显式标记。
+  - 实测发现并修掉两个自己的 bug：多批次 JSON 不是合法 JSON（每批各自输出完整数组）；`Decimal` 在 xlsx 里被写成文本（金额列无法求和）。
+- **列固定** + **批量选择**：`order_columns` / `toggle_pin` / `selected_rows` / `copy_as_insert` / `copy_as_update` / `copy_as_where` 全部落在 `grid_editor.py`（纯逻辑、可单测）。表头菜单新增「固定列到最左」「选中 N 个匹配行」。**说明：QTableWidget 没有冻结窗格，这里的"固定"是把列移到最左**，不是真正的冻结面板，已在代码注释里写明。
+- 表头菜单里复制 SQL 的动作原来硬编码反引号，现在按连接引擎生成。
+
+**验收：** 903 passed（Phase 4 起点 837）。
 
 **验收：** 只读连接禁止写；预览 SQL 与实际执行 SQL 一致。
 
-### Phase 5：Schema / 对象工作台（2 周）
+### Phase 5：Schema / 对象工作台 — **dry-run 与跨引擎 DDL 已完成（2026-09-29）**
 
-- 统一对象浏览器（表/视图/存储过程/函数/索引/触发器/约束 + 搜索）。
-- DDL diff 可视化 + dry-run（在 `schema_sync_panel.py` 基础上扩展）。
+- **`open_navicat/sql/schema_diff.py`（新增）**：把 `generate_sync_script` 里的内联逻辑抽出来，修掉两个真缺陷：
+  1. **只有 MySQL / PostgreSQL 两档** —— 原来是 `is_pg = engine == "postgresql"` 加一个二选一的引号字符，SQLite / ClickHouse / SQL Server 目标会生成**无法解析的 DDL**。现在每个引擎的引号、`MODIFY COLUMN` vs `ALTER COLUMN TYPE`、`DROP INDEX`（三种写法）、`DROP FOREIGN KEY` vs `DROP CONSTRAINT` 都分开处理。
+  2. **DROP 顺序不安全** —— 原来按发现顺序删表，被引用的父表先删就会因为子表外键而失败。现在建表按依赖父→子、删表子→父（`order_creates` / `order_drops`），成环时按给定顺序输出而不是死循环。
+  3. `generate_create_table` 调用时**没传 engine**，等于新表永远按 MySQL 语法生成——已修。
+- **`open_navicat/sql/plan.py`（新增）**：dry-run 规划。`classify()` 按语句类型分出 create/alter/drop/data，`Plan.preview_text()` 用 `!!` 标出破坏性语句，`Plan.summary()` 给出「N 条语句，M 条破坏性」，`requires_confirmation` 供 UI 决定是否二次确认。`SyncEngine.plan_sync()` 是入口。
+  - `ALTER TABLE … DROP COLUMN` 归类为 **destructive**（关键字是 ALTER，效果是丢数据），`DELETE` 同理。
+  - `classify()` 会跳过前导注释行——否则 `-- header
+CREATE TABLE …` 会把注释当成语句分类。
 
-**验收：** diff 可预览、可导出、可 dry-run。
+**验收：** 全量 `pytest` **965 passed / 17 skipped**；ruff 全清。`sql_generator` 顺带修掉 `) ;` 的多余空格。
+
+**Phase 5 收尾（同轮完成）：**
+
+- **`open_navicat/services/object_catalog.py`（新增）**：可搜索的对象目录（纯逻辑，无 Qt 依赖）。每展开一个库就把它索引进去，所以搜索能命中**从未手工展开过**的对象——原来只能过滤已在树里渲染的文本。
+  - 过程与函数**分开**成两类（驱动返回的 routine type 决定），索引/约束/列在展开某张表时一次 `get_table_info` 全部入索引。
+  - `search_across()` 支持跨连接搜索，结果按连接分组。
+- **对象浏览器接线**：分类从「表/视图/过程与函数/查询」扩到「表/视图/存储过程/函数/触发器/查询」，并在表节点下挂「字段/索引/约束」；搜索框输入 ≥2 字符即走对象搜索，无匹配时给出明确提示而不是静默保留旧树。
+- **`list_triggers` 新增**：`BaseConnector` 上是**具体方法**（默认返回空，不强迫文档库实现一个只能返回空的方法），在 MySQL / PostgreSQL / SQLite / SQL Server / Oracle 上按各自系统表实现。DuckDB / ClickHouse / Mongo / Redis 确实没有触发器，继承默认实现。
+- **diff 可视化接线**：`schema_sync_panel` 改用 `plan_sync()`，预览标题带 `Plan.summary()`（「N 条语句，M 条破坏性」），确认框单独提示破坏性条数。
+  - 顺带修掉一个真 bug：面板调 `generate_sync_script(diff, target_db)` **没传 engine**，等于同步到 PostgreSQL 目标时生成 MySQL DDL。现在从连接解析目标引擎。
+
+**顺带修掉一个跨 13 个文件的隐患：**
+
+`from open_navicat.dal.connection_pool import _loop as pool_loop` —— `_loop` 是模块级全局，**在首次 `_get_loop()` 之前一直是 None**，而 `from ... import` 在函数调用时取值。任何"还没连接就展开/查询"的路径都会 `AttributeError: 'NoneType' has no attribute 'run_until_complete'`。共 45 处，全部改为调用 `_get_loop()` 取值，并加了两条回归测试（一条断言该脆弱写法在代码库中不再存在）。
+
+**验收：** 全量 `pytest` **1029 passed / 17 skipped**；ruff 全清（仅剩一条 pre-existing 的 `tests/unit/conftest.py` 导入排序）；依赖矩阵 262 边、0 违规。
+
+**收尾：** 对象浏览器右键菜单已接新对象类型——procedure / function / trigger / table_detail / column / index / constraint / category 全部分支（打开定义、按节点类型选择 `DROP FUNCTION` vs `DROP PROCEDURE`、触发器删除按引擎分支（PG/SQL Server 需要所属表，缺失时明确拒绝）、复制名称、刷新、属性）；维护子菜单改为**按引擎过滤**（`_maintenance_sql` / `_maintenance_actions`：MySQL 四项、PG analyze/vacuum、SQLite analyze/reindex、SQL Server DBCC/UPDATE STATISTICS、CH optimize、Oracle analyze），不再对非 MySQL 引擎发必然报错的 MySQL 语法。**剩余：** 库级 DDL 批量导出（表级 `browser.dump_sql` 已存在）。
 
 ### Phase 6：导入导出 / 迁移流水线（2–3 周）
 
 - 统一 import / export / migrate 抽象；文件预览（CSV / Parquet / JSON / Excel）。
 - 大文件流式处理；任务进度与错误汇总。
 
-**验收：** 大文件不 OOM；失败可回滚。
+**已交付：**
+
+- `open_navicat/formats/importers.py`（流式导入 + 预览，62 测试）与 `exporters.py`（流式导出，42 测试）；200k 行 CSV 实测峰值 758 KiB vs 整读 37 MiB（49×）。
+- `open_navicat/sql/migration.py`（迁移编排层，56 测试）：读文件 → 按目标 `ColumnInfo.data_type` 类型转换 → 分批 `batch_insert` → 进度回调 + 错误汇总（封顶 1000 条）→ 事务回滚；`plan_migration()` 供 dry-run 预览。
+- CLI 全接线：`data import`（`--dry-run` / `--batch-size` / `--no-header` / `--columns` / `--delimiter` / `--sheet` / `--encoding`）与 `data export`（`--format` 6 种 / `--batch-size` 逐页），`browse` 改引擎感知引用。
+- 顺带修掉三个 CLI 真缺陷：一次性进程连接不关闭导致解释器退出挂起（aiosqlite 非 daemon 线程在 atexit 之前被 join，`cli_main` 改 `finally` 关闭连接池）；GBK 控制台下 `✓` 打印触发 `UnicodeEncodeError`（stdout/stderr 改 `errors="replace"`）；SQLite 绑定不了 `Decimal`（connector 层 `_adapt_params`）。
+
+**验收：** 大文件不 OOM ✅；失败可回滚 ✅；dry-run 预览 ✅；错误汇总与进度 ✅；全量 `pytest` **1213 passed / 17 skipped**（新增 195 例），ruff 全清，依赖矩阵 262 边 0 违规。
+
+**GUI 向导已接线：** `ui/dialogs/import_export_wizard.py` 的 `ImportWizard._run_import` 改走 `run_migration()`（流式 + 类型转换 + 事务 + 错误汇总，实测 2 行导入 / 1 行坏行精确报错）；`ExportWizard._run_export` 改走 `export_rows()` 分页导出（引擎感知引用，峰值内存一页）。原向导的整文件解析路径（txt/xml/html/dbf/mdb/accdb/px，全 str 值、无事务、无错误汇总）连同格式列表一并移除，格式收敛为流水线真正支持的 csv/tsv/json/jsonl/xlsx（导入）与 csv/tsv/json/markdown/xlsx/sql（导出）。
+
+**连接配置导入已交付：** `open_navicat/services/connection_import.py`（DBeaver `data-sources.json` 两种布局全量解析、Navicat `.ncx`/注册表 best-effort、SSH 隧道与 Navicat 密码明确不导入并记 `note`、provider 未知记 `skipped`、判重 + `--dry-run`），CLI `conn import-from` 已接线，30 例测试。**Navicat `.ncx` 为闭源加密格式，密码不可恢复——这一点如实写进文档与 CLI 输出，不做假装解析。**
 
 ### Phase 7：AI 安全 + MCP Server 原型（2–3 周）
 

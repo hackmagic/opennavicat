@@ -29,8 +29,8 @@ def sample_table() -> TableInfo:
         charset="utf8mb4",
         columns=[
             ColumnInfo(name="id", data_type="INT", is_primary_key=True, is_auto_increment=True, nullable=False),
-            ColumnInfo(name="username", data_type="VARCHAR", length="50", nullable=False),
-            ColumnInfo(name="email", data_type="VARCHAR", length="100", nullable=True),
+            ColumnInfo(name="username", data_type="VARCHAR", char_max_length="50", nullable=False),
+            ColumnInfo(name="email", data_type="VARCHAR", char_max_length="100", nullable=True),
             ColumnInfo(name="created_at", data_type="DATETIME", nullable=True),
         ],
         indexes=[

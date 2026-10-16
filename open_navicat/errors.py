@@ -42,6 +42,8 @@ SOURCE_SQL = "sql"
 SOURCE_AI = "ai"
 SOURCE_PLUGIN = "plugin"
 SOURCE_CONFIG = "config"
+#: A security policy decision rather than a technical failure.
+SOURCE_SECURITY = "security"
 
 # ---- stages --------------------------------------------------------------
 STAGE_RESOLVE = "resolve"
@@ -51,6 +53,7 @@ STAGE_EXECUTE = "execute"
 STAGE_PARSE = "parse"
 STAGE_REQUEST = "request"
 STAGE_LOAD = "load"
+STAGE_VERIFY = "verify"
 
 # ---- stable error codes --------------------------------------------------
 ERR_CONNECTION_FAILED = "ONV-CNN-001"
@@ -65,7 +68,15 @@ ERR_SQL_SYNTAX = "ONV-SQL-001"
 ERR_AI_FAILED = "ONV-AI-001"
 ERR_AI_TRANSIENT = "ONV-AI-002"
 ERR_PLUGIN_FAILED = "ONV-PLG-001"
+ERR_PLUGIN_MANIFEST_INVALID = "ONV-PLG-002"
+ERR_PLUGIN_SIGNATURE_INVALID = "ONV-PLG-003"
+ERR_PLUGIN_PERMISSION_DENIED = "ONV-PLG-004"
+ERR_PLUGIN_VERSION_INCOMPATIBLE = "ONV-PLG-005"
+ERR_PLUGIN_PACKAGE_MALFORMED = "ONV-PLG-006"
+ERR_PLUGIN_DEPENDENCY_CONFLICT = "ONV-PLG-007"
 ERR_CONFIG_INVALID = "ONV-CFG-001"
+#: The operation was refused by an access policy (MCP tiers, read-only mode).
+ERR_POLICY_DENIED = "ONV-SEC-001"
 
 #: Human labels for the code catalog; used by ``opennavicat doctor``-style tooling.
 ERROR_CATALOG: dict[str, str] = {
@@ -81,7 +92,14 @@ ERROR_CATALOG: dict[str, str] = {
     ERR_AI_FAILED: "the ai provider rejected the request",
     ERR_AI_TRANSIENT: "the ai provider failed transiently",
     ERR_PLUGIN_FAILED: "a plugin raised an error",
+    ERR_PLUGIN_MANIFEST_INVALID: "the plugin manifest is missing or invalid",
+    ERR_PLUGIN_SIGNATURE_INVALID: "the plugin package signature could not be verified",
+    ERR_PLUGIN_PERMISSION_DENIED: "the plugin lacks a permission it needs",
+    ERR_PLUGIN_VERSION_INCOMPATIBLE: "the plugin is not compatible with this version",
+    ERR_PLUGIN_PACKAGE_MALFORMED: "the plugin package is malformed",
+    ERR_PLUGIN_DEPENDENCY_CONFLICT: "the plugin conflicts with an installed plugin",
     ERR_CONFIG_INVALID: "configuration value is invalid",
+    ERR_POLICY_DENIED: "the operation is not permitted by the current access policy",
 }
 
 # ---- redaction -----------------------------------------------------------
@@ -91,6 +109,9 @@ _REDACT_TOKEN = re.compile(
 )
 _REDACT_DSN = re.compile(r"(?i)(://[^@\s/]+):([^@\s]+)@")
 _REDACT_BEARER = re.compile(r"(?i)\b(bearer)\s+\S+")
+# ``user:password@host`` with no scheme, e.g. a bare DSN body or a JDBC URL
+# fragment. Kept separate from _REDACT_DSN so both spellings are covered.
+_REDACT_USERINFO = re.compile(r"(?<![\w@/:])([\w.+-]+):([^@\s/]+)@")
 
 
 def redact(text: str) -> str:
@@ -106,6 +127,7 @@ def redact(text: str) -> str:
     out = _REDACT_TOKEN.sub(lambda m: f"{m.group(1)}{m.group(2)}{m.group(3)}***{m.group(3)}", out)
     out = _REDACT_DSN.sub(r"\1:***@", out)
     out = _REDACT_BEARER.sub(r"\1 ***", out)
+    out = _REDACT_USERINFO.sub(r"\1:***@", out)
     return out
 
 
@@ -313,11 +335,71 @@ class PluginError(NavicatError):
     STAGE = STAGE_LOAD
 
 
+class PluginManifestError(PluginError):
+    """``plugin.json`` is missing, unparseable, or fails validation."""
+
+    CODE = ERR_PLUGIN_MANIFEST_INVALID
+    STAGE = STAGE_PARSE
+
+
+class PluginSignatureError(PluginError):
+    """A package signature did not verify, or the key material is unusable."""
+
+    CODE = ERR_PLUGIN_SIGNATURE_INVALID
+    SOURCE = SOURCE_SECURITY
+    STAGE = STAGE_VERIFY
+
+
+class PluginPermissionError(PluginError):
+    """The plugin asked for a permission it was not granted."""
+
+    CODE = ERR_PLUGIN_PERMISSION_DENIED
+    SOURCE = SOURCE_SECURITY
+    STAGE = STAGE_RESOLVE
+
+
+class PluginVersionError(PluginError):
+    """Host or dependency version constraints are not satisfied."""
+
+    CODE = ERR_PLUGIN_VERSION_INCOMPATIBLE
+    STAGE = STAGE_RESOLVE
+
+
+class PluginPackageError(PluginError):
+    """The ``.onvpkg`` archive is structurally unusable."""
+
+    CODE = ERR_PLUGIN_PACKAGE_MALFORMED
+    STAGE = STAGE_RESOLVE
+
+
+class PluginConflictError(PluginError):
+    """Two installed plugins cannot coexist."""
+
+    CODE = ERR_PLUGIN_DEPENDENCY_CONFLICT
+    STAGE = STAGE_RESOLVE
+
+
 class ConfigError(NavicatError):
     """A configuration value is missing or invalid."""
 
     CODE = ERR_CONFIG_INVALID
     SOURCE = SOURCE_CONFIG
+
+
+class PolicyDeniedError(NavicatError):
+    """The caller is not allowed to perform this operation.
+
+    Raised by the access-policy layer (MCP permission tiers, read-only mode,
+    destructive-operation guards) rather than by a driver.  It is *recoverable*:
+    widening the policy or picking a different operation resolves it, so the UI
+    can offer that as an action instead of treating it as a crash.
+    """
+
+    CODE = ERR_POLICY_DENIED
+    MESSAGE_KEY = "security.policyDenied"
+    SOURCE = SOURCE_SECURITY
+    STAGE = STAGE_RESOLVE
+    RECOVERABLE = True
 
 
 class AIError(NavicatError):
@@ -346,12 +428,14 @@ __all__ = [
     "STAGE_PARSE",
     "STAGE_REQUEST",
     "STAGE_RESOLVE",
+    "ERR_POLICY_DENIED",
     "SOURCE_AI",
     "SOURCE_CONFIG",
     "SOURCE_CONNECTION",
     "SOURCE_DRIVER",
     "SOURCE_PLUGIN",
     "SOURCE_QUERY",
+    "SOURCE_SECURITY",
     "SOURCE_SQL",
     "ERR_CONNECTION_CLOSED",
     "ERR_CONNECTION_FAILED",
@@ -375,6 +459,7 @@ __all__ = [
     "DriverNotFoundError",
     "EngineNotSupportedError",
     "PluginError",
+    "PolicyDeniedError",
     "QueryCanceledError",
     "QueryExecutionError",
     "QueryTimeoutError",

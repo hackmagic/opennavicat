@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -192,6 +193,17 @@ class TestFailurePaths:
         payload = pool.last_error.to_dict()
         flat = str(payload)
         assert "hunter2" not in flat
+
+    def test_dsn_in_the_name_never_reaches_the_log(self, pool, caplog) -> None:
+        """``conn test <dsn>`` passes the DSN as the profile name."""
+        dsn = "clickhouse://user:SUPERSECRET@127.0.0.1:19999/db"
+        with (
+            patch(f"{POOL}.get_connector_class", return_value=SilentFailingConnector),
+            caplog.at_level(logging.DEBUG, logger="opennavicat.pool"),
+        ):
+            pool.open(_info(name=dsn))
+        assert "SUPERSECRET" not in caplog.text
+        assert "***" in caplog.text
 
     def test_connect_timeout_enforced(self, pool) -> None:
         with patch(f"{POOL}.get_connector_class", return_value=HangingConnector):

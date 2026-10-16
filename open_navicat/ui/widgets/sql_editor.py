@@ -43,23 +43,92 @@ class SQLHighlighter(QSyntaxHighlighter):
     """SQL keyword/string/number/comment highlighting."""
 
     _KEYWORDS = {
-        "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE",
-        "SET", "DELETE", "CREATE", "ALTER", "DROP", "TABLE", "INDEX",
-        "VIEW", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "ON", "AS",
-        "AND", "OR", "NOT", "IN", "LIKE", "BETWEEN", "IS", "NULL",
-        "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "UNION",
-        "ALL", "DISTINCT", "CASE", "WHEN", "THEN", "ELSE", "END",
-        "EXISTS", "FOREIGN", "KEY", "PRIMARY", "REFERENCES", "CONSTRAINT",
-        "UNIQUE", "CHECK", "DEFAULT", "CASCADE", "TRIGGER", "FUNCTION",
-        "PROCEDURE", "BEGIN", "COMMIT", "ROLLBACK", "EXPLAIN", "ANALYZE",
-        "GRANT", "REVOKE", "DATABASE", "SCHEMA", "USE", "SHOW", "DESCRIBE",
-        "TRUNCATE", "IF", "REPLACE", "TEMPORARY", "AUTO_INCREMENT",
-        "ENGINE", "CHARSET", "INDEX", "LEFT", "RIGHT", "OUTER",
+        "SELECT",
+        "FROM",
+        "WHERE",
+        "INSERT",
+        "INTO",
+        "VALUES",
+        "UPDATE",
+        "SET",
+        "DELETE",
+        "CREATE",
+        "ALTER",
+        "DROP",
+        "TABLE",
+        "INDEX",
+        "VIEW",
+        "JOIN",
+        "LEFT",
+        "RIGHT",
+        "INNER",
+        "OUTER",
+        "ON",
+        "AS",
+        "AND",
+        "OR",
+        "NOT",
+        "IN",
+        "LIKE",
+        "BETWEEN",
+        "IS",
+        "NULL",
+        "ORDER",
+        "BY",
+        "GROUP",
+        "HAVING",
+        "LIMIT",
+        "OFFSET",
+        "UNION",
+        "ALL",
+        "DISTINCT",
+        "CASE",
+        "WHEN",
+        "THEN",
+        "ELSE",
+        "END",
+        "EXISTS",
+        "FOREIGN",
+        "KEY",
+        "PRIMARY",
+        "REFERENCES",
+        "CONSTRAINT",
+        "UNIQUE",
+        "CHECK",
+        "DEFAULT",
+        "CASCADE",
+        "TRIGGER",
+        "FUNCTION",
+        "PROCEDURE",
+        "BEGIN",
+        "COMMIT",
+        "ROLLBACK",
+        "EXPLAIN",
+        "ANALYZE",
+        "GRANT",
+        "REVOKE",
+        "DATABASE",
+        "SCHEMA",
+        "USE",
+        "SHOW",
+        "DESCRIBE",
+        "TRUNCATE",
+        "IF",
+        "REPLACE",
+        "TEMPORARY",
+        "AUTO_INCREMENT",
+        "ENGINE",
+        "CHARSET",
+        "INDEX",
+        "LEFT",
+        "RIGHT",
+        "OUTER",
     }
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         from open_navicat.config import config as _cfg
+
         self._fmt: dict[str, QTextCharFormat] = {}
         kw = QTextCharFormat()
         kw.setForeground(QColor(_cfg.get("editor.color_keyword", "#569cd6")))
@@ -204,6 +273,7 @@ class ResultTable(QTableWidget):
         super().__init__(parent)
         from open_navicat.config import config as _cfg
         from open_navicat.i18n import t
+
         stripe = _cfg.get("records.row_stripe", t("settings.stripe.every_3"))
         self.setAlternatingRowColors(stripe != t("settings.stripe.none"))
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -249,6 +319,7 @@ class ResultTable(QTableWidget):
         """Select entire column regardless of SelectRows behavior."""
         self.clearSelection()
         from PySide6.QtWidgets import QTableWidgetSelectionRange
+
         self.setRangeSelected(QTableWidgetSelectionRange(0, col, self.rowCount() - 1, col), True)
 
     def _selected_rows_data(self) -> list[dict[str, str]]:
@@ -281,7 +352,8 @@ class ResultTable(QTableWidget):
 
         if row < 0 and not rows_data:
             menu.addAction(t("context.refresh")).triggered.connect(
-                lambda: self.parent()._execute() if hasattr(self.parent(), '_execute') else None)
+                lambda: self.parent()._execute() if hasattr(self.parent(), "_execute") else None
+            )
             menu.addSeparator()
             menu.addAction(t("context.copy_all_csv")).triggered.connect(self._copy_all_csv)
             menu.exec(self.viewport().mapToGlobal(pos))
@@ -296,7 +368,8 @@ class ResultTable(QTableWidget):
         cell = self.currentItem()
         if cell and single:
             menu.addAction(t("context.copy_cell")).triggered.connect(
-                lambda: QApplication.clipboard().setText(cell.text()))
+                lambda: QApplication.clipboard().setText(cell.text())
+            )
             menu.addSeparator()
 
         menu.addAction(t("context.selected_rows", count=count)).setEnabled(False)
@@ -304,28 +377,42 @@ class ResultTable(QTableWidget):
 
         if single:
             menu.addAction(t("context.copy_row_json")).triggered.connect(
-                lambda: QApplication.clipboard().setText(str(single).replace("'", '"')))
+                lambda: QApplication.clipboard().setText(str(single).replace("'", '"'))
+            )
         else:
             menu.addAction(t("context.copy_rows_json", count=count)).triggered.connect(
                 lambda: QApplication.clipboard().setText(
-                    "[\n" + ",\n".join(str(d).replace("'", '"') for d in rows_data) + "\n]"))
+                    "[\n" + ",\n".join(str(d).replace("'", '"') for d in rows_data) + "\n]"
+                )
+            )
         menu.addSeparator()
 
-        menu.addAction(t("context.copy_as_insert")).triggered.connect(lambda: self._copy_insert(rows_data))
-        menu.addAction(t("context.copy_as_update")).triggered.connect(lambda: self._copy_update(rows_data))
+        menu.addAction(t("context.copy_as_insert")).triggered.connect(
+            lambda: self._copy_insert(rows_data)
+        )
+        menu.addAction(t("context.copy_as_update")).triggered.connect(
+            lambda: self._copy_update(rows_data)
+        )
         menu.addSeparator()
 
         if rows_data:
             fc = list(rows_data[0].keys())[0]
             menu.addAction(t("context.where_in", column=fc)).triggered.connect(
-                lambda: self._copy_where_in(rows_data))
-            menu.addAction(t("context.copy_as_select")).triggered.connect(lambda: self._copy_select(rows_data))
+                lambda: self._copy_where_in(rows_data)
+            )
+            menu.addAction(t("context.copy_as_select")).triggered.connect(
+                lambda: self._copy_select(rows_data)
+            )
         menu.addSeparator()
 
-        menu.addAction(t("context.copy_as_csv")).triggered.connect(lambda: self._copy_csv(rows_data))
+        menu.addAction(t("context.copy_as_csv")).triggered.connect(
+            lambda: self._copy_csv(rows_data)
+        )
         menu.addAction(t("context.copy_as_json")).triggered.connect(
             lambda: QApplication.clipboard().setText(
-                "[\n" + ",\n".join(str(d).replace("'", '"') for d in rows_data) + "\n]"))
+                "[\n" + ",\n".join(str(d).replace("'", '"') for d in rows_data) + "\n]"
+            )
+        )
         menu.exec(self.viewport().mapToGlobal(pos))
 
     @Slot(QPoint)
@@ -352,13 +439,17 @@ class ResultTable(QTableWidget):
             return
 
         esc_vals = ", ".join(self._esc(v) for v in vals)
-        menu.addAction(t("context.where_in_values", column=col_name, count=len(vals))).triggered.connect(
-            lambda: QApplication.clipboard().setText(f"`{col_name}` IN ({esc_vals})"))
+        menu.addAction(
+            t("context.where_in_values", column=col_name, count=len(vals))
+        ).triggered.connect(
+            lambda: QApplication.clipboard().setText(f"`{col_name}` IN ({esc_vals})")
+        )
 
         for v in sorted(set(vals))[:20]:
             ev = self._esc(v)
             menu.addAction(t("context.filter_value", value=ev)).triggered.connect(
-                lambda checked, x=ev: QApplication.clipboard().setText(f"`{col_name}` = {x}"))
+                lambda checked, x=ev: QApplication.clipboard().setText(f"`{col_name}` = {x}")
+            )
         menu.exec(self.horizontalHeader().viewport().mapToGlobal(pos))
 
     def _esc(self, v: str) -> str:
@@ -374,8 +465,12 @@ class ResultTable(QTableWidget):
         if not rows_data:
             return
         cols = ",\n  ".join(f"`{k}`" for k in rows_data[0])
-        vals = ",\n".join("  (" + ", ".join(self._esc(v) for v in d.values()) + ")" for d in rows_data)
-        QApplication.clipboard().setText(f"INSERT INTO `{self._table_name}` (\n  {cols}\n) VALUES\n{vals};")
+        vals = ",\n".join(
+            "  (" + ", ".join(self._esc(v) for v in d.values()) + ")" for d in rows_data
+        )
+        QApplication.clipboard().setText(
+            f"INSERT INTO `{self._table_name}` (\n  {cols}\n) VALUES\n{vals};"
+        )
 
     def _copy_update(self, rows_data: list[dict]) -> None:
         if not rows_data:
@@ -385,7 +480,9 @@ class ResultTable(QTableWidget):
         stmts = []
         for d in rows_data:
             sets = ",\n  ".join(f"`{k}` = {self._esc(v)}" for k, v in d.items() if k != pk_col)
-            stmts.append(f"UPDATE `{self._table_name}`\nSET\n  {sets}\nWHERE `{pk_col}` = {self._esc(d[pk_col])};")
+            stmts.append(
+                f"UPDATE `{self._table_name}`\nSET\n  {sets}\nWHERE `{pk_col}` = {self._esc(d[pk_col])};"
+            )
         QApplication.clipboard().setText("\n\n".join(stmts))
 
     def _copy_where_in(self, rows_data: list[dict]) -> None:
@@ -401,7 +498,9 @@ class ResultTable(QTableWidget):
             return
         fc = list(rows_data[0].keys())[0]
         vals = [self._esc(d[fc]) for d in rows_data if fc in d and d[fc] != "NULL"]
-        where = f"WHERE `{fc}` IN ({', '.join(vals)})" if len(vals) > 1 else f"WHERE `{fc}` = {vals[0]}"
+        where = (
+            f"WHERE `{fc}` IN ({', '.join(vals)})" if len(vals) > 1 else f"WHERE `{fc}` = {vals[0]}"
+        )
         QApplication.clipboard().setText(f"SELECT * FROM `{self._table_name}` {where};")
 
     def _copy_csv(self, rows_data: list[dict]) -> None:
@@ -417,7 +516,9 @@ class ResultTable(QTableWidget):
         QApplication.clipboard().setText("\n".join(lines))
 
     def _copy_all_csv(self) -> None:
-        rows = [",".join(f'"{self.horizontalHeaderItem(c).text()}"' for c in range(self.columnCount()))]
+        rows = [
+            ",".join(f'"{self.horizontalHeaderItem(c).text()}"' for c in range(self.columnCount()))
+        ]
         for r in range(self.rowCount()):
             vals = []
             for c in range(self.columnCount()):
@@ -449,6 +550,7 @@ class SQLEditorWidget(QWidget):
 
         # Register with auto-recovery service
         from open_navicat.services.auto_recovery_service import AutoRecoveryService
+
         self._recovery_id = f"query_{connection_id}_{id(self)}"
         AutoRecoveryService.instance().register_editor(
             self._recovery_id,
@@ -458,12 +560,12 @@ class SQLEditorWidget(QWidget):
 
         # Auto-recovery timer
         from open_navicat.config import config as _cfg
+
         if _cfg.get("advanced.auto_recovery", True):
             from PySide6.QtCore import QTimer
+
             self._recovery_timer = QTimer(self)
-            self._recovery_timer.timeout.connect(
-                lambda: AutoRecoveryService.instance().save_all()
-            )
+            self._recovery_timer.timeout.connect(lambda: AutoRecoveryService.instance().save_all())
             self._recovery_timer.start(30000)  # 30 seconds
 
     def _setup_ui(self) -> None:
@@ -610,6 +712,7 @@ class SQLEditorWidget(QWidget):
         self._editor = QPlainTextEdit(editor_container)
         # Apply editor settings from config
         from open_navicat.config import config as _cfg
+
         font_family = _cfg.get("editor.font_family", "Consolas")
         font_size = _cfg.get("editor.font_size", 12)
         tab_size = _cfg.get("editor.tab_size", 4)
@@ -621,6 +724,7 @@ class SQLEditorWidget(QWidget):
         )
         if word_wrap:
             from PySide6.QtGui import QTextOption
+
             self._editor.setWordWrapMode(QTextOption.WrapMode.WordWrap)
         if insert_spaces:
             self._editor.setTabChangesFocus(False)
@@ -638,7 +742,9 @@ class SQLEditorWidget(QWidget):
         # Line numbers
         self._line_area = LineNumberArea(self)
         self._fold_area = CodeFoldingArea(self)
-        self._editor.setViewportMargins(self.line_number_area_width() + CodeFoldingArea.FOLD_WIDTH, 0, 0, 0)
+        self._editor.setViewportMargins(
+            self.line_number_area_width() + CodeFoldingArea.FOLD_WIDTH, 0, 0, 0
+        )
         self._editor.updateRequest.connect(self._line_area.update)
         self._editor.updateRequest.connect(self._fold_area.update)
         self._editor.blockCountChanged.connect(self._update_line_number_area_width)
@@ -668,8 +774,11 @@ class SQLEditorWidget(QWidget):
 
         # Ctrl+F shortcut for find
         from PySide6.QtGui import QShortcut
+
         self._find_shortcut = QShortcut(QKeySequence("Ctrl+F"), self)
-        self._find_shortcut.activated.connect(lambda: self._find_bar.setVisible(not self._find_bar.isVisible()))
+        self._find_shortcut.activated.connect(
+            lambda: self._find_bar.setVisible(not self._find_bar.isVisible())
+        )
 
         # Ctrl+S shortcut for save
         self._save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
@@ -782,6 +891,7 @@ class SQLEditorWidget(QWidget):
 
     def _highlight_current_line(self) -> None:
         from PySide6.QtGui import QTextEdit
+
         extras = self._editor.selectedTexts()
         self._editor.setExtraSelections([])
         if not extras:
@@ -794,6 +904,7 @@ class SQLEditorWidget(QWidget):
 
             # Bracket matching
             from open_navicat.config import config as _cfg
+
             if _cfg.get("editor.bracket_highlight", True):
                 bracket_extra = self._bracket_match_extra_selection()
                 if bracket_extra:
@@ -862,7 +973,9 @@ class SQLEditorWidget(QWidget):
 
         block = self._editor.firstVisibleBlock()
         block_number = block.blockNumber()
-        top = round(self._editor.blockBoundingGeometry(block).translated(self._editor.contentOffset()).top())
+        top = round(
+            self._editor.blockBoundingGeometry(block).translated(self._editor.contentOffset()).top()
+        )
         bottom = top + round(self._editor.blockBoundingRect(block).height())
 
         while block.isValid() and top <= event.rect().bottom():
@@ -870,9 +983,12 @@ class SQLEditorWidget(QWidget):
                 number = str(block_number + 1)
                 painter.setPen(QColor("#858585"))
                 painter.drawText(
-                    0, top, self._line_area.width() - 5,
+                    0,
+                    top,
+                    self._line_area.width() - 5,
                     self._editor.fontMetrics().height(),
-                    Qt.AlignmentFlag.AlignRight, number,
+                    Qt.AlignmentFlag.AlignRight,
+                    number,
                 )
             block = block.next()
             top = bottom
@@ -899,7 +1015,9 @@ class SQLEditorWidget(QWidget):
 
     def _load_databases(self) -> None:
         """Populate the database selector dropdown with available databases."""
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
         from open_navicat.models import DatabaseInfo
 
@@ -926,24 +1044,102 @@ class SQLEditorWidget(QWidget):
         from PySide6.QtWidgets import QCompleter
 
         from open_navicat.config import config as _cfg
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
 
         if not _cfg.get("code_completion.enabled", True):
             return
 
         words = [
-            "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE", "SET",
-            "DELETE", "CREATE", "ALTER", "DROP", "TABLE", "INDEX", "VIEW", "JOIN",
-            "LEFT", "RIGHT", "INNER", "OUTER", "ON", "AND", "OR", "NOT", "IN",
-            "LIKE", "BETWEEN", "IS", "NULL", "AS", "ORDER", "BY", "GROUP", "HAVING",
-            "LIMIT", "OFFSET", "DISTINCT", "COUNT", "SUM", "AVG", "MAX", "MIN",
-            "EXISTS", "UNION", "ALL", "CASE", "WHEN", "THEN", "ELSE", "END",
-            "BEGIN", "COMMIT", "ROLLBACK", "INT", "VARCHAR", "TEXT", "BOOLEAN",
-            "DATE", "DATETIME", "DECIMAL", "FLOAT", "BIGINT", "TINYINT",
-            "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "CASCADE", "RESTRICT",
-            "GRANT", "REVOKE", "TRUNCATE", "EXPLAIN", "DESCRIBE", "SHOW",
-            "USE", "DATABASE", "SCHEMA", "PROCEDURE", "FUNCTION", "TRIGGER",
-            "IF", "ELSE", "WHILE", "LOOP", "THEN", "BEGIN", "END",
+            "SELECT",
+            "FROM",
+            "WHERE",
+            "INSERT",
+            "INTO",
+            "VALUES",
+            "UPDATE",
+            "SET",
+            "DELETE",
+            "CREATE",
+            "ALTER",
+            "DROP",
+            "TABLE",
+            "INDEX",
+            "VIEW",
+            "JOIN",
+            "LEFT",
+            "RIGHT",
+            "INNER",
+            "OUTER",
+            "ON",
+            "AND",
+            "OR",
+            "NOT",
+            "IN",
+            "LIKE",
+            "BETWEEN",
+            "IS",
+            "NULL",
+            "AS",
+            "ORDER",
+            "BY",
+            "GROUP",
+            "HAVING",
+            "LIMIT",
+            "OFFSET",
+            "DISTINCT",
+            "COUNT",
+            "SUM",
+            "AVG",
+            "MAX",
+            "MIN",
+            "EXISTS",
+            "UNION",
+            "ALL",
+            "CASE",
+            "WHEN",
+            "THEN",
+            "ELSE",
+            "END",
+            "BEGIN",
+            "COMMIT",
+            "ROLLBACK",
+            "INT",
+            "VARCHAR",
+            "TEXT",
+            "BOOLEAN",
+            "DATE",
+            "DATETIME",
+            "DECIMAL",
+            "FLOAT",
+            "BIGINT",
+            "TINYINT",
+            "PRIMARY",
+            "KEY",
+            "FOREIGN",
+            "REFERENCES",
+            "CASCADE",
+            "RESTRICT",
+            "GRANT",
+            "REVOKE",
+            "TRUNCATE",
+            "EXPLAIN",
+            "DESCRIBE",
+            "SHOW",
+            "USE",
+            "DATABASE",
+            "SCHEMA",
+            "PROCEDURE",
+            "FUNCTION",
+            "TRIGGER",
+            "IF",
+            "ELSE",
+            "WHILE",
+            "LOOP",
+            "THEN",
+            "BEGIN",
+            "END",
         ]
 
         # Add table names and column names from connected databases
@@ -955,9 +1151,7 @@ class SQLEditorWidget(QWidget):
                     words.append(t)
                     # Fetch column names for this table
                     try:
-                        info = pool_loop.run_until_complete(
-                            connector.get_table_info(db.name, t)
-                        )
+                        info = pool_loop.run_until_complete(connector.get_table_info(db.name, t))
                         for col in info.columns:
                             words.append(col.name)
                             words.append(f"`{t}`.`{col.name}`")
@@ -976,10 +1170,15 @@ class SQLEditorWidget(QWidget):
 
         # Override keyPress to trigger completer
         orig_key = self._editor.keyPressEvent
+
         def _key_press(event):
             if self._completer.popup().isVisible():
-                if event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return,
-                                   Qt.Key.Key_Escape, Qt.Key.Key_Tab):
+                if event.key() in (
+                    Qt.Key.Key_Enter,
+                    Qt.Key.Key_Return,
+                    Qt.Key.Key_Escape,
+                    Qt.Key.Key_Tab,
+                ):
                     self._completer.popup().hide()
                     if event.key() == Qt.Key.Key_Tab:
                         return
@@ -992,28 +1191,31 @@ class SQLEditorWidget(QWidget):
             for w in reversed(block_text[:pos].split()):
                 prefix = w
                 break
-            if prefix and (prefix.isalnum() or prefix[0].isalnum() or '`' in prefix or '.' in prefix):
+            if prefix and (
+                prefix.isalnum() or prefix[0].isalnum() or "`" in prefix or "." in prefix
+            ):
                 self._completer.setCompletionPrefix(prefix)
                 if self._completer.completionCount() > 0:
                     self._completer.complete()
+
         self._editor.keyPressEvent = _key_press
 
     # ---- actions ----
 
     def _switch_result_tab(self, tab_key: str) -> None:
         """Switch between result / message / plan tabs."""
-        show_result = (tab_key == "results")
-        show_msg = (tab_key == "messages")
-        show_plan = (tab_key == "execution_plan")
+        show_result = tab_key == "results"
+        show_msg = tab_key == "messages"
+        show_plan = tab_key == "execution_plan"
         self._result_table.setVisible(show_result)
         self._msg_text.setVisible(show_msg)
         self._plan_text.setVisible(show_plan)
         for key, lbl in self._result_tabs.items():
-            active = (key == tab_key)
+            active = key == tab_key
             lbl.setStyleSheet(
                 "font-size: 11px; color: #ccc; padding: 2px 8px; border-bottom: 2px solid #0078d4;"
-                if active else
-                "font-size: 11px; color: #888; padding: 2px 8px;"
+                if active
+                else "font-size: 11px; color: #888; padding: 2px 8px;"
             )
 
     @Slot()
@@ -1053,8 +1255,10 @@ class SQLEditorWidget(QWidget):
             return
 
         from open_navicat.utils.sql_formatter import classify_sql
+
         if classify_sql(sql) in ("ddl", "dml"):
             from open_navicat.ui.dialogs.confirm_sql_dialog import ConfirmSQLDialog
+
             dlg = ConfirmSQLDialog(sql, self.window())
             if not dlg.exec():
                 return
@@ -1064,7 +1268,9 @@ class SQLEditorWidget(QWidget):
             self._status_label.setText(t("sql_editor.status_disconnected"))
             return
 
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
 
         self._cancelled = False
         self._set_running_state(True)
@@ -1089,7 +1295,9 @@ class SQLEditorWidget(QWidget):
 
             if result.is_select:
                 try:
-                    explain_result = pool_loop.run_until_complete(connector.execute(f"EXPLAIN {sql}"))
+                    explain_result = pool_loop.run_until_complete(
+                        connector.execute(f"EXPLAIN {sql}")
+                    )
                     self._explain_result = explain_result
                 except Exception:
                     self._explain_result = None
@@ -1110,7 +1318,9 @@ class SQLEditorWidget(QWidget):
             return
         import sqlparse
 
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
 
         self._cancelled = False
         self._set_running_state(True)
@@ -1138,7 +1348,9 @@ class SQLEditorWidget(QWidget):
             if results:
                 self._result = results[-1]
                 self._display_result(results[-1])
-                self._status_label.setText(t("sql_editor.status_executed", done=len(results), total=len(statements)))
+                self._status_label.setText(
+                    t("sql_editor.status_executed", done=len(results), total=len(statements))
+                )
             self.executed.emit(results[-1] if results else None)
         finally:
             self._set_running_state(False)
@@ -1155,10 +1367,13 @@ class SQLEditorWidget(QWidget):
     def _export_sql_file(self) -> None:
         """Export current SQL editor content to a .sql file."""
         from PySide6.QtWidgets import QFileDialog
+
         sql = self._editor.toPlainText().strip()
         if not sql:
             return
-        path, _ = QFileDialog.getSaveFileName(self, t("sql_editor.export_title"), "query.sql", t("sql_editor.sql_files"))
+        path, _ = QFileDialog.getSaveFileName(
+            self, t("sql_editor.export_title"), "query.sql", t("sql_editor.sql_files")
+        )
         if path:
             with open(path, "w", encoding="utf-8") as f:
                 f.write(sql)
@@ -1173,7 +1388,9 @@ class SQLEditorWidget(QWidget):
             return
 
         path, fmt = QFileDialog.getSaveFileName(
-            self, t("sql_editor.export_title"), "query_result",
+            self,
+            t("sql_editor.export_title"),
+            "query_result",
             "CSV 文件 (*.csv);;Excel 文件 (*.xlsx);;JSON 文件 (*.json)",
         )
         if not path:
@@ -1185,6 +1402,7 @@ class SQLEditorWidget(QWidget):
         try:
             if path.endswith(".xlsx"):
                 from openpyxl import Workbook
+
                 wb = Workbook()
                 ws = wb.active
                 ws.title = "Query Result"
@@ -1194,13 +1412,18 @@ class SQLEditorWidget(QWidget):
                 wb.save(path)
             elif path.endswith(".json"):
                 import json
-                data = [dict(zip(cols, [str(v) if v is not None else None for v in row])) for row in rows]
+
+                data = [
+                    dict(zip(cols, [str(v) if v is not None else None for v in row]))
+                    for row in rows
+                ]
                 with open(path, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
             else:
                 if not path.endswith(".csv"):
                     path += ".csv"
                 import csv
+
                 with open(path, "w", newline="", encoding="utf-8-sig") as f:
                     writer = csv.writer(f)
                     writer.writerow(cols)
@@ -1214,7 +1437,10 @@ class SQLEditorWidget(QWidget):
     def _import_sql_file(self) -> None:
         """Import SQL from a .sql file into the editor."""
         from PySide6.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getOpenFileName(self, t("sql_editor.import_title"), "", t("sql_editor.sql_files"))
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, t("sql_editor.import_title"), "", t("sql_editor.sql_files")
+        )
         if path:
             with open(path, "r", encoding="utf-8") as f:
                 sql = f.read()
@@ -1224,6 +1450,7 @@ class SQLEditorWidget(QWidget):
     def _show_shortcuts(self) -> None:
         """Show keyboard shortcuts help dialog."""
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QVBoxLayout
+
         dlg = QDialog(self.window())
         dlg.setWindowTitle(t("sql_editor.shortcuts_title"))
         dlg.setMinimumWidth(400)
@@ -1282,11 +1509,14 @@ class SQLEditorWidget(QWidget):
         if cursor.hasSelection():
             text = cursor.selectedText()
             copy_menu.addAction(t("context.copy_double_quotes")).triggered.connect(
-                lambda: QApplication.clipboard().setText(f'"{text}"'))
+                lambda: QApplication.clipboard().setText(f'"{text}"')
+            )
             copy_menu.addAction(t("context.copy_single_quotes")).triggered.connect(
-                lambda: QApplication.clipboard().setText(f"'{text}'"))
+                lambda: QApplication.clipboard().setText(f"'{text}'")
+            )
             copy_menu.addAction(t("context.copy_backtick_quotes")).triggered.connect(
-                lambda: QApplication.clipboard().setText(f"`{text}`"))
+                lambda: QApplication.clipboard().setText(f"`{text}`")
+            )
 
         menu.addSeparator()
 
@@ -1294,7 +1524,9 @@ class SQLEditorWidget(QWidget):
         menu.addAction(t("context.beautify_sql")).triggered.connect(self._beautify)
 
         # Select current statement
-        menu.addAction(t("context.select_current_stmt")).triggered.connect(self._select_current_statement)
+        menu.addAction(t("context.select_current_stmt")).triggered.connect(
+            self._select_current_statement
+        )
 
         menu.exec(self._editor.viewport().mapToGlobal(pos))
 
@@ -1318,18 +1550,21 @@ class SQLEditorWidget(QWidget):
     @Slot()
     def _beautify(self) -> None:
         import sqlparse
+
         raw = self._editor.toPlainText()
         formatted = sqlparse.format(raw, reindent=True, keyword_case="upper")
         self._editor.setPlainText(formatted)
 
     def _simplify(self) -> None:
         import sqlparse
+
         raw = self._editor.toPlainText()
         simplified = sqlparse.format(raw, reindent=False, keyword_case="upper")
         self._editor.setPlainText(simplified)
 
     def _open_compare_dialog(self) -> None:
         from open_navicat.ui.dialogs.query_compare_dialog import QueryCompareDialog
+
         dlg = QueryCompareDialog(sql_a=self._editor.toPlainText(), sql_b="", parent=self.window())
         dlg.exec()
 
@@ -1360,13 +1595,17 @@ class SQLEditorWidget(QWidget):
     def _insert_snippet_with_vars(self, sql: str) -> None:
         """Insert snippet, prompting for {{variable}} placeholders."""
         import re
+
         vars_found = re.findall(r"\{\{(\w+)\}\}", sql)
         if vars_found:
             from PySide6.QtWidgets import QInputDialog
+
             values = {}
             for var_name in vars_found:
                 val, ok = QInputDialog.getText(
-                    self, t("snippet.variable_prompt"), f"{var_name}:",
+                    self,
+                    t("snippet.variable_prompt"),
+                    f"{var_name}:",
                 )
                 if ok:
                     values[var_name] = val
@@ -1378,6 +1617,7 @@ class SQLEditorWidget(QWidget):
 
     def _open_snippet_manager(self) -> None:
         from open_navicat.ui.dialogs.snippet_manager import SnippetManagerDialog
+
         dlg = SnippetManagerDialog(self.window())
         dlg.exec()
         self._refresh_snippet_menu()
@@ -1390,12 +1630,17 @@ class SQLEditorWidget(QWidget):
         if not text:
             return
         from PySide6.QtWidgets import QInputDialog, QLineEdit
+
         name, ok = QInputDialog.getText(
-            self, t("context.create_snippet"), t("snippet.name"),
-            QLineEdit.EchoMode.Normal, "my_snippet",
+            self,
+            t("context.create_snippet"),
+            t("snippet.name"),
+            QLineEdit.EchoMode.Normal,
+            "my_snippet",
         )
         if ok and name:
             from open_navicat.dal.local_config import local_db
+
             local_db.save_snippet(name.strip(), text)
             self._refresh_snippet_menu()
 
@@ -1452,15 +1697,22 @@ class SQLEditorWidget(QWidget):
             q = local_db.get_query(self._current_query_id)
             if q:
                 local_db.save_query(self._connection_id, self._database, q["name"], sql)
-                self._status_label.setText(t("sql_editor.status_updated", name=q['name']))
+                self._status_label.setText(t("sql_editor.status_updated", name=q["name"]))
                 self._refresh_query_tree()
                 return
 
         # New query — ask for name
         from PySide6.QtWidgets import QInputDialog, QLineEdit
+
         name, ok = QInputDialog.getText(
-            self, t("sql_editor.save_title"), t("sql_editor.save_prompt"), QLineEdit.EchoMode.Normal,
-            t("sql_editor.save_default_name", n=len(local_db.list_queries(self._connection_id, self._database)) + 1)
+            self,
+            t("sql_editor.save_title"),
+            t("sql_editor.save_prompt"),
+            QLineEdit.EchoMode.Normal,
+            t(
+                "sql_editor.save_default_name",
+                n=len(local_db.list_queries(self._connection_id, self._database)) + 1,
+            ),
         )
         if ok and name:
             name = name.strip()
@@ -1472,6 +1724,7 @@ class SQLEditorWidget(QWidget):
     def _refresh_query_tree(self) -> None:
         """Refresh the ObjectBrowser query tree after save."""
         from open_navicat.ui.widgets.object_browser import ObjectBrowser
+
         mw = self.window()
         if not mw:
             return
@@ -1480,10 +1733,16 @@ class SQLEditorWidget(QWidget):
             return
         for i in range(browser.topLevelItemCount()):
             conn_item = browser.topLevelItem(i)
-            if conn_item and conn_item.data(0, Qt.ItemDataRole.UserRole).get("id") == self._connection_id:
+            if (
+                conn_item
+                and conn_item.data(0, Qt.ItemDataRole.UserRole).get("id") == self._connection_id
+            ):
                 for j in range(conn_item.childCount()):
                     db_item = conn_item.child(j)
-                    if db_item and db_item.data(0, Qt.ItemDataRole.UserRole).get("name") == self._database:
+                    if (
+                        db_item
+                        and db_item.data(0, Qt.ItemDataRole.UserRole).get("name") == self._database
+                    ):
                         browser._expand_database(db_item)
                         break
                 break
@@ -1492,10 +1751,13 @@ class SQLEditorWidget(QWidget):
     def _open_saved_query(self) -> None:
         """Open the query manager panel in the workspace."""
         mw = self.window()
-        if hasattr(mw, '_workspace'):
+        if hasattr(mw, "_workspace"):
             from open_navicat.ui.widgets.query_manager import QueryManagerWidget
+
             qm = QueryManagerWidget(self._connection_id, self._database, parent=mw._workspace)
-            idx = mw._workspace.addTab(qm, t("sql_editor.query_manager_tab", database=self._database))
+            idx = mw._workspace.addTab(
+                qm, t("sql_editor.query_manager_tab", database=self._database)
+            )
             mw._workspace.setCurrentIndex(idx)
 
     def _display_result(self, result: QueryResult) -> None:
@@ -1510,17 +1772,18 @@ class SQLEditorWidget(QWidget):
         if not tbl:
             sql = self._editor.toPlainText().strip()
             import re
+
             # Match FROM table, UPDATE table, INSERT INTO table, DELETE FROM table
             m = re.search(
                 r"(?:FROM\s+|UPDATE\s+|INSERT\s+(?:IGNORE\s+)?INTO\s+|DELETE\s+FROM\s+)`?(\w+)`?",
-                sql, re.IGNORECASE
+                sql,
+                re.IGNORECASE,
             )
             if m:
                 tbl = f"{self._database}.{m.group(1)}"
 
         self._result_table.set_table_meta(
-            tbl or self._database,
-            [c.name for c in result.columns] if result.columns else []
+            tbl or self._database, [c.name for c in result.columns] if result.columns else []
         )
 
         if not result.success:
@@ -1543,7 +1806,11 @@ class SQLEditorWidget(QWidget):
                     self._result_table.setItem(row_idx, col_idx, item)
             self._result_table.horizontalHeader().resizeSections()
             self._status_label.setText(
-                t("sql_editor.status_select_result", rows=result.row_count, ms=f"{result.execution_time_ms:.1f}")
+                t(
+                    "sql_editor.status_select_result",
+                    rows=result.row_count,
+                    ms=f"{result.execution_time_ms:.1f}",
+                )
             )
         else:
             self._result_table.setRowCount(0)
@@ -1557,7 +1824,9 @@ class SQLEditorWidget(QWidget):
     def _ai_action(self, mode: str) -> None:
         sql = self._editor.toPlainText().strip()
         prompts = {
-            "explain": t("sql_editor.ai_prompt_explain", sql=sql) if sql else t("sql_editor.ai_prompt_explain_general"),
+            "explain": t("sql_editor.ai_prompt_explain", sql=sql)
+            if sql
+            else t("sql_editor.ai_prompt_explain_general"),
             "optimize": t("sql_editor.ai_prompt_optimize", sql=sql),
             "fix": t("sql_editor.ai_prompt_fix", sql=sql),
             "nl": "",
@@ -1579,7 +1848,9 @@ class SQLEditorWidget(QWidget):
         if not connector:
             self._status_label.setText(t("sql_editor.status_disconnected"))
             return
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         result = pool_loop.run_until_complete(connector.execute(selected))
         self._result = result
         self._display_result(result)
@@ -1593,7 +1864,9 @@ class SQLEditorWidget(QWidget):
             return
         connector = connection_pool.get(self._connection_id)
         if connector:
-            from open_navicat.dal.connection_pool import _loop as pool_loop
+            from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+            pool_loop = _pool_loop_getter()
             explain_sql = f"EXPLAIN {sql}"
             result = pool_loop.run_until_complete(connector.execute(explain_sql))
             self._result = result
@@ -1611,10 +1884,10 @@ class SQLEditorWidget(QWidget):
         connector = connection_pool.get(self._connection_id)
         if connector and self._thread_id:
             try:
-                from open_navicat.dal.connection_pool import _loop as pool_loop
-                pool_loop.run_until_complete(
-                    connector.execute(f"KILL QUERY {self._thread_id}")
-                )
+                from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+                pool_loop = _pool_loop_getter()
+                pool_loop.run_until_complete(connector.execute(f"KILL QUERY {self._thread_id}"))
             except Exception as e:
                 _log.debug("Failed to kill query: %s", e)
         self._set_running_state(False)

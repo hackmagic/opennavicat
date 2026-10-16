@@ -69,6 +69,16 @@ class BaseConnector(ABC):
     @abstractmethod
     async def list_routines(self, database: str) -> list[tuple[str, str]]: ...
 
+    async def list_triggers(self, database: str) -> list[tuple[str, str]]:
+        """Return ``(trigger_name, table_name)`` pairs.
+
+        Concrete rather than abstract so a connector that has no triggers -- a
+        document store, or an engine that does not support them -- does not have
+        to implement a method that can only return nothing.  Engines that do
+        support triggers override this.
+        """
+        return []
+
     @abstractmethod
     async def get_table_info(self, database: str, table: str) -> TableInfo: ...
 

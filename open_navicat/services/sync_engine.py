@@ -11,6 +11,18 @@ from typing import Optional
 
 from open_navicat.models.table_schema import ColumnInfo, ForeignKeyInfo, IndexInfo, TableInfo
 from open_navicat.services.metadata_service import metadata_service
+from open_navicat.sql.plan import Plan, plan_from_statements
+from open_navicat.sql.quoting import quote_identifier
+from open_navicat.sql.schema_diff import (
+    _add_index_statements,
+    _drop_index_statement,
+    _fk_clauses,
+    _modify_column_statement,
+    drop_table_statements,
+    order_creates,
+    order_drops,
+    table_ref,
+)
 from open_navicat.utils.sql_generator import _column_sql, generate_create_table
 
 # ── Diff data models ──────────────────────────────────────────────────────
@@ -19,6 +31,7 @@ from open_navicat.utils.sql_generator import _column_sql, generate_create_table
 @dataclass
 class ColumnDiff:
     """Difference of a single column between source and target."""
+
     column_name: str
     old_type: str = ""
     new_type: str = ""
@@ -32,6 +45,7 @@ class ColumnDiff:
 @dataclass
 class IndexDiff:
     """Difference of a single index."""
+
     index_name: str
     action: str = "add"  # add | remove | modify
 
@@ -39,6 +53,7 @@ class IndexDiff:
 @dataclass
 class ForeignKeyDiff:
     """Difference of a single foreign key."""
+
     fk_name: str
     action: str = "add"  # add | remove
 
@@ -46,6 +61,7 @@ class ForeignKeyDiff:
 @dataclass
 class TableDiff:
     """Differences found in a single table."""
+
     table_name: str
     added_columns: list[ColumnInfo] = field(default_factory=list)
     removed_columns: list[str] = field(default_factory=list)
@@ -59,20 +75,29 @@ class TableDiff:
 @dataclass
 class SyncDiff:
     """Complete comparison result between two databases."""
+
     source_db: str = ""
     target_db: str = ""
     added_tables: list[TableInfo] = field(default_factory=list)
     removed_tables: list[str] = field(default_factory=list)
     modified_tables: list[TableDiff] = field(default_factory=list)
+    #: Target schema's dependency graph: table -> tables it references.  Used to
+    #: order DROP statements so a parent is never dropped before its children.
+    target_references: dict[str, set[str]] = field(default_factory=dict)
 
     @property
     def total_changes(self) -> int:
         count = len(self.added_tables) + len(self.removed_tables) + len(self.modified_tables)
         for td in self.modified_tables:
-            count += (len(td.added_columns) + len(td.removed_columns) +
-                      len(td.modified_columns) + len(td.added_indexes) +
-                      len(td.removed_indexes) + len(td.added_foreign_keys) +
-                      len(td.removed_foreign_keys))
+            count += (
+                len(td.added_columns)
+                + len(td.removed_columns)
+                + len(td.modified_columns)
+                + len(td.added_indexes)
+                + len(td.removed_indexes)
+                + len(td.added_foreign_keys)
+                + len(td.removed_foreign_keys)
+            )
         return count
 
     @property
@@ -120,6 +145,13 @@ class SyncEngine:
                 if td is not None:
                     diff.modified_tables.append(td)
 
+        # Record what the target's surviving tables point at, so a later drop can
+        # be ordered without re-reading the schema.
+        for name in sorted(tgt_tables & src_tables):
+            info = metadata_service.get_table_info(tcid, target_db, name)
+            if info and info.foreign_keys:
+                diff.target_references[name] = {fk.ref_table for fk in info.foreign_keys}
+
         return diff
 
     def _compare_table(self, src: TableInfo, tgt: TableInfo) -> Optional[TableDiff]:
@@ -144,14 +176,16 @@ class SyncEngine:
             sc = src_cols[name]
             tc = tgt_cols[name]
             if self._column_changed(sc, tc):
-                td.modified_columns.append(ColumnDiff(
-                    column_name=name,
-                    old_type=tc.data_type,
-                    new_type=sc.data_type,
-                    old_nullable=tc.nullable,
-                    new_nullable=sc.nullable,
-                    source_column=sc,
-                ))
+                td.modified_columns.append(
+                    ColumnDiff(
+                        column_name=name,
+                        old_type=tc.data_type,
+                        new_type=sc.data_type,
+                        old_nullable=tc.nullable,
+                        new_nullable=sc.nullable,
+                        source_column=sc,
+                    )
+                )
 
         # Indexes
         src_idx = {i.name: i for i in src.indexes}
@@ -172,9 +206,15 @@ class SyncEngine:
         td.removed_foreign_keys = sorted(tgt_fk_names - src_fk_names)
 
         # Return None if nothing changed
-        if (not td.added_columns and not td.removed_columns and not td.modified_columns
-                and not td.added_indexes and not td.removed_indexes
-                and not td.added_foreign_keys and not td.removed_foreign_keys):
+        if (
+            not td.added_columns
+            and not td.removed_columns
+            and not td.modified_columns
+            and not td.added_indexes
+            and not td.removed_indexes
+            and not td.added_foreign_keys
+            and not td.removed_foreign_keys
+        ):
             return None
 
         return td
@@ -200,89 +240,94 @@ class SyncEngine:
 
     # ── DDL generation ─────────────────────────────────────────────────
 
+    def plan_sync(
+        self,
+        diff: SyncDiff,
+        target_db: str = "",
+        engine: str = "mysql",
+        *,
+        transactional: bool = True,
+    ) -> Plan:
+        """Dry-run view of :meth:`generate_sync_script`.
+
+        Classifies each statement so a caller can show what is destructive
+        before anything runs, and reports whether the whole change can be
+        wrapped in one transaction on the target engine.
+        """
+        statements = self.generate_sync_script(diff, target_db=target_db, engine=engine)
+        return plan_from_statements(statements, transactional=transactional)
+
     def generate_sync_script(
-        self, diff: SyncDiff, target_db: str = "", engine: str = "mysql",
+        self,
+        diff: SyncDiff,
+        target_db: str = "",
+        engine: str = "mysql",
     ) -> list[str]:
         """Generate DDL statements to synchronize target with source.
 
-        Args:
-            engine: "mysql" or "postgresql" — controls quoting and DDL syntax.
+        Statements are produced in a safe order: tables are created before the
+        foreign keys that point at them, and dropped in reverse dependency order.
+        Every identifier and literal is quoted for ``engine``.
         """
-        is_pg = engine == "postgresql"
-        q = '"' if is_pg else "`"
         statements: list[str] = []
 
-        # New tables
-        for table in diff.added_tables:
-            ddl = generate_create_table(table)
-            statements.append(ddl)
+        # ── 1. New tables, parents before children ─────────────────────────
+        # A table whose foreign keys reference another new table must be created
+        # after it, so order by dependency.
+        create_refs = {
+            table.name: {fk.ref_table for fk in table.foreign_keys} for table in diff.added_tables
+        }
+        by_name = {table.name: table for table in diff.added_tables}
+        for name in order_creates([t.name for t in diff.added_tables], create_refs):
+            statements.append(generate_create_table(by_name[name], engine=engine))
 
-        # Removed tables
-        for name in diff.removed_tables:
-            tn = f"{q}{target_db}{q}.{q}{name}{q}" if target_db else f"{q}{name}{q}"
-            statements.append(f"DROP TABLE IF EXISTS {tn};")
+        # ── 2. Removed tables, children before parents ─────────────────────
+        # DROP in reverse dependency order, otherwise dropping a parent fails
+        # while a child still references it.  The reference graph here describes
+        # the *target* schema, which is what is being dismantled.
+        drop_refs = {
+            td.table_name: {fk.ref_table for fk in td.added_foreign_keys}
+            for td in diff.modified_tables
+        }
+        drop_refs.update(diff.target_references)
+        removed = order_drops(list(diff.removed_tables), drop_refs)
+        statements.extend(drop_table_statements(removed, engine, target_db))
 
-        # Modified tables
+        # ── 3. Modified tables ─────────────────────────────────────────────
         for td in diff.modified_tables:
-            tn = f"{q}{target_db}{q}.{q}{td.table_name}{q}" if target_db else f"{q}{td.table_name}{q}"
+            ref = table_ref(td.table_name, engine, target_db)
 
-            for col in td.added_columns:
+            for column in td.added_columns:
+                statements.append(f"ALTER TABLE {ref} ADD COLUMN {_column_sql(column, engine)};")
+            for column_name in td.removed_columns:
                 statements.append(
-                    f"ALTER TABLE {tn} ADD COLUMN {_column_sql(col)};"
+                    f"ALTER TABLE {ref} DROP COLUMN {quote_identifier(column_name, engine)};"
                 )
-            for col_name in td.removed_columns:
-                statements.append(
-                    f"ALTER TABLE {tn} DROP COLUMN {q}{col_name}{q};"
-                )
-            for cd in td.modified_columns:
-                src = cd.source_column
-                if src:
-                    if is_pg:
-                        statements.append(
-                            f"ALTER TABLE {tn} ALTER COLUMN {q}{cd.column_name}{q} "
-                            f"TYPE {src.data_type};"
-                        )
-                    else:
-                        statements.append(
-                            f"ALTER TABLE {tn} MODIFY COLUMN {_column_sql(src)};"
-                        )
+            for column_diff in td.modified_columns:
+                source = column_diff.source_column
+                if source is not None:
+                    statements.append(
+                        _modify_column_statement(ref, column_diff.column_name, source, engine)
+                    )
 
-            for idx in td.added_indexes:
-                cols = ", ".join(f"{q}{c}{q}" for c in idx.columns)
-                if idx.is_primary:
-                    statements.append(
-                        f"ALTER TABLE {tn} ADD PRIMARY KEY ({cols});"
-                    )
-                elif idx.is_unique:
-                    statements.append(
-                        f"CREATE UNIQUE INDEX {q}{idx.name}{q} ON {tn} ({cols});"
-                    )
-                else:
-                    statements.append(
-                        f"CREATE INDEX {q}{idx.name}{q} ON {tn} ({cols});"
-                    )
-            for idx_name in td.removed_indexes:
-                if is_pg:
-                    statements.append(f"DROP INDEX {q}{idx_name}{q};")
-                else:
-                    statements.append(f"ALTER TABLE {tn} DROP INDEX {q}{idx_name}{q};")
+            for index in td.added_indexes:
+                statements.extend(_add_index_statements(ref, index, engine))
+            for index_name in td.removed_indexes:
+                statements.append(_drop_index_statement(ref, index_name, engine))
 
+            add_kw, drop_kw = _fk_clauses(engine)
             for fk in td.added_foreign_keys:
                 statements.append(
-                    f"ALTER TABLE {tn} ADD CONSTRAINT {q}{fk.name}{q} "
-                    f"FOREIGN KEY ({q}{fk.column}{q}) REFERENCES "
-                    f"{q}{fk.ref_table}{q} ({q}{fk.ref_column}{q}) "
+                    f"ALTER TABLE {ref} {add_kw} {quote_identifier(fk.name, engine)} "
+                    f"FOREIGN KEY ({quote_identifier(fk.column, engine)}) REFERENCES "
+                    f"{quote_identifier(fk.ref_table, engine)} "
+                    f"({quote_identifier(fk.ref_column, engine)}) "
                     f"ON DELETE {fk.on_delete} ON UPDATE {fk.on_update};"
                 )
             for fk_name in td.removed_foreign_keys:
-                if is_pg:
-                    statements.append(
-                        f"ALTER TABLE {tn} DROP CONSTRAINT {q}{fk_name}{q};"
-                    )
-                else:
-                    statements.append(
-                        f"ALTER TABLE {tn} DROP FOREIGN KEY {q}{fk_name}{q};"
-                    )
+                statements.append(
+                    f"ALTER TABLE {ref} {drop_kw} {quote_identifier(fk_name, engine)};"
+                )
 
         return statements
 

@@ -28,19 +28,46 @@ if TYPE_CHECKING:
     from open_navicat.models.table_schema import TableInfo
 
 SQL_TYPES = [
-    "INT", "BIGINT", "SMALLINT", "TINYINT", "MEDIUMINT",
-    "VARCHAR", "CHAR", "TEXT", "TINYTEXT", "MEDIUMTEXT", "LONGTEXT",
-    "DECIMAL", "FLOAT", "DOUBLE",
-    "DATE", "DATETIME", "TIMESTAMP", "TIME", "YEAR",
-    "BLOB", "TINYBLOB", "MEDIUMBLOB", "LONGBLOB",
-    "BOOLEAN", "BIT", "BINARY", "VARBINARY",
-    "ENUM", "SET", "JSON",
-    "GEOMETRY", "POINT", "LINESTRING", "POLYGON",
+    "INT",
+    "BIGINT",
+    "SMALLINT",
+    "TINYINT",
+    "MEDIUMINT",
+    "VARCHAR",
+    "CHAR",
+    "TEXT",
+    "TINYTEXT",
+    "MEDIUMTEXT",
+    "LONGTEXT",
+    "DECIMAL",
+    "FLOAT",
+    "DOUBLE",
+    "DATE",
+    "DATETIME",
+    "TIMESTAMP",
+    "TIME",
+    "YEAR",
+    "BLOB",
+    "TINYBLOB",
+    "MEDIUMBLOB",
+    "LONGBLOB",
+    "BOOLEAN",
+    "BIT",
+    "BINARY",
+    "VARBINARY",
+    "ENUM",
+    "SET",
+    "JSON",
+    "GEOMETRY",
+    "POINT",
+    "LINESTRING",
+    "POLYGON",
 ]
 
 
 class _TypeDelegate(QStyledItemDelegate):
     """Combo box delegate for the '类型' column."""
+
     def createEditor(self, parent, option, index):
         editor = QComboBox(parent)
         editor.addItems(SQL_TYPES)
@@ -53,6 +80,8 @@ class _TypeDelegate(QStyledItemDelegate):
 
     def setModelData(self, editor, model, index):
         model.setData(index, editor.currentText(), Qt.ItemDataRole.EditRole)
+
+
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.services.metadata_service import metadata_service
 from open_navicat.utils.sql_generator import generate_create_table
@@ -82,15 +111,22 @@ class TableDesignerWidget(QWidget):
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(12, 6, 12, 6)
 
-        title = QLabel(t("table_designer.title", database=self._database, table=self._table), header)
+        title = QLabel(
+            t("table_designer.title", database=self._database, table=self._table), header
+        )
         h_layout.addWidget(title)
         h_layout.addStretch()
 
-        for text, obj_name in [(t("table_designer.copy_ddl"), ""), (t("table_designer.save"), "primaryBtn")]:
+        for text, obj_name in [
+            (t("table_designer.copy_ddl"), ""),
+            (t("table_designer.save"), "primaryBtn"),
+        ]:
             btn = QPushButton(text, header)
             if obj_name:
                 btn.setObjectName(obj_name)
-            btn.clicked.connect(self._copy_ddl if text == t("table_designer.copy_ddl") else self._save)
+            btn.clicked.connect(
+                self._copy_ddl if text == t("table_designer.copy_ddl") else self._save
+            )
             h_layout.addWidget(btn)
 
         layout.addWidget(header)
@@ -107,13 +143,23 @@ class TableDesignerWidget(QWidget):
         self._col_table = QTableWidget(col_widget)
         self._col_table.setColumnCount(9)
         self._col_table.setHorizontalHeaderLabels(
-            [t("table_designer.col_header.index"), t("table_designer.col_header.field_name"), t("table_designer.col_header.type"), t("table_designer.col_header.length"), t("table_designer.col_header.not_null"), t("table_designer.col_header.primary_key"), t("table_designer.col_header.auto_increment"), t("table_designer.col_header.default"), t("table_designer.col_header.comment")]
+            [
+                t("table_designer.col_header.index"),
+                t("table_designer.col_header.field_name"),
+                t("table_designer.col_header.type"),
+                t("table_designer.col_header.length"),
+                t("table_designer.col_header.not_null"),
+                t("table_designer.col_header.primary_key"),
+                t("table_designer.col_header.auto_increment"),
+                t("table_designer.col_header.default"),
+                t("table_designer.col_header.comment"),
+            ]
         )
         self._col_table.horizontalHeader().setStretchLastSection(True)
         self._col_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._col_table.setEditTriggers(
-            QAbstractItemView.EditTrigger.DoubleClicked |
-            QAbstractItemView.EditTrigger.EditKeyPressed
+            QAbstractItemView.EditTrigger.DoubleClicked
+            | QAbstractItemView.EditTrigger.EditKeyPressed
         )
         self._col_table.cellChanged.connect(self._update_preview)
         self._col_table.itemChanged.connect(self._update_preview)
@@ -149,7 +195,15 @@ class TableDesignerWidget(QWidget):
         idx_layout = QVBoxLayout(idx_widget)
         self._idx_table = QTableWidget(idx_widget)
         self._idx_table.setColumnCount(5)
-        self._idx_table.setHorizontalHeaderLabels([t("table_designer.idx_header.index_name"), t("table_designer.idx_header.fields"), t("table_designer.idx_header.unique"), t("table_designer.idx_header.primary_key"), t("table_designer.idx_header.type")])
+        self._idx_table.setHorizontalHeaderLabels(
+            [
+                t("table_designer.idx_header.index_name"),
+                t("table_designer.idx_header.fields"),
+                t("table_designer.idx_header.unique"),
+                t("table_designer.idx_header.primary_key"),
+                t("table_designer.idx_header.type"),
+            ]
+        )
         self._idx_table.horizontalHeader().setStretchLastSection(True)
         self._idx_table.setStyleSheet(
             "QTableWidget { background: #1e1e1e; color: #ccc; border: 1px solid #3c3c3c; }"
@@ -164,7 +218,16 @@ class TableDesignerWidget(QWidget):
         fk_layout = QVBoxLayout(fk_widget)
         self._fk_table = QTableWidget(fk_widget)
         self._fk_table.setColumnCount(6)
-        self._fk_table.setHorizontalHeaderLabels([t("table_designer.fk_header.constraint_name"), t("table_designer.fk_header.field"), t("table_designer.fk_header.ref_table"), t("table_designer.fk_header.ref_field"), t("table_designer.fk_header.on_delete"), t("table_designer.fk_header.on_update")])
+        self._fk_table.setHorizontalHeaderLabels(
+            [
+                t("table_designer.fk_header.constraint_name"),
+                t("table_designer.fk_header.field"),
+                t("table_designer.fk_header.ref_table"),
+                t("table_designer.fk_header.ref_field"),
+                t("table_designer.fk_header.on_delete"),
+                t("table_designer.fk_header.on_update"),
+            ]
+        )
         self._fk_table.horizontalHeader().setStretchLastSection(True)
         fk_layout.addWidget(self._fk_table)
         tabs.addTab(fk_widget, t("table_designer.foreign_keys"))
@@ -172,7 +235,12 @@ class TableDesignerWidget(QWidget):
         # Options tab
         opt_widget = QWidget()
         opt_layout = QHBoxLayout(opt_widget)
-        opts = {t("table_designer.opt.engine"): "InnoDB", t("table_designer.opt.charset"): "utf8mb4", t("table_designer.opt.collation"): "utf8mb4_general_ci", "AUTO_INCREMENT": "1"}
+        opts = {
+            t("table_designer.opt.engine"): "InnoDB",
+            t("table_designer.opt.charset"): "utf8mb4",
+            t("table_designer.opt.collation"): "utf8mb4_general_ci",
+            "AUTO_INCREMENT": "1",
+        }
         for k, v in opts.items():
             w = QWidget()
             wl = QVBoxLayout(w)
@@ -198,12 +266,21 @@ class TableDesignerWidget(QWidget):
         check_layout = QVBoxLayout(check_widget)
         self._check_table = QTableWidget(check_widget)
         self._check_table.setColumnCount(3)
-        self._check_table.setHorizontalHeaderLabels([t("table_designer.check_header.constraint_name"), t("table_designer.check_header.expression"), t("table_designer.check_header.description")])
+        self._check_table.setHorizontalHeaderLabels(
+            [
+                t("table_designer.check_header.constraint_name"),
+                t("table_designer.check_header.expression"),
+                t("table_designer.check_header.description"),
+            ]
+        )
         self._check_table.horizontalHeader().setStretchLastSection(True)
         check_layout.addWidget(self._check_table)
         check_btn_row = QWidget(check_widget)
         check_btn_layout = QHBoxLayout(check_btn_row)
-        for text, cb in [(t("table_designer.check_add"), self._check_add), (t("table_designer.check_delete"), self._check_remove)]:
+        for text, cb in [
+            (t("table_designer.check_add"), self._check_add),
+            (t("table_designer.check_delete"), self._check_remove),
+        ]:
             btn = QPushButton(text, check_btn_row)
             btn.clicked.connect(cb)
             check_btn_layout.addWidget(btn)
@@ -216,7 +293,14 @@ class TableDesignerWidget(QWidget):
         trigger_layout = QVBoxLayout(trigger_widget)
         self._trigger_table = QTableWidget(trigger_widget)
         self._trigger_table.setColumnCount(4)
-        self._trigger_table.setHorizontalHeaderLabels([t("table_designer.trigger_header.name"), t("table_designer.trigger_header.event"), t("table_designer.trigger_header.timing"), t("table_designer.trigger_header.sql")])
+        self._trigger_table.setHorizontalHeaderLabels(
+            [
+                t("table_designer.trigger_header.name"),
+                t("table_designer.trigger_header.event"),
+                t("table_designer.trigger_header.timing"),
+                t("table_designer.trigger_header.sql"),
+            ]
+        )
         self._trigger_table.horizontalHeader().setStretchLastSection(True)
         self._trigger_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         trigger_layout.addWidget(self._trigger_table)
@@ -236,7 +320,7 @@ class TableDesignerWidget(QWidget):
         ddb_layout.addWidget(self._btn_toggle_ddl)
         ddb_layout.addStretch()
         ddb_layout.addWidget(QLabel(t("table_designer.mode.alter"), ddl_bar))
-        ddl_bar._label = ddb_layout.itemAt(ddb_layout.count()-1).widget()
+        ddl_bar._label = ddb_layout.itemAt(ddb_layout.count() - 1).widget()
         ddl_layout.addWidget(ddl_bar)
 
         self._ddl_preview = QTextEdit(ddl_widget)
@@ -294,12 +378,14 @@ class TableDesignerWidget(QWidget):
 
     def _copy_ddl(self) -> None:
         from PySide6.QtGui import QGuiApplication
+
         QGuiApplication.clipboard().setText(self._ddl_preview.toPlainText())
 
     def _update_preview(self) -> None:
         """Live DDL preview - shows ALTER TABLE diff by default, full DDL optional."""
         try:
             from open_navicat.utils.sql_generator import generate_alter_table, generate_create_table
+
             new_info = self._collect_table_info()
             if not new_info or not new_info.columns:
                 self._ddl_preview.setPlainText(t("table_designer.ddl_placeholder"))
@@ -308,7 +394,9 @@ class TableDesignerWidget(QWidget):
             if self._show_full_ddl or not self._original_info:
                 ddl = generate_create_table(new_info)
             else:
-                ddl = generate_alter_table(self._original_info, new_info) or t("table_designer.no_changes")
+                ddl = generate_alter_table(self._original_info, new_info) or t(
+                    "table_designer.no_changes"
+                )
             self._ddl_preview.setPlainText(ddl)
         except Exception as e:
             self._ddl_preview.setPlainText(t("table_designer.ddl_generate_failed", error=e))
@@ -321,7 +409,9 @@ class TableDesignerWidget(QWidget):
         for i in range(self._btn_toggle_ddl.parent().layout().count()):
             w = self._btn_toggle_ddl.parent().layout().itemAt(i).widget()
             if isinstance(w, QLabel):
-                w.setText(t("table_designer.mode.full_ddl") if checked else t("table_designer.mode.alter"))
+                w.setText(
+                    t("table_designer.mode.full_ddl") if checked else t("table_designer.mode.alter")
+                )
         self._update_preview()
 
     def _toggle_checkbox(self, row: int, col: int) -> None:
@@ -406,7 +496,7 @@ class TableDesignerWidget(QWidget):
     def _check_add(self) -> None:
         row = self._check_table.rowCount()
         self._check_table.insertRow(row)
-        self._check_table.setItem(row, 0, QTableWidgetItem(f"chk_{row+1}"))
+        self._check_table.setItem(row, 0, QTableWidgetItem(f"chk_{row + 1}"))
         self._check_table.setItem(row, 1, QTableWidgetItem(""))
         self._check_table.setItem(row, 2, QTableWidgetItem(""))
 
@@ -421,10 +511,14 @@ class TableDesignerWidget(QWidget):
 
     def _save(self) -> None:
         """Execute ALTER TABLE to save changes to the database."""
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         connector = connection_pool.get(self._connection_id)
         if not connector:
-            QMessageBox.warning(self, t("table_designer.save_failed"), t("table_designer.connection_lost"))
+            QMessageBox.warning(
+                self, t("table_designer.save_failed"), t("table_designer.connection_lost")
+            )
             return
 
         from open_navicat.services.metadata_service import metadata_service
@@ -441,19 +535,37 @@ class TableDesignerWidget(QWidget):
                 if sql:
                     result = pool_loop.run_until_complete(connector.execute(sql))
                     if result.success:
-                        QMessageBox.information(self, t("table_designer.save_success"), t("table_designer.table_updated"))
+                        QMessageBox.information(
+                            self,
+                            t("table_designer.save_success"),
+                            t("table_designer.table_updated"),
+                        )
                     else:
-                        QMessageBox.warning(self, t("table_designer.save_failed"), result.error_message or t("table_designer.sql_error"))
+                        QMessageBox.warning(
+                            self,
+                            t("table_designer.save_failed"),
+                            result.error_message or t("table_designer.sql_error"),
+                        )
                 else:
-                    QMessageBox.information(self, t("table_designer.no_changes"), t("table_designer.no_changes_detail"))
+                    QMessageBox.information(
+                        self, t("table_designer.no_changes"), t("table_designer.no_changes_detail")
+                    )
             else:
                 # New table - CREATE
                 sql = generate_create_table(new_info)
                 result = pool_loop.run_until_complete(connector.execute(sql))
                 if result.success:
-                    QMessageBox.information(self, t("table_designer.save_success"), t("table_designer.table_created", table=self._table))
+                    QMessageBox.information(
+                        self,
+                        t("table_designer.save_success"),
+                        t("table_designer.table_created", table=self._table),
+                    )
                 else:
-                    QMessageBox.warning(self, t("table_designer.save_failed"), result.error_message or t("table_designer.sql_error"))
+                    QMessageBox.warning(
+                        self,
+                        t("table_designer.save_failed"),
+                        result.error_message or t("table_designer.sql_error"),
+                    )
         except Exception as e:
             QMessageBox.warning(self, t("table_designer.save_failed"), str(e))
 
@@ -463,6 +575,7 @@ class TableDesignerWidget(QWidget):
             ColumnInfo,
             TableInfo,
         )
+
         columns = []
         for i in range(self._col_table.rowCount()):
             name_item = self._col_table.item(i, 1)
@@ -472,9 +585,13 @@ class TableDesignerWidget(QWidget):
             col = ColumnInfo(
                 name=name_item.text(),
                 data_type=type_item.text(),
-                char_max_length=int(self._col_table.item(i, 3).text()) if self._col_table.item(i, 3) and self._col_table.item(i, 3).text().isdigit() else None,
+                char_max_length=int(self._col_table.item(i, 3).text())
+                if self._col_table.item(i, 3) and self._col_table.item(i, 3).text().isdigit()
+                else None,
                 nullable=(self._col_table.item(i, 4).text() != "☑"),
-                default=self._col_table.item(i, 7).text() if self._col_table.item(i, 7) and self._col_table.item(i, 7).text() else None,
+                default=self._col_table.item(i, 7).text()
+                if self._col_table.item(i, 7) and self._col_table.item(i, 7).text()
+                else None,
                 is_primary_key=(self._col_table.item(i, 5).text() == "☑"),
                 is_auto_increment=(self._col_table.item(i, 6).text() == "☑"),
                 comment=self._col_table.item(i, 8).text() if self._col_table.item(i, 8) else "",

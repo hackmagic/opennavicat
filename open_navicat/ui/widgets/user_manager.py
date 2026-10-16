@@ -19,7 +19,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+pool_loop = _pool_loop_getter()
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.i18n import t
 
@@ -28,10 +30,24 @@ class UserManagerWidget(QWidget):
     """Panel for managing MySQL users."""
 
     COMMON_PRIVILEGES = [
-        "SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP",
-        "ALTER", "INDEX", "REFERENCES", "CREATE VIEW", "SHOW VIEW",
-        "CREATE ROUTINE", "ALTER ROUTINE", "EXECUTE", "TRIGGER",
-        "EVENT", "CREATE TEMPORARY TABLES", "LOCK TABLES",
+        "SELECT",
+        "INSERT",
+        "UPDATE",
+        "DELETE",
+        "CREATE",
+        "DROP",
+        "ALTER",
+        "INDEX",
+        "REFERENCES",
+        "CREATE VIEW",
+        "SHOW VIEW",
+        "CREATE ROUTINE",
+        "ALTER ROUTINE",
+        "EXECUTE",
+        "TRIGGER",
+        "EVENT",
+        "CREATE TEMPORARY TABLES",
+        "LOCK TABLES",
     ]
 
     def __init__(self, connection_id: str, parent=None) -> None:
@@ -64,7 +80,9 @@ class UserManagerWidget(QWidget):
 
         self._table = QTableWidget(self)
         self._table.setColumnCount(6)
-        self._table.setHorizontalHeaderLabels(["User", "Host", "Auth Plugin", "Global Privs", "Max Conns", ""])
+        self._table.setHorizontalHeaderLabels(
+            ["User", "Host", "Auth Plugin", "Global Privs", "Max Conns", ""]
+        )
         self._table.horizontalHeader().setStretchLastSection(True)
         self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setAlternatingRowColors(True)
@@ -88,7 +106,9 @@ class UserManagerWidget(QWidget):
         try:
             if engine == "postgresql":
                 result = pool_loop.run_until_complete(
-                    connector.execute("SELECT rolname, rolsuper, rolcreatedb, rolcanlogin FROM pg_roles ORDER BY rolname")
+                    connector.execute(
+                        "SELECT rolname, rolsuper, rolcreatedb, rolcanlogin FROM pg_roles ORDER BY rolname"
+                    )
                 )
                 rows = result.rows if result and result.rows else []
                 self._table.setRowCount(len(rows))
@@ -130,7 +150,9 @@ class UserManagerWidget(QWidget):
         if engine != "postgresql":
             form.addRow(t("user_manager.label.host"), host_edit)
         form.addRow(t("user_manager.label.password"), pass_edit)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, dlg)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, dlg
+        )
         buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("common.ok"))
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(t("common.cancel"))
         buttons.accepted.connect(dlg.accept)
@@ -147,10 +169,16 @@ class UserManagerWidget(QWidget):
             return
         try:
             if engine == "postgresql":
-                pool_loop.run_until_complete(connector.execute(f"CREATE ROLE \"{user}\" WITH LOGIN PASSWORD '{pwd}'"))
+                pool_loop.run_until_complete(
+                    connector.execute(f"CREATE ROLE \"{user}\" WITH LOGIN PASSWORD '{pwd}'")
+                )
             else:
-                pool_loop.run_until_complete(connector.execute(f"CREATE USER '{user}'@'{host}' IDENTIFIED BY '{pwd}'"))
-            QMessageBox.information(self, t("common.success"), t("user_manager.msg.created", user=user, host=host))
+                pool_loop.run_until_complete(
+                    connector.execute(f"CREATE USER '{user}'@'{host}' IDENTIFIED BY '{pwd}'")
+                )
+            QMessageBox.information(
+                self, t("common.success"), t("user_manager.msg.created", user=user, host=host)
+            )
             self._load_users()
         except Exception as e:
             QMessageBox.warning(self, t("common.failed"), str(e))
@@ -161,8 +189,15 @@ class UserManagerWidget(QWidget):
             return
         user = self._table.item(row, 0).text()
         host = self._table.item(row, 1).text()
-        if QMessageBox.question(self, t("common.confirm"), t("user_manager.msg.confirm_delete_user", user=user, host=host),
-                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+        if (
+            QMessageBox.question(
+                self,
+                t("common.confirm"),
+                t("user_manager.msg.confirm_delete_user", user=user, host=host),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            != QMessageBox.StandardButton.Yes
+        ):
             return
         connector = connection_pool.get(self._connection_id)
         if not connector:
@@ -170,7 +205,7 @@ class UserManagerWidget(QWidget):
         engine = self._detect_engine()
         try:
             if engine == "postgresql":
-                pool_loop.run_until_complete(connector.execute(f"DROP ROLE \"{user}\""))
+                pool_loop.run_until_complete(connector.execute(f'DROP ROLE "{user}"'))
             else:
                 pool_loop.run_until_complete(connector.execute(f"DROP USER '{user}'@'{host}'"))
             self._load_users()
@@ -197,7 +232,9 @@ class UserManagerWidget(QWidget):
             cb = QCheckBox(priv, dlg)
             checks[priv] = cb
             layout.addWidget(cb)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, dlg)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, dlg
+        )
         buttons.button(QDialogButtonBox.StandardButton.Ok).setText(t("common.ok"))
         buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(t("common.cancel"))
         buttons.accepted.connect(dlg.accept)
@@ -216,11 +253,15 @@ class UserManagerWidget(QWidget):
             if engine == "postgresql":
                 # PostgreSQL: GRANT role TO user
                 priv_str = ", ".join(selected)
-                pool_loop.run_until_complete(connector.execute(f"GRANT {priv_str} TO \"{user}\""))
+                pool_loop.run_until_complete(connector.execute(f'GRANT {priv_str} TO "{user}"'))
             else:
                 priv_str = ", ".join(selected)
-                pool_loop.run_until_complete(connector.execute(f"GRANT {priv_str} ON {db_pattern} TO '{user}'@'{host}'"))
+                pool_loop.run_until_complete(
+                    connector.execute(f"GRANT {priv_str} ON {db_pattern} TO '{user}'@'{host}'")
+                )
                 pool_loop.run_until_complete(connector.execute("FLUSH PRIVILEGES"))
-            QMessageBox.information(self, t("common.success"), t("user_manager.msg.privileges_updated"))
+            QMessageBox.information(
+                self, t("common.success"), t("user_manager.msg.privileges_updated")
+            )
         except Exception as e:
             QMessageBox.warning(self, t("common.failed"), str(e))

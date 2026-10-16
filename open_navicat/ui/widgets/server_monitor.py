@@ -18,7 +18,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from open_navicat.dal.connection_pool import _loop as pool_loop
+from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+pool_loop = _pool_loop_getter()
 from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.i18n import t
 
@@ -60,8 +62,12 @@ class ServerMonitorWidget(QWidget):
         # Status tab
         self._status_table = QTableWidget()
         self._status_table.setColumnCount(2)
-        self._status_table.setHorizontalHeaderLabels([t("server_monitor.column.variable"), t("server_monitor.column.value")])
-        self._status_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self._status_table.setHorizontalHeaderLabels(
+            [t("server_monitor.column.variable"), t("server_monitor.column.value")]
+        )
+        self._status_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
         self._status_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._status_table.setAlternatingRowColors(True)
         tabs.addTab(self._status_table, t("server_monitor.section.status"))
@@ -69,8 +75,20 @@ class ServerMonitorWidget(QWidget):
         # Processes tab
         self._process_table = QTableWidget()
         self._process_table.setColumnCount(7)
-        self._process_table.setHorizontalHeaderLabels([t("server_monitor.column.id"), t("server_monitor.column.user"), t("server_monitor.column.host"), t("server_monitor.column.database"), t("server_monitor.column.command"), t("server_monitor.column.time"), t("server_monitor.column.sql")])
-        self._process_table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
+        self._process_table.setHorizontalHeaderLabels(
+            [
+                t("server_monitor.column.id"),
+                t("server_monitor.column.user"),
+                t("server_monitor.column.host"),
+                t("server_monitor.column.database"),
+                t("server_monitor.column.command"),
+                t("server_monitor.column.time"),
+                t("server_monitor.column.sql"),
+            ]
+        )
+        self._process_table.horizontalHeader().setSectionResizeMode(
+            6, QHeaderView.ResizeMode.Stretch
+        )
         self._process_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._process_table.setAlternatingRowColors(True)
         tabs.addTab(self._process_table, t("server_monitor.section.processes"))
@@ -78,7 +96,9 @@ class ServerMonitorWidget(QWidget):
         # Variables tab
         self._vars_table = QTableWidget()
         self._vars_table.setColumnCount(2)
-        self._vars_table.setHorizontalHeaderLabels([t("server_monitor.column.variable"), t("server_monitor.column.value")])
+        self._vars_table.setHorizontalHeaderLabels(
+            [t("server_monitor.column.variable"), t("server_monitor.column.value")]
+        )
         self._vars_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._vars_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._vars_table.setAlternatingRowColors(True)
@@ -110,7 +130,11 @@ class ServerMonitorWidget(QWidget):
             self._status_table.setRowCount(len(result.rows))
             for i, row in enumerate(result.rows):
                 self._status_table.setItem(i, 0, QTableWidgetItem(str(row[0]) if row[0] else ""))
-                self._status_table.setItem(i, 1, QTableWidgetItem(str(row[1]) if len(row) > 1 and row[1] is not None else ""))
+                self._status_table.setItem(
+                    i,
+                    1,
+                    QTableWidgetItem(str(row[1]) if len(row) > 1 and row[1] is not None else ""),
+                )
 
         result = pool_loop.run_until_complete(connector.execute("SHOW PROCESSLIST"))
         if result.rows:
@@ -125,15 +149,21 @@ class ServerMonitorWidget(QWidget):
             self._vars_table.setRowCount(len(result.rows))
             for i, row in enumerate(result.rows):
                 self._vars_table.setItem(i, 0, QTableWidgetItem(str(row[0]) if row[0] else ""))
-                self._vars_table.setItem(i, 1, QTableWidgetItem(str(row[1]) if len(row) > 1 and row[1] is not None else ""))
+                self._vars_table.setItem(
+                    i,
+                    1,
+                    QTableWidgetItem(str(row[1]) if len(row) > 1 and row[1] is not None else ""),
+                )
 
     def _refresh_postgresql(self, connector) -> None:
         # pg_stat_activity for processes
-        result = pool_loop.run_until_complete(connector.execute(
-            "SELECT pid, usename, client_addr, datname, state, "
-            "NOW() - query_start AS duration, query "
-            "FROM pg_stat_activity WHERE state IS NOT NULL ORDER BY pid"
-        ))
+        result = pool_loop.run_until_complete(
+            connector.execute(
+                "SELECT pid, usename, client_addr, datname, state, "
+                "NOW() - query_start AS duration, query "
+                "FROM pg_stat_activity WHERE state IS NOT NULL ORDER BY pid"
+            )
+        )
         if result.rows:
             self._process_table.setRowCount(len(result.rows))
             for i, row in enumerate(result.rows):
@@ -142,31 +172,51 @@ class ServerMonitorWidget(QWidget):
                     self._process_table.setItem(i, j, QTableWidgetItem(val))
 
         # pg_stat_database for status
-        result = pool_loop.run_until_complete(connector.execute(
-            "SELECT datname, numbackends, xact_commit, xact_rollback, "
-            "blks_read, blks_hit, tup_returned, tup_fetched "
-            "FROM pg_stat_database WHERE datname NOT LIKE 'template%'"
-        ))
+        result = pool_loop.run_until_complete(
+            connector.execute(
+                "SELECT datname, numbackends, xact_commit, xact_rollback, "
+                "blks_read, blks_hit, tup_returned, tup_fetched "
+                "FROM pg_stat_database WHERE datname NOT LIKE 'template%'"
+            )
+        )
         if result.rows:
             self._status_table.setRowCount(len(result.rows))
             for i, row in enumerate(result.rows):
                 self._status_table.setItem(i, 0, QTableWidgetItem(str(row[0]) if row[0] else ""))
-                self._status_table.setItem(i, 1, QTableWidgetItem(
-                    " | ".join(f"{k}={v}" for k, v in zip(
-                        ["backends", "commits", "rollbacks", "reads", "hits", "returned", "fetched"],
-                        row[1:]
-                    ) if v is not None)
-                ))
+                self._status_table.setItem(
+                    i,
+                    1,
+                    QTableWidgetItem(
+                        " | ".join(
+                            f"{k}={v}"
+                            for k, v in zip(
+                                [
+                                    "backends",
+                                    "commits",
+                                    "rollbacks",
+                                    "reads",
+                                    "hits",
+                                    "returned",
+                                    "fetched",
+                                ],
+                                row[1:],
+                            )
+                            if v is not None
+                        )
+                    ),
+                )
 
         # pg_settings for variables
-        result = pool_loop.run_until_complete(connector.execute(
-            "SELECT name, setting FROM pg_settings ORDER BY name"
-        ))
+        result = pool_loop.run_until_complete(
+            connector.execute("SELECT name, setting FROM pg_settings ORDER BY name")
+        )
         if result.rows:
             self._vars_table.setRowCount(len(result.rows))
             for i, row in enumerate(result.rows):
                 self._vars_table.setItem(i, 0, QTableWidgetItem(str(row[0]) if row[0] else ""))
-                self._vars_table.setItem(i, 1, QTableWidgetItem(str(row[1]) if row[1] is not None else ""))
+                self._vars_table.setItem(
+                    i, 1, QTableWidgetItem(str(row[1]) if row[1] is not None else "")
+                )
 
     def _toggle_auto_refresh(self, checked: bool) -> None:
         self._auto_refresh = checked

@@ -1,4 +1,5 @@
 """Data Sync Panel — compare and synchronize row-level data between databases."""
+
 from __future__ import annotations
 
 import logging
@@ -226,7 +227,12 @@ class DataSyncPanel(QWidget):
 
         try:
             self._result = data_sync_engine.compare_tables(
-                src_conn, src_db, src_tbl, tgt_conn, tgt_db, tgt_tbl,
+                src_conn,
+                src_db,
+                src_tbl,
+                tgt_conn,
+                tgt_db,
+                tgt_tbl,
             )
             self._render_results()
         except Exception as e:
@@ -243,31 +249,39 @@ class DataSyncPanel(QWidget):
 
         self._btn_sync.setEnabled(r.total_diffs > 0)
         self._status.setText(
-            t("data_sync.msg.detail",
-              source_rows=r.source_rows, target_rows=r.target_rows,
-              inserts=len(r.inserts), updates=len(r.updates), deletes=len(r.deletes))
+            t(
+                "data_sync.msg.detail",
+                source_rows=r.source_rows,
+                target_rows=r.target_rows,
+                inserts=len(r.inserts),
+                updates=len(r.updates),
+                deletes=len(r.deletes),
+            )
         )
 
         # Inserts
-        self._fill_table(self._table_inserts, r.inserts,
-                         [c.name for c in r.columns],
-                         lambda d: d.set_values)
+        self._fill_table(
+            self._table_inserts, r.inserts, [c.name for c in r.columns], lambda d: d.set_values
+        )
 
         # Updates
-        self._fill_table(self._table_updates, r.updates,
-                         list({k for d in r.updates for k in d.set_values}),
-                         lambda d: {k: f"{d.old_values.get(k, '?')} → {v}" for k, v in d.set_values.items()})
+        self._fill_table(
+            self._table_updates,
+            r.updates,
+            list({k for d in r.updates for k in d.set_values}),
+            lambda d: {k: f"{d.old_values.get(k, '?')} → {v}" for k, v in d.set_values.items()},
+        )
 
         # Deletes
-        self._fill_table(self._table_deletes, r.deletes,
-                         [c.name for c in r.columns],
-                         lambda d: d.pk_values)
+        self._fill_table(
+            self._table_deletes, r.deletes, [c.name for c in r.columns], lambda d: d.pk_values
+        )
 
         # Summary
         lines = [
             t("data_sync.source_detail", tbl=r.source_table, n=r.source_rows),
             t("data_sync.target_detail", tbl=r.target_table, n=r.target_rows),
-            t("data_sync.pk_detail", cols=', '.join(r.pk_columns)),
+            t("data_sync.pk_detail", cols=", ".join(r.pk_columns)),
             "",
             t("data_sync.diff_insert", n=len(r.inserts)),
             t("data_sync.diff_update", n=len(r.updates)),
@@ -305,8 +319,16 @@ class DataSyncPanel(QWidget):
         n = self._result.total_diffs
 
         reply = QMessageBox.question(
-            self, t("data_sync.msg.confirm_sync"),
-            t("data_sync.confirm_detail", n=n, inserts=len(self._result.inserts), updates=len(self._result.updates), deletes=len(self._result.deletes)) + "\n\n"
+            self,
+            t("data_sync.msg.confirm_sync"),
+            t(
+                "data_sync.confirm_detail",
+                n=n,
+                inserts=len(self._result.inserts),
+                updates=len(self._result.updates),
+                deletes=len(self._result.deletes),
+            )
+            + "\n\n"
             + t("data_sync.msg.confirm_execute"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
@@ -317,15 +339,20 @@ class DataSyncPanel(QWidget):
         if not tgt_conn:
             return
 
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
+
         connector = connection_pool.get(tgt_conn)
         if not connector:
             QMessageBox.warning(self, t("common.error"), t("data_sync.msg.target_unavailable"))
             return
 
         self._progress.show()
-        self._progress.setRange(0, len(self._result.inserts) + len(self._result.updates) + len(self._result.deletes))
+        self._progress.setRange(
+            0, len(self._result.inserts) + len(self._result.updates) + len(self._result.deletes)
+        )
         errors = []
         done = 0
         for stmt in script.split("\n"):
@@ -341,10 +368,14 @@ class DataSyncPanel(QWidget):
 
         self._progress.hide()
         if errors:
-            QMessageBox.warning(self, t("data_sync.msg.partial_failure"),
-                                t("data_sync.partial_failure_detail", n=len(errors)) + "\n" + "\n".join(errors[:5]))
+            QMessageBox.warning(
+                self,
+                t("data_sync.msg.partial_failure"),
+                t("data_sync.partial_failure_detail", n=len(errors)) + "\n" + "\n".join(errors[:5]),
+            )
         else:
-            QMessageBox.information(self, t("data_sync.msg.complete"),
-                                    t("data_sync.sync_complete", n=n))
+            QMessageBox.information(
+                self, t("data_sync.msg.complete"), t("data_sync.sync_complete", n=n)
+            )
 
         self._compare()

@@ -69,10 +69,46 @@ def _normalize_value(value: Any) -> Any:
     return value
 
 
+def _lob_types() -> tuple[type, ...]:
+    """Classes that count as LOBs for the currently installed driver.
+
+    python-oracledb 2.x moved the LOB classes into ``oracledb.lob`` and dropped
+    the flat ``DbLob`` / ``Blob`` / ``Clob`` aliases; 1.x exposes only the flat
+    names.  Both layouts are accepted so the connector works on either.
+
+    Resolved on every call rather than cached: the module-level ``oracledb``
+    can be swapped out at runtime, and a stale cache would keep recognising
+    classes from a driver that is no longer in use.
+    """
+    driver = oracledb
+    if driver is None:
+        return ()
+    found: list[type] = []
+    try:
+        from oracledb.lob import LOB
+
+        found.append(LOB)
+    except ImportError:
+        pass
+    for name in ("DbLob", "Blob", "Clob", "DatabaseLOB"):
+        candidate = getattr(driver, name, None)
+        if isinstance(candidate, type):
+            found.append(candidate)
+    return tuple(dict.fromkeys(found))
+
+
 def _is_lob(value: Any) -> bool:
-    if oracledb is None:  # pragma: no cover - defensive
-        return False
-    return isinstance(value, (oracledb.DbLob, oracledb.Blob, oracledb.Clob))
+    """True for BLOB / CLOB / BFILE values.
+
+    Falls back to duck-typing (``read()`` present) so test doubles and any LOB
+    subclass the driver adds later are still recognised.  LOBs must be read
+    while the connection is open, which is why :func:`_normalize_value` runs on
+    the worker thread inside the caller's ``_work`` closure.
+    """
+    types = _lob_types()
+    if types and isinstance(value, types):
+        return True
+    return hasattr(value, "read")
 
 
 class OracleConnector(BaseConnector):
@@ -159,9 +195,7 @@ class OracleConnector(BaseConnector):
 
     async def list_databases(self) -> list[DatabaseInfo]:
         # Oracle's unit comparable to a "database" in this UI is the schema/user.
-        rows = await self._fetch_all(
-            "SELECT username FROM all_users ORDER BY username"
-        )
+        rows = await self._fetch_all("SELECT username FROM all_users ORDER BY username")
         return [DatabaseInfo(name=str(r[0]), charset="UTF-8", collation="") for r in rows]
 
     async def list_tables(self, database: str) -> list[str]:
@@ -189,6 +223,16 @@ class OracleConnector(BaseConnector):
             (owner,),
         )
         return [(str(r[0]), str(r[1])) for r in rows]
+
+    async def list_triggers(self, database: str) -> list[tuple[str, str]]:
+        """Trigger name paired with the table it is attached to."""
+        owner = database or self._default_owner()
+        rows = await self._fetch_all(
+            "SELECT trigger_name, table_name FROM all_triggers "
+            "WHERE owner = :1 ORDER BY trigger_name",
+            (owner,),
+        )
+        return [(str(r[0]), str(r[1] or "")) for r in rows]
 
     def _default_owner(self) -> str:
         """Schema the connection logs into — Oracle owns objects per user."""
@@ -288,9 +332,7 @@ class OracleConnector(BaseConnector):
                 )
             )
 
-        count_rows = await self._fetch_all(
-            f"SELECT COUNT(*) FROM {_quote(owner)}.{_quote(name)}"
-        )
+        count_rows = await self._fetch_all(f"SELECT COUNT(*) FROM {_quote(owner)}.{_quote(name)}")
         if count_rows:
             info.row_count = int(count_rows[0][0] or 0)
         return info

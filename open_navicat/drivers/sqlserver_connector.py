@@ -221,6 +221,20 @@ class SQLServerConnector(BaseConnector):
         except Exception:
             return []
 
+    async def list_triggers(self, database: str) -> list[tuple[str, str]]:
+        """DML triggers (parent_class = 1) with their parent table."""
+        if database:
+            await self._use_database(database)
+        sql = (
+            "SELECT tr.name, OBJECT_NAME(tr.parent_id) FROM sys.triggers tr "
+            "WHERE tr.parent_class = 1 ORDER BY tr.name"
+        )
+        try:
+            rows = await self._fetch_all(sql)
+            return [(str(r[0]), str(r[1] or "")) for r in rows]
+        except Exception:
+            return []
+
     async def _use_database(self, database: str) -> None:
         """Switch the connection's database for schema-less introspection."""
         safe = database.replace("]", "]]")

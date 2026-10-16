@@ -21,9 +21,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.i18n import t
 from open_navicat.services.metadata_service import metadata_service
 from open_navicat.services.sync_engine import SyncDiff, sync_engine
+from open_navicat.sql.plan import Plan
 
 
 class _ScriptPreviewDialog(QDialog):
@@ -315,17 +317,39 @@ class SchemaSyncPanel(QWidget):
 
     # ── Actions ───────────────────────────────────────────────────────
 
+    def _target_engine(self) -> str:
+        """Engine of the connection the script will run against.
+
+        Without this the DDL generator fell back to MySQL, so syncing to a
+        PostgreSQL target produced DDL that could not parse.
+        """
+        connector = connection_pool.get(self._connection_id)
+        info = getattr(connector, "_info", None)
+        return str(getattr(info, "engine", "") or "mysql")
+
+    def _plan(self, target_db: str) -> Plan:
+        """The dry-run plan for the current diff."""
+        return sync_engine.plan_sync(
+            self._diff_result, target_db=target_db, engine=self._target_engine()
+        )
+
     def _preview_script(self) -> None:
         """Show the generated DDL script in a dialog."""
         if not self._diff_result:
             return
         target_db = self._tgt_combo.currentText()
-        statements = sync_engine.generate_sync_script(self._diff_result, target_db)
-        if not statements:
+        plan = self._plan(target_db)
+        if not plan:
             QMessageBox.information(self, t("schema_sync.btn.preview_script"), t("schema_sync.msg.no_changes"))
             return
 
-        dialog = _ScriptPreviewDialog(statements, self)
+        # The preview marks destructive statements so the risk is visible before
+        # the user is asked to confirm anything.
+        dialog = _ScriptPreviewDialog([s.sql for s in plan], self)
+        if plan.requires_confirmation:
+            dialog.setWindowTitle(
+                t("schema_sync.btn.preview_script") + "  -  " + plan.summary()
+            )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self._apply_changes()
 
@@ -335,14 +359,20 @@ class SchemaSyncPanel(QWidget):
             return
 
         target_db = self._tgt_combo.currentText()
-        statements = sync_engine.generate_sync_script(self._diff_result, target_db)
-        if not statements:
+        plan = self._plan(target_db)
+        if not plan:
             QMessageBox.information(self, t("common.notice"), t("schema_sync.msg.no_changes"))
             return
 
+        detail = t("schema_sync.confirm_execute_detail", db=target_db, n=len(plan))
+        if plan.requires_confirmation:
+            # Say how much of it destroys data rather than a blanket "irreversible".
+            detail += "\n" + t(
+                "schema_sync.destructive_warning", n=plan.destructive_count
+            )
         confirm = QMessageBox.question(
             self, t("schema_sync.msg.confirm"),
-            t("schema_sync.confirm_execute_detail", db=target_db, n=len(statements)) + "\n" + t("schema_sync.irreversible_warning"),
+            detail + "\n" + t("schema_sync.irreversible_warning"),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
         )
         if confirm != QMessageBox.StandardButton.Yes:
@@ -351,6 +381,7 @@ class SchemaSyncPanel(QWidget):
         from open_navicat.services.query_engine import query_engine
 
         errors = []
+        statements = [s.sql for s in plan]
         for i, stmt in enumerate(statements):
             result = query_engine.execute(self._connection_id, stmt)
             if not result.success:

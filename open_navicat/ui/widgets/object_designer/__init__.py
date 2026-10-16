@@ -54,22 +54,52 @@ from open_navicat.models.table_schema import (
 # ── Data Types ────────────────────────────────────────────────────────────
 
 SQL_TYPES = [
-    "INT", "BIGINT", "SMALLINT", "TINYINT", "MEDIUMINT",
-    "VARCHAR", "CHAR", "TEXT", "TINYTEXT", "MEDIUMTEXT", "LONGTEXT",
-    "DECIMAL", "FLOAT", "DOUBLE",
-    "DATE", "DATETIME", "TIMESTAMP", "TIME", "YEAR",
-    "BLOB", "TINYBLOB", "MEDIUMBLOB", "LONGBLOB",
-    "BOOLEAN", "BIT", "BINARY", "VARBINARY",
-    "ENUM", "SET", "JSON",
-    "GEOMETRY", "POINT", "LINESTRING", "POLYGON",
+    "INT",
+    "BIGINT",
+    "SMALLINT",
+    "TINYINT",
+    "MEDIUMINT",
+    "VARCHAR",
+    "CHAR",
+    "TEXT",
+    "TINYTEXT",
+    "MEDIUMTEXT",
+    "LONGTEXT",
+    "DECIMAL",
+    "FLOAT",
+    "DOUBLE",
+    "DATE",
+    "DATETIME",
+    "TIMESTAMP",
+    "TIME",
+    "YEAR",
+    "BLOB",
+    "TINYBLOB",
+    "MEDIUMBLOB",
+    "LONGBLOB",
+    "BOOLEAN",
+    "BIT",
+    "BINARY",
+    "VARBINARY",
+    "ENUM",
+    "SET",
+    "JSON",
+    "GEOMETRY",
+    "POINT",
+    "LINESTRING",
+    "POLYGON",
 ]
 
 ENGINE_OPTIONS = ["InnoDB", "MyISAM", "MEMORY", "CSV", "ARCHIVE"]
 CHARSET_OPTIONS = ["utf8mb4", "utf8", "latin1", "ascii", "utf16", "utf32"]
 COLLATION_OPTIONS = [
-    "utf8mb4_general_ci", "utf8mb4_unicode_ci", "utf8mb4_bin",
-    "utf8_general_ci", "utf8_unicode_ci",
-    "latin1_swedish_ci", "latin1_general_ci",
+    "utf8mb4_general_ci",
+    "utf8mb4_unicode_ci",
+    "utf8mb4_bin",
+    "utf8_general_ci",
+    "utf8_unicode_ci",
+    "latin1_swedish_ci",
+    "latin1_general_ci",
 ]
 
 ON_ACTIONS = ["RESTRICT", "CASCADE", "SET NULL", "NO ACTION"]
@@ -84,12 +114,18 @@ class _ColumnListTable(QTableWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setColumnCount(8)
-        self.setHorizontalHeaderLabels([
-            "#", t("object_designer.col_name"), t("object_designer.col_type"),
-            t("object_designer.col_length"), t("object_designer.col_nullable"),
-            t("object_designer.col_default"), t("object_designer.col_auto_inc"),
-            t("object_designer.col_comment"),
-        ])
+        self.setHorizontalHeaderLabels(
+            [
+                "#",
+                t("object_designer.col_name"),
+                t("object_designer.col_type"),
+                t("object_designer.col_length"),
+                t("object_designer.col_nullable"),
+                t("object_designer.col_default"),
+                t("object_designer.col_auto_inc"),
+                t("object_designer.col_comment"),
+            ]
+        )
         self.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         self.setColumnWidth(0, 30)
         self.horizontalHeader().setStretchLastSection(True)
@@ -106,11 +142,13 @@ class _ColumnListTable(QTableWidget):
             self.setItem(i, 0, QTableWidgetItem(str(i + 1)))
             self.setItem(i, 1, QTableWidgetItem(col.name))
             self.setItem(i, 2, QTableWidgetItem(col.data_type))
-            self.setItem(i, 3, QTableWidgetItem(
-                str(col.char_max_length) if col.char_max_length else ""))
+            self.setItem(
+                i, 3, QTableWidgetItem(str(col.char_max_length) if col.char_max_length else "")
+            )
             self.setItem(i, 4, QTableWidgetItem("YES" if col.nullable else "NO"))
-            self.setItem(i, 5, QTableWidgetItem(
-                str(col.default) if col.default is not None else ""))
+            self.setItem(
+                i, 5, QTableWidgetItem(str(col.default) if col.default is not None else "")
+            )
             self.setItem(i, 6, QTableWidgetItem("AI" if col.is_auto_increment else ""))
             self.setItem(i, 7, QTableWidgetItem(col.comment))
 
@@ -123,7 +161,9 @@ class _ColumnListTable(QTableWidget):
             col = ColumnInfo(
                 name=name,
                 data_type=self.item(i, 2).text().strip() if self.item(i, 2) else "VARCHAR",
-                char_max_length=int(self.item(i, 3).text()) if self.item(i, 3) and self.item(i, 3).text().isdigit() else None,
+                char_max_length=int(self.item(i, 3).text())
+                if self.item(i, 3) and self.item(i, 3).text().isdigit()
+                else None,
                 nullable=(self.item(i, 4).text() == "YES") if self.item(i, 4) else True,
                 default=self.item(i, 5).text().strip() or None if self.item(i, 5) else None,
                 is_auto_increment=(self.item(i, 6).text() == "AI") if self.item(i, 6) else False,
@@ -140,7 +180,14 @@ class _IndexTable(QTableWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setColumnCount(4)
-        self.setHorizontalHeaderLabels([t("object_designer.idx_name"), t("object_designer.idx_column"), t("object_designer.idx_unique"), t("object_designer.idx_type")])
+        self.setHorizontalHeaderLabels(
+            [
+                t("object_designer.idx_name"),
+                t("object_designer.idx_column"),
+                t("object_designer.idx_unique"),
+                t("object_designer.idx_type"),
+            ]
+        )
         self.horizontalHeader().setStretchLastSection(True)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setStyleSheet(
@@ -164,12 +211,14 @@ class _IndexTable(QTableWidget):
             if not name:
                 continue
             cols_str = self.item(i, 1).text().strip() if self.item(i, 1) else ""
-            indexes.append(IndexInfo(
-                name=name,
-                columns=[c.strip() for c in cols_str.split(",") if c.strip()],
-                is_unique=(self.item(i, 2).text() == "UNIQUE") if self.item(i, 2) else False,
-                index_type=self.item(i, 3).text().strip() if self.item(i, 3) else "BTREE",
-            ))
+            indexes.append(
+                IndexInfo(
+                    name=name,
+                    columns=[c.strip() for c in cols_str.split(",") if c.strip()],
+                    is_unique=(self.item(i, 2).text() == "UNIQUE") if self.item(i, 2) else False,
+                    index_type=self.item(i, 3).text().strip() if self.item(i, 3) else "BTREE",
+                )
+            )
         return indexes
 
 
@@ -179,7 +228,16 @@ class _ForeignKeyTable(QTableWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setColumnCount(6)
-        self.setHorizontalHeaderLabels([t("object_designer.fk_name"), t("object_designer.fk_column"), t("object_designer.fk_ref_table"), t("object_designer.fk_ref_column"), t("table_designer.fk_header.on_delete"), t("table_designer.fk_header.on_update")])
+        self.setHorizontalHeaderLabels(
+            [
+                t("object_designer.fk_name"),
+                t("object_designer.fk_column"),
+                t("object_designer.fk_ref_table"),
+                t("object_designer.fk_ref_column"),
+                t("table_designer.fk_header.on_delete"),
+                t("table_designer.fk_header.on_update"),
+            ]
+        )
         self.horizontalHeader().setStretchLastSection(True)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setStyleSheet(
@@ -204,14 +262,16 @@ class _ForeignKeyTable(QTableWidget):
             name = self.item(i, 0).text().strip() if self.item(i, 0) else ""
             if not name:
                 continue
-            fks.append(ForeignKeyInfo(
-                name=name,
-                column=self.item(i, 1).text().strip() if self.item(i, 1) else "",
-                ref_table=self.item(i, 2).text().strip() if self.item(i, 2) else "",
-                ref_column=self.item(i, 3).text().strip() if self.item(i, 3) else "",
-                on_delete=self.item(i, 4).text().strip() if self.item(i, 4) else "RESTRICT",
-                on_update=self.item(i, 5).text().strip() if self.item(i, 5) else "RESTRICT",
-            ))
+            fks.append(
+                ForeignKeyInfo(
+                    name=name,
+                    column=self.item(i, 1).text().strip() if self.item(i, 1) else "",
+                    ref_table=self.item(i, 2).text().strip() if self.item(i, 2) else "",
+                    ref_column=self.item(i, 3).text().strip() if self.item(i, 3) else "",
+                    on_delete=self.item(i, 4).text().strip() if self.item(i, 4) else "RESTRICT",
+                    on_update=self.item(i, 5).text().strip() if self.item(i, 5) else "RESTRICT",
+                )
+            )
         return fks
 
 
@@ -246,7 +306,12 @@ class _TableDesignerTab(QWidget):
         col_layout.addWidget(self._col_table, 1)
 
         col_btns = QHBoxLayout()
-        for text, cb in [(t("object_designer.add_row"), self._col_add), (t("object_designer.delete_selected"), self._col_remove), (t("object_designer.move_up"), self._col_up), (t("object_designer.move_down"), self._col_down)]:
+        for text, cb in [
+            (t("object_designer.add_row"), self._col_add),
+            (t("object_designer.delete_selected"), self._col_remove),
+            (t("object_designer.move_up"), self._col_up),
+            (t("object_designer.move_down"), self._col_down),
+        ]:
             btn = QPushButton(text, col_tab)
             btn.clicked.connect(cb)
             col_btns.addWidget(btn)
@@ -261,7 +326,10 @@ class _TableDesignerTab(QWidget):
         self._idx_table = _IndexTable(idx_tab)
         idx_layout.addWidget(self._idx_table, 1)
         idx_btns = QHBoxLayout()
-        for text, cb in [(t("object_designer.add_index"), self._idx_add), (t("common.delete"), self._idx_remove)]:
+        for text, cb in [
+            (t("object_designer.add_index"), self._idx_add),
+            (t("common.delete"), self._idx_remove),
+        ]:
             btn = QPushButton(text, idx_tab)
             btn.clicked.connect(cb)
             idx_btns.addWidget(btn)
@@ -275,7 +343,10 @@ class _TableDesignerTab(QWidget):
         self._fk_table = _ForeignKeyTable(fk_tab)
         fk_layout.addWidget(self._fk_table, 1)
         fk_btns = QHBoxLayout()
-        for text, cb in [(t("object_designer.add_fk"), self._fk_add), (t("common.delete"), self._fk_remove)]:
+        for text, cb in [
+            (t("object_designer.add_fk"), self._fk_add),
+            (t("common.delete"), self._fk_remove),
+        ]:
             btn = QPushButton(text, fk_tab)
             btn.clicked.connect(cb)
             fk_btns.addWidget(btn)
@@ -396,6 +467,7 @@ class _TableDesignerTab(QWidget):
     def _update_preview(self) -> None:
         from open_navicat.utils.sql_formatter import beautify
         from open_navicat.utils.sql_generator import generate_create_table
+
         info = self.get_table_info()
         if info and info.columns:
             ddl = generate_create_table(info)
@@ -407,13 +479,17 @@ class _TableDesignerTab(QWidget):
         return TableInfo(
             name=self._name_edit.text().strip() or "new_table",
             database=self._table_info.database,
-            engine=self._engine_combo.currentText() if hasattr(self, '_engine_combo') else "InnoDB",
-            charset=self._charset_combo.currentText() if hasattr(self, '_charset_combo') else "utf8mb4",
-            collation=self._collation_combo.currentText() if hasattr(self, '_collation_combo') else "utf8mb4_general_ci",
-            comment=self._comment_edit.text().strip() if hasattr(self, '_comment_edit') else "",
+            engine=self._engine_combo.currentText() if hasattr(self, "_engine_combo") else "InnoDB",
+            charset=self._charset_combo.currentText()
+            if hasattr(self, "_charset_combo")
+            else "utf8mb4",
+            collation=self._collation_combo.currentText()
+            if hasattr(self, "_collation_combo")
+            else "utf8mb4_general_ci",
+            comment=self._comment_edit.text().strip() if hasattr(self, "_comment_edit") else "",
             columns=self._col_table.get_columns(),
-            indexes=self._idx_table.get_indexes() if hasattr(self, '_idx_table') else [],
-            foreign_keys=self._fk_table.get_foreign_keys() if hasattr(self, '_fk_table') else [],
+            indexes=self._idx_table.get_indexes() if hasattr(self, "_idx_table") else [],
+            foreign_keys=self._fk_table.get_foreign_keys() if hasattr(self, "_fk_table") else [],
         )
 
 
@@ -435,7 +511,8 @@ class _ViewDesignerTab(QWidget):
         self._name_edit = QLineEdit(self)
         self._name_edit.setPlaceholderText("view_name")
         self._name_edit.setStyleSheet(
-            "background: #1e1e1e; color: #ccc; border: 1px solid #3c3c3c; padding: 4px 8px;")
+            "background: #1e1e1e; color: #ccc; border: 1px solid #3c3c3c; padding: 4px 8px;"
+        )
         top.addWidget(self._name_edit, 1)
         layout.addLayout(top)
 
@@ -444,12 +521,14 @@ class _ViewDesignerTab(QWidget):
         db_row.addWidget(QLabel(t("object_designer.database"), self))
         self._db_combo = QComboBox(self)
         self._db_combo.setStyleSheet(
-            "background: #1e1e1e; color: #ccc; border: 1px solid #3c3c3c; padding: 4px 8px;")
+            "background: #1e1e1e; color: #ccc; border: 1px solid #3c3c3c; padding: 4px 8px;"
+        )
         db_row.addWidget(self._db_combo, 1)
         self._btn_load = QPushButton(t("object_designer.load_tables"), self)
         self._btn_load.setStyleSheet(
             "background: #0078d4; color: #fff; border: none; border-radius: 3px; "
-            "padding: 4px 12px; font-size: 11px;")
+            "padding: 4px 12px; font-size: 11px;"
+        )
         self._btn_load.clicked.connect(self._load_tables)
         db_row.addWidget(self._btn_load)
         layout.addLayout(db_row)
@@ -477,8 +556,8 @@ class _ViewDesignerTab(QWidget):
         right_layout.addWidget(QLabel(t("object_designer.join_clause"), right))
         self._join_edit = QTextEdit(right)
         self._join_edit.setPlaceholderText(
-            "LEFT JOIN table2 t2 ON t1.id = t2.ref_id\n"
-            "INNER JOIN table3 t3 ON t1.code = t3.code")
+            "LEFT JOIN table2 t2 ON t1.id = t2.ref_id\nINNER JOIN table3 t3 ON t1.code = t3.code"
+        )
         self._join_edit.setMaximumHeight(60)
         self._join_edit.textChanged.connect(self._update_preview)
         right_layout.addWidget(self._join_edit)
@@ -511,6 +590,7 @@ class _ViewDesignerTab(QWidget):
         if not self._connection_id:
             return
         from open_navicat.services.metadata_service import metadata_service
+
         dbs = metadata_service.list_databases(self._connection_id)
         self._db_combo.clear()
         for db in dbs:
@@ -524,6 +604,7 @@ class _ViewDesignerTab(QWidget):
         if not db or not self._connection_id:
             return
         from open_navicat.services.metadata_service import metadata_service
+
         tables = metadata_service.list_tables(self._connection_id, db)
         self._tree.clear()
         self._tree.blockSignals(True)
@@ -548,6 +629,7 @@ class _ViewDesignerTab(QWidget):
         sql = self._build_sql()
         if sql:
             from open_navicat.utils.sql_formatter import beautify
+
             self._preview.setPlainText(beautify(sql))
         else:
             self._preview.setPlainText(t("object_designer.select_placeholder"))
@@ -565,14 +647,15 @@ class _ViewDesignerTab(QWidget):
             for j in range(table_item.childCount()):
                 col_item = table_item.child(j)
                 if col_item.checkState(0) == Qt.CheckState.Checked:
-                    selected.append((tbl, col_item.text(0),
-                                     col_item.data(0, Qt.ItemDataRole.UserRole) or ""))
+                    selected.append(
+                        (tbl, col_item.text(0), col_item.data(0, Qt.ItemDataRole.UserRole) or "")
+                    )
 
         if not selected:
             return ""
 
         tables_list = sorted(tables)
-        aliases = {t: f"t{i+1}" for i, t in enumerate(tables_list)}
+        aliases = {t: f"t{i + 1}" for i, t in enumerate(tables_list)}
 
         # SELECT clause
         col_parts = []
@@ -612,7 +695,9 @@ class _ViewDesignerTab(QWidget):
         """Execute current SELECT and show results in a popup."""
         sql = self._build_sql()
         if not sql:
-            QMessageBox.information(self, t("common.notice"), t("object_designer.select_columns_first"))
+            QMessageBox.information(
+                self, t("common.notice"), t("object_designer.select_columns_first")
+            )
             return
         if not self._connection_id:
             QMessageBox.warning(self, t("common.error"), t("object_designer.not_connected"))
@@ -623,8 +708,11 @@ class _ViewDesignerTab(QWidget):
             QMessageBox.warning(self, t("common.error"), t("object_designer.select_database"))
             return
 
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
+
         connector = connection_pool.get(self._connection_id)
         if not connector:
             QMessageBox.warning(self, t("common.error"), t("object_designer.connection_lost"))
@@ -633,15 +721,17 @@ class _ViewDesignerTab(QWidget):
         # Use database context — prefix tables if not qualified
         qualified_sql = sql
         try:
-            result = pool_loop.run_until_complete(
-                connector.execute(qualified_sql, database=db)
-            )
+            result = pool_loop.run_until_complete(connector.execute(qualified_sql, database=db))
         except Exception as e:
             QMessageBox.warning(self, t("object_designer.query_failed"), str(e))
             return
 
         if not result.success:
-            QMessageBox.warning(self, t("object_designer.query_failed"), result.error_message or t("object_designer.unknown_error"))
+            QMessageBox.warning(
+                self,
+                t("object_designer.query_failed"),
+                result.error_message or t("object_designer.unknown_error"),
+            )
             return
 
         # Show results in a resizable dialog
@@ -688,7 +778,8 @@ class _ViewDesignerTab(QWidget):
         btn_close = QPushButton(t("common.close"), dlg)
         btn_close.setStyleSheet(
             "background: #3c3c3c; color: #ccc; border: 1px solid #555; "
-            "border-radius: 3px; padding: 4px 16px;")
+            "border-radius: 3px; padding: 4px 16px;"
+        )
         btn_close.clicked.connect(dlg.accept)
         layout.addWidget(btn_close, 0, Qt.AlignmentFlag.AlignRight)
 
@@ -706,18 +797,90 @@ class _SQLHighlighter(QSyntaxHighlighter):
         kw_format.setForeground(QColor("#569cd6"))
         kw_format.setFontWeight(QFont.Weight.Bold)
         keywords = [
-            "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "CREATE",
-            "ALTER", "DROP", "TABLE", "INDEX", "VIEW", "INTO", "VALUES", "SET",
-            "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "ON", "AND", "OR", "NOT",
-            "IN", "LIKE", "BETWEEN", "IS", "NULL", "AS", "ORDER", "BY", "GROUP",
-            "HAVING", "LIMIT", "OFFSET", "DISTINCT", "COUNT", "SUM", "AVG",
-            "MAX", "MIN", "EXISTS", "UNION", "ALL", "CASE", "WHEN", "THEN",
-            "ELSE", "END", "BEGIN", "COMMIT", "ROLLBACK", "DECLARE", "CURSOR",
-            "PROCEDURE", "FUNCTION", "RETURNS", "LANGUAGE", "SQL", "DETERMINISTIC",
-            "READS", "MODIFIES", "DATA", "IF", "THEN", "ELSEIF", "END IF",
-            "LOOP", "END LOOP", "WHILE", "DO", "REPEAT", "UNTIL", "LEAVE",
-            "ITERATE", "SIGNAL", "RESIGNAL", "CONDITION", "HANDLER",
-            "INTO", "USING", "OUT", "INOUT",
+            "SELECT",
+            "FROM",
+            "WHERE",
+            "INSERT",
+            "UPDATE",
+            "DELETE",
+            "CREATE",
+            "ALTER",
+            "DROP",
+            "TABLE",
+            "INDEX",
+            "VIEW",
+            "INTO",
+            "VALUES",
+            "SET",
+            "JOIN",
+            "LEFT",
+            "RIGHT",
+            "INNER",
+            "OUTER",
+            "ON",
+            "AND",
+            "OR",
+            "NOT",
+            "IN",
+            "LIKE",
+            "BETWEEN",
+            "IS",
+            "NULL",
+            "AS",
+            "ORDER",
+            "BY",
+            "GROUP",
+            "HAVING",
+            "LIMIT",
+            "OFFSET",
+            "DISTINCT",
+            "COUNT",
+            "SUM",
+            "AVG",
+            "MAX",
+            "MIN",
+            "EXISTS",
+            "UNION",
+            "ALL",
+            "CASE",
+            "WHEN",
+            "THEN",
+            "ELSE",
+            "END",
+            "BEGIN",
+            "COMMIT",
+            "ROLLBACK",
+            "DECLARE",
+            "CURSOR",
+            "PROCEDURE",
+            "FUNCTION",
+            "RETURNS",
+            "LANGUAGE",
+            "SQL",
+            "DETERMINISTIC",
+            "READS",
+            "MODIFIES",
+            "DATA",
+            "IF",
+            "THEN",
+            "ELSEIF",
+            "END IF",
+            "LOOP",
+            "END LOOP",
+            "WHILE",
+            "DO",
+            "REPEAT",
+            "UNTIL",
+            "LEAVE",
+            "ITERATE",
+            "SIGNAL",
+            "RESIGNAL",
+            "CONDITION",
+            "HANDLER",
+            "INTO",
+            "USING",
+            "OUT",
+            "INOUT",
         ]
         for kw in keywords:
             fmt = QTextCharFormat()
@@ -739,6 +902,7 @@ class _SQLHighlighter(QSyntaxHighlighter):
 
     def highlightBlock(self, text: str) -> None:
         import re
+
         for pattern, fmt in self._rules:
             for match in re.finditer(pattern, text, re.IGNORECASE):
                 self.setFormat(match.start(), match.end() - match.start(), fmt)
@@ -774,10 +938,7 @@ class _RoutineDesignerTab(QWidget):
         # Parameters
         layout.addWidget(QLabel(t("object_designer.parameters"), self))
         self._params_edit = QTextEdit(self)
-        self._params_edit.setPlaceholderText(
-            "IN p_user_id INT\n"
-            "OUT p_count INT"
-        )
+        self._params_edit.setPlaceholderText("IN p_user_id INT\nOUT p_count INT")
         self._params_edit.setMaximumHeight(80)
         self._params_edit.setStyleSheet(
             "background: #1e1e1e; color: #ccc; font-family: Consolas; font-size: 11px; "
@@ -789,11 +950,7 @@ class _RoutineDesignerTab(QWidget):
         layout.addWidget(QLabel(t("object_designer.body"), self))
         self._body_edit = QTextEdit(self)
         self._body_edit.setPlaceholderText(
-            "BEGIN\n"
-            "  SELECT COUNT(*) INTO p_count\n"
-            "  FROM users\n"
-            "  WHERE id = p_user_id;\n"
-            "END"
+            "BEGIN\n  SELECT COUNT(*) INTO p_count\n  FROM users\n  WHERE id = p_user_id;\nEND"
         )
         self._body_edit.setStyleSheet(
             "background: #1e1e1e; color: #dcdcaa; font-family: Consolas; font-size: 12px; "
@@ -821,6 +978,7 @@ class _RoutineDesignerTab(QWidget):
 
     def _update_preview(self) -> None:
         from open_navicat.utils.sql_formatter import beautify
+
         ddl = self.get_ddl()
         if ddl:
             self._ddl_preview.setPlainText(beautify(ddl))
@@ -837,10 +995,7 @@ class _RoutineDesignerTab(QWidget):
             return ""
 
         param_str = f"({params.replace(chr(10), ', ')})" if params else "()"
-        return (
-            f"CREATE {rtype} `{name}`{param_str}\n"
-            f"{body}\n"
-        )
+        return f"CREATE {rtype} `{name}`{param_str}\n{body}\n"
 
 
 class _EventDesignerTab(QWidget):
@@ -872,8 +1027,12 @@ class _EventDesignerTab(QWidget):
 
         layout.addWidget(QLabel(t("object_designer.do_body"), self))
         self._body_edit = QTextEdit(self)
-        self._body_edit.setPlaceholderText("BEGIN\n  DELETE FROM logs WHERE created_at < NOW() - INTERVAL 30 DAY;\nEND")
-        self._body_edit.setStyleSheet("background:#1e1e1e;color:#dcdcaa;font-family:Consolas;font-size:12px;border:1px solid #3c3c3c;padding:8px;")
+        self._body_edit.setPlaceholderText(
+            "BEGIN\n  DELETE FROM logs WHERE created_at < NOW() - INTERVAL 30 DAY;\nEND"
+        )
+        self._body_edit.setStyleSheet(
+            "background:#1e1e1e;color:#dcdcaa;font-family:Consolas;font-size:12px;border:1px solid #3c3c3c;padding:8px;"
+        )
         layout.addWidget(self._body_edit, 1)
         layout.addWidget(QLabel(t("object_designer.comment"), self))
         self._comment_edit = QLineEdit(self)
@@ -948,8 +1107,12 @@ class _TriggerDesignerTab(QWidget):
 
         layout.addWidget(QLabel(t("object_designer.body"), self))
         self._body_edit = QTextEdit(self)
-        self._body_edit.setPlaceholderText("BEGIN\n  INSERT INTO audit_log(table_name, action) VALUES ('table_name', 'INSERT');\nEND")
-        self._body_edit.setStyleSheet("background:#1e1e1e;color:#dcdcaa;font-family:Consolas;font-size:12px;border:1px solid #3c3c3c;padding:8px;")
+        self._body_edit.setPlaceholderText(
+            "BEGIN\n  INSERT INTO audit_log(table_name, action) VALUES ('table_name', 'INSERT');\nEND"
+        )
+        self._body_edit.setStyleSheet(
+            "background:#1e1e1e;color:#dcdcaa;font-family:Consolas;font-size:12px;border:1px solid #3c3c3c;padding:8px;"
+        )
         layout.addWidget(self._body_edit, 1)
 
         preview_group = QGroupBox(t("object_designer.ddl_preview"), self)
@@ -1004,11 +1167,15 @@ class ObjectDesignerWidget(QWidget):
         t_layout.setContentsMargins(8, 4, 8, 4)
 
         self._obj_type_combo = QComboBox(toolbar)
-        self._obj_type_combo.addItems([
-            t("object_designer.tab_table"), t("object_designer.tab_view"),
-            t("object_designer.tab_routine"), t("object_designer.tab_event"),
-            t("object_designer.tab_trigger"),
-        ])
+        self._obj_type_combo.addItems(
+            [
+                t("object_designer.tab_table"),
+                t("object_designer.tab_view"),
+                t("object_designer.tab_routine"),
+                t("object_designer.tab_event"),
+                t("object_designer.tab_trigger"),
+            ]
+        )
         self._obj_type_combo.currentIndexChanged.connect(self._switch_tab)
         t_layout.addWidget(self._obj_type_combo)
 
@@ -1074,6 +1241,7 @@ class ObjectDesignerWidget(QWidget):
             info = self._table_tab.get_table_info()
             if info.columns:
                 from open_navicat.utils.sql_generator import generate_create_table
+
                 ddl = generate_create_table(info)
         elif idx == 1:
             ddl = self._view_tab.get_create_view_sql()
@@ -1105,26 +1273,39 @@ class ObjectDesignerWidget(QWidget):
         buttons.rejected.connect(dlg.reject)
         # Add Execute button
         if self._connection_id:
-            btn_exec = buttons.addButton(t("object_designer.execute_sql"), QDialogButtonBox.ButtonRole.ActionRole)
+            btn_exec = buttons.addButton(
+                t("object_designer.execute_sql"), QDialogButtonBox.ButtonRole.ActionRole
+            )
             btn_exec.clicked.connect(lambda: self._execute_ddl(ddl, dlg))
         dlg_layout.addWidget(buttons)
         dlg.exec()
 
     def _execute_ddl(self, ddl: str, dialog: QDialog) -> None:
         """Execute DDL against the connected database."""
-        from open_navicat.dal.connection_pool import _loop as pool_loop
+        from open_navicat.dal.connection_pool import _get_loop as _pool_loop_getter
+
+        pool_loop = _pool_loop_getter()
         from open_navicat.dal.connection_pool import connection_pool
+
         connector = connection_pool.get(self._connection_id)
         if not connector:
-            QMessageBox.warning(self, t("object_designer.execute_failed"), t("object_designer.connection_lost"))
+            QMessageBox.warning(
+                self, t("object_designer.execute_failed"), t("object_designer.connection_lost")
+            )
             return
         try:
             result = pool_loop.run_until_complete(connector.execute(ddl))
             if result.success:
-                QMessageBox.information(self, t("object_designer.execute_success"), t("object_designer.ddl_executed"))
+                QMessageBox.information(
+                    self, t("object_designer.execute_success"), t("object_designer.ddl_executed")
+                )
                 dialog.accept()
             else:
-                QMessageBox.warning(self, t("object_designer.execute_failed"), result.error_message or t("object_designer.sql_error"))
+                QMessageBox.warning(
+                    self,
+                    t("object_designer.execute_failed"),
+                    result.error_message or t("object_designer.sql_error"),
+                )
         except Exception as e:
             QMessageBox.warning(self, t("object_designer.execute_failed"), str(e))
 

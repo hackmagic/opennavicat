@@ -37,6 +37,9 @@ LAYERS: dict[str, int] = {
     "services": 2,
     "plugin": 2,
     "plugins": 2,
+    # `mcp` is a machine-facing service API, not an entry point: its policy core
+    # is shared with `services`, and only `cli/mcp_cmd.py` (L3) touches the SDK.
+    "mcp": 2,
     "i18n": 1,
     "app": 3,
     "main": 3,
@@ -47,7 +50,7 @@ LAYERS: dict[str, int] = {
 LAYER_TITLES = {
     0: "L0 · 无内部依赖（models / errors）",
     1: "L1 · 基础设施（drivers / dal / utils / config）",
-    2: "L2 · 业务服务（services / plugin）",
+    2: "L2 · 业务服务（services / plugin / mcp）",
     3: "L3 · 入口层（cli / ui）",
 }
 

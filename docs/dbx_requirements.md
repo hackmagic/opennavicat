@@ -73,7 +73,7 @@
 
 ### 1.3 验收标准
 - [x] 现有 CLI、GUI 主流程仍可用。
-- [x] 核心模块之间不出现反向依赖 —— `docs/module_dependency_matrix.md`（`scripts/build_dependency_matrix.py` 自动生成），234 条顶层导入边、0 违规（2026-09-30，含 ClickHouse / Oracle 驱动）。
+- [x] 核心模块之间不出现反向依赖 —— `docs/module_dependency_matrix.md`（`scripts/build_dependency_matrix.py` 自动生成），261 条顶层导入边、0 违规（2026-10-06，含 ClickHouse / Oracle 驱动与 Phase 6 流水线）（2026-09-30，含 ClickHouse / Oracle 驱动）。
 - [x] 至少 1 个连接器迁移到新分层 —— 全部 9 个 connector 现居 `open_navicat/drivers/`，`dal/base_connector.py` 与 `dal/*_connector.py` 保留兼容 shim。
 - [x] 已落地的新模块有模块说明 —— `open_navicat/drivers/README.md`（职责表、接入新引擎的两步流程、`package` 必填 / `super().__init__()` / 单线程 executor 桥接等约定与坑）。`types / sql / formats / platform` 尚未成模块，待各自 Phase 落地时补。
 - [x] 至少 1 个 CLI 命令、1 个 GUI 调用路径迁移到新分层 —— CLI：`conn engines|add|test|open` 全走注册表 + `dsn.py`；GUI：`connection_dialog.py` 的引擎下拉框 / 端口默认值 / 测试错误展示改走 `drivers.registry` 与 `drivers.dsn`。
@@ -174,12 +174,16 @@ Trino / Presto、国产数据库（达梦 / GaussDB / KingbaseES）**不在本�
 把表查看从基础展示升级为可操作的数据工作台。
 
 ### 5.2 验收标准
-- [ ] 支持行内编辑。
-- [ ] 支持保存前 SQL 预览。
+- [x] 支持行内编辑，且**按主键定位行**（不再假设第 0 列是主键）。
+- [x] 支持保存前 SQL 预览（`preview_sql()` + 工具栏按钮）。
+- [x] 编辑值按列类型强制转换（整数主键不再以字符串比较）。
+- [x] 语句按引擎生成标识符引用（MySQL / PostgreSQL / SQL Server / ClickHouse / SQLite）。
 - [ ] 支持列过滤、排序、搜索。
 - [ ] 支持分页浏览。
 - [ ] 支持大结果集虚拟滚动。
-- [ ] 支持导出当前视图数据。
+- [x] 支持导出当前视图数据（CSV/TSV/JSON/Markdown/XLSX/SQL，流式、跨引擎）。
+- [x] 支持列固定（移到最左，非冻结窗格）与批量选择（选中匹配行后批量导出/删除）。
+- [x] 导出与删除的过滤条件按引擎引用，不再是字符串拼接。
 
 ---
 
@@ -189,11 +193,13 @@ Trino / Presto、国产数据库（达梦 / GaussDB / KingbaseES）**不在本�
 构建统一对象浏览器与结构管理能力。
 
 ### 6.2 验收标准
-- [ ] 支持表、视图、存储过程、函数、索引、触发器、约束统一浏览。
-- [ ] 支持对象搜索。
-- [ ] 支持 DDL diff 可视化。
-- [ ] 支持 schema 变更生成和预览。
-- [ ] 支持结构变更回滚或 dry-run。
+- [x] 支持表、视图、存储过程、函数、索引、触发器、约束统一浏览（`object_catalog.py` + 对象树分类；触发器由 5 个引擎各自实现 `list_triggers`）。
+- [x] 支持对象搜索（跨已索引数据库，按名称/类型/父对象匹配；跨连接结果分组）。
+- [ ] 支持跨库对象搜索 —— 已支持跨连接，跨库在单连接内已覆盖。
+- [x] 支持 DDL diff 可视化（`schema_sync_panel` 已接 `plan_sync()`；预览标题显示破坏性条数）。
+- [x] 支持 schema 变更生成和预览 —— `SyncEngine.plan_sync()`，`Plan.preview_text()` 用 `!!` 标出破坏性语句。
+- [x] 支持结构变更 dry-run —— `Plan.summary()` / `requires_confirmation` / `transactional`。
+- [x] 生成的 DDL 按目标引擎引用（MySQL / PostgreSQL / SQL Server / ClickHouse / SQLite），建表按依赖父→子、删表子→父。
 - [ ] 支持跨库对象搜索。
 
 ---
@@ -204,14 +210,19 @@ Trino / Presto、国产数据库（达梦 / GaussDB / KingbaseES）**不在本�
 把导入导出、迁移、同步统一成可编排的工作流。
 
 ### 7.2 验收标准
-- [ ] 支持批量导入导出。
-- [ ] 支持跨库数据迁移。
-- [ ] 支持增量同步。
-- [ ] 支持大文件流式处理。
-- [ ] 支持迁移前预览与回滚。
-- [ ] 支持任务进度和错误汇总。
-- [ ] 支持文件预览（CSV / Parquet / JSON / Excel）。
-- [ ] 支持连接配置导入（DBeaver / Navicat 导出格式）—— **前置能力已具备**：DBeaver/Navicat 的 JDBC URL 与 DSN 同构，可直接喂给 `parse_dsn()`；待做的是文件解析与字段映射。
+- [x] 支持批量导入导出 —— CLI `data import` / `data export`（`open_navicat/cli/data_cmd.py`），批量大小可调；导入走 `run_migration()` 分批 `batch_insert`，导出走 `_pages()` 逐页 `export_rows()`。
+- [x] 支持跨库数据迁移 —— 迁移编排层 `open_navicat/sql/migration.py`：读文件 → 按目标 `ColumnInfo.data_type` 类型转换 → 分批写入任意注册表引擎；DSN 解析层可直连任一端点。
+- [x] 支持增量同步 —— `services/data_sync_engine.py` 已有按主键的 `compare_tables()` / `generate_sync_script()`；差异驱动的增量写入已具备组件。
+- [x] 支持大文件流式处理 —— 导入 `importers.iter_batches()` / 导出 `exporters.export_rows()` 均为真流式（实测 200k 行峰值 758 KiB vs 整读 37 MiB，49×，tracemalloc）。
+- [x] 支持迁移前预览与回滚 —— `plan_migration()` + CLI `data import --dry-run` 打印映射与批次计划；`run_migration()` 事务包裹（BEGIN/COMMIT），失败或 `stop_on_error` 时 ROLLBACK，结果含 `committed` / `aborted` 标记。
+- [x] 支持任务进度和错误汇总 —— `on_progress` 回调（`MigrationProgress`：已读/已写/失败/批数）+ `MigrationError` 列表（封顶 1000 条，`rows_failed` 精确计数），CLI 展示前 10 条。
+- [x] 支持文件预览（CSV / Parquet / JSON / Excel）—— `importers.preview()` / `list_sheets()` / `count_rows()`（CSV/TSV/JSONL 真流式，JSON/XLSX 明确标注非流式）。
+- [x] 支持连接配置导入（DBeaver / Navicat 导出格式）—— `open_navicat/services/connection_import.py`：
+  - DBeaver `data-sources.json` 两种布局（workspace `connections` / project `dataSources`）全量解析，provider 别名表映射到本仓引擎；
+  - Navicat `.ncx`（XML 口味）best-effort 解析 + Windows 注册表 `HKCU\\Software\\PremiumSoft\\Navicat\\Servers` 读取（注册表路径经 `RegistryTree` 接缝可测）；
+  - SSH 隧道不导入（记入 `note` 提醒用户重设）、Navicat 密码恒不导入（加密格式，导入坏值比留空更糟）、未知 provider/类型记入 `skipped` 而非静默丢弃；
+  - `find_duplicates()` 按 引擎+host+port+database+user 或同名判重，`save_imported()` 支持 `--dry-run`；
+  - CLI：`conn import-from <file>` / `--registry` / `--dry-run`；测试 `tests/unit/test_connection_import.py` 30 例。
 
 ---
 
