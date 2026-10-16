@@ -186,7 +186,20 @@ class TestCompatibility:
         assert dal.BaseConnector is DriversBaseConnector
 
     def test_pool_still_imports_the_loop_helper(self) -> None:
-        # Integration tests import `_loop` from connection_pool; keep it exported.
-        from open_navicat.dal.connection_pool import _get_loop, _loop
+        # CLI/MCP code does `from open_navicat.dal.connection_pool import _loop`
+        # and calls run_until_complete on it, so the helper must publish whatever
+        # loop it hands out in that module global.  `_loop` may already have been
+        # created and closed earlier in the session (pytest-asyncio closes the
+        # loop it finds installed as the current one, and the stale object stays
+        # in the module), in which case _get_loop() legitimately builds a
+        # replacement; comparing it against a stale import asserted the wrong thing.
+        #
+        # `open_navicat.dal` re-exports a ConnectionPool *instance* under the name
+        # `connection_pool`, which shadows the submodule, so import it by name.
+        import importlib
 
-        assert _loop is None or _loop is _get_loop()
+        pool = importlib.import_module("open_navicat.dal.connection_pool")
+        loop = pool._get_loop()
+        assert loop is not None
+        assert loop is pool._loop, "the pool must cache the loop it hands out"
+        assert not loop.is_closed()
