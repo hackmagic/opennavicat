@@ -88,7 +88,10 @@ a = Analysis(
         "mypy", "mypy_extensions", "setuptools", "pkg_resources", "_pytest",
         "pytest", "py", "pluggy", "iniconfig",
     ],
-    hookspath=[], hooksconfig={}, runtime_hooks=[],
+    # hooks/ overrides PyInstaller's bundled hook-pyodbc.py, which imports the
+    # extension at build time to discover its dependencies.  That import needs a
+    # working unixODBC and fails on the macOS build runner.
+    hookspath=[str(Path(SPECPATH) / "hooks")], hooksconfig={}, runtime_hooks=[],
     win_no_prefer_redirects=False, win_private_assemblies=False,
     cipher=block_cipher, noarchive=False,
 )

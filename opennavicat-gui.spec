@@ -88,8 +88,11 @@ a = Analysis(
         (str(src / "i18n"), "open_navicat/i18n"),
         (str(src / "ui" / "resources"), "open_navicat/ui/resources"),
     ],
+    # hooks/ overrides PyInstaller's bundled hook-pyodbc.py, which imports the
+    # extension at build time to discover its dependencies.  That import needs a
+    # working unixODBC and fails on the macOS build runner.
     hiddenimports=list(all_hidden),
-    hookspath=[], hooksconfig={}, runtime_hooks=[], excludes=[],
+    hookspath=[str(Path(SPECPATH) / "hooks")], hooksconfig={}, runtime_hooks=[], excludes=[],
     win_no_prefer_redirects=False, win_private_assemblies=False,
     cipher=block_cipher, noarchive=False,
 )
