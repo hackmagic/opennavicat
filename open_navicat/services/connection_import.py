@@ -11,10 +11,10 @@ password is left blank on purpose.
 from __future__ import annotations
 
 import json
-import xml.etree.ElementTree as ET
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from xml.etree import ElementTree
 
 from open_navicat.drivers.registry import get_spec, is_file_engine, normalize_engine
 from open_navicat.models.connection import ConnectionInfo
@@ -225,7 +225,7 @@ def _local(tag: object) -> str:
     return text.rsplit("}", 1)[-1].lower()
 
 
-def _navicat_entry(element: ET.Element) -> tuple[ImportedConnection | None, ImportSkip | None]:
+def _navicat_entry(element: ElementTree.Element) -> tuple[ImportedConnection | None, ImportSkip | None]:
     """Read one Navicat ``<Connection>`` element, tolerating name variants."""
     fields: dict[str, str] = {}
     for key, value in element.attrib.items():
@@ -283,8 +283,8 @@ def parse_navicat_ncx(path: str | Path) -> ConnectionImportResult:
             "passwords can never be recovered from them"
         )
     try:
-        root = ET.fromstring(text)
-    except ET.ParseError as err:
+        root = ElementTree.fromstring(text)
+    except ElementTree.ParseError as err:
         raise ValueError(f"Navicat export is not well-formed XML: {err}") from err
     result = ConnectionImportResult(source=str(file))
     for element in root.iter():
