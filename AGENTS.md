@@ -99,17 +99,17 @@ Two PyInstaller spec files for dual packaging:
 ```bash
 pip install pyinstaller
 
-# CLI package (~50 MB on Windows, no Qt)
+# CLI package (50.6 MB on Windows x64, no Qt)
 pyinstaller opennavicat-cli.spec
 
-# GUI package (~86 MB on Windows, with PySide6)
+# GUI package (90.6 MB on Windows x64, with PySide6)
 pyinstaller opennavicat-gui.spec
 ```
 
-Sizes are onefile executables measured on Windows x64 with Python 3.12. The
-Linux CLI build is larger (~68 MB) because the DuckDB manylinux wheel is bigger
-than its Windows counterpart; DuckDB alone is ~12 MB compressed and is the
-single largest component after the pure-Python archive.
+Sizes are the v0.9.0 release assets — onefile executables built with Python 3.12.
+Linux is much larger (CLI 86.0 MB, GUI 146.9 MB) because the DuckDB manylinux
+wheel is 20 MB versus 12 MB on Windows; macOS arm64 sits in between (CLI 51.3 MB,
+GUI 79.8 MB).
 
 Version info is generated from `open_navicat/__init__.py` at build time — update only that file.
 

@@ -37,10 +37,14 @@ poetry run opennavicat gui
 
 | 包 | 说明 | 体积 |
 |----|------|------|
-| `opennavicat-cli-*` | 纯 CLI，不含 Qt | ~50 MB（Windows x64） |
-| `opennavicat-*` | 完整 GUI，含 PySide6 | ~86 MB（Windows x64） |
+| `opennavicat-cli-windows-x64.exe` | 纯 CLI，不含 Qt | 50.6 MB |
+| `opennavicat-cli-macos-arm64` | 纯 CLI，不含 Qt | 51.3 MB |
+| `opennavicat-cli-linux-x64` | 纯 CLI，不含 Qt | 86.0 MB |
+| `opennavicat-windows-x64.exe` | 完整 GUI，含 PySide6 | 90.6 MB |
+| `opennavicat-macos-arm64` | 完整 GUI，含 PySide6 | 79.8 MB |
+| `opennavicat-linux-x64` | 完整 GUI，含 PySide6 | 146.9 MB |
 
-> 体积为 Windows x64 + Python 3.12 实测的单文件可执行程序，启动时自解压（临时目录约 90 MB / 180 MB）。Linux 与 macOS 版本更大——仅 DuckDB 的 manylinux wheel 就有 20 MB，Windows 版为 12 MB。
+> 体积为 v0.9.0 发布产物实测值：Python 3.12 构建的单文件可执行程序，启动时自解压到临时目录，占用约为自身的两倍。Linux 版本显著大于 Windows 与 macOS——仅 DuckDB 的 manylinux wheel 就有 20 MB，其他平台为 12 MB。
 
 ```bash
 # 下载 CLI 版
@@ -57,7 +61,7 @@ chmod +x opennavicat-cli-linux-x64
 poetry build
 ls dist/
 # open_navicat-0.9.0-py3-none-any.whl
-# open-navicat-0.9.0.tar.gz
+# open_navicat-0.9.0.tar.gz
 ```
 
 ### 2.2 构建单文件可执行文件
@@ -67,14 +71,14 @@ ls dist/
 ```bash
 pip install pyinstaller
 
-# CLI 包 (不含 Qt，~50MB)
+# CLI 包 (不含 Qt，Windows x64 为 50.6MB)
 pyinstaller opennavicat-cli.spec
 
-# GUI 包 (含 PySide6，~86MB)
+# GUI 包 (含 PySide6，Windows x64 为 90.6MB)
 pyinstaller opennavicat-gui.spec
 ```
 
-> 上述体积为 Windows x64 + Python 3.12 实测值；Linux 的 CLI 包约 68 MB（DuckDB manylinux wheel 更大）。
+> 上述体积为 v0.9.0 发布产物实测值。Linux 包明显更大（CLI 86.0 MB / GUI 146.9 MB），macOS arm64 介于两者之间（CLI 51.3 MB / GUI 79.8 MB），差异主要来自 DuckDB 的 manylinux wheel。
 
 产物在 `dist/` 目录：
 - `dist/opennavicat-cli` (或 `.exe`)

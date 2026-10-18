@@ -205,8 +205,8 @@ desktop / web / cli / mcp
 
 | 维度 | DBX | OpenNavicat |
 | --- | --- | --- |
-| 运行时依赖 | 无（无 JRE / 无 venv / 无 Chromium），单文件二进制 | 需 Python + PySide6（GUI 包 ~86 MB） |
-| 体积 | ~25 MB | CLI ~50 MB / GUI ~86 MB（Windows x64 实测） |
+| 运行时依赖 | 无（无 JRE / 无 venv / 无 Chromium），单文件二进制 | 需 Python + PySide6（GUI 包 90.6 MB，Windows x64） |
+| 体积 | ~25 MB | CLI 50.6 MB / GUI 90.6 MB（Windows x64 实测，v0.9.0） |
 | 形态 | Desktop / Web / Docker / CLI / MCP + 独立二进制 | CLI / GUI / Docker |
 | 包管理 | Homebrew / Scoop / WinGet / Flatpak / Nix / npm | pip / install.sh / PyInstaller |
 | 自动更新 | 内置 | 无 |

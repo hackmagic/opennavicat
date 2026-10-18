@@ -88,10 +88,14 @@ docker run --rm ghcr.io/hackmagic/opennavicat:latest conn list
 
 | Package | Platform | Description | Size |
 |---------|----------|-------------|------|
-| `opennavicat-cli-*` | Win/Mac/Linux | CLI only (no Qt) | ~50 MB (Windows x64) |
-| `opennavicat-*` | Win/Mac/Linux | Full GUI with PySide6 | ~86 MB (Windows x64) |
+| `opennavicat-cli-windows-x64.exe` | Windows x64 | CLI only (no Qt) | 50.6 MB |
+| `opennavicat-cli-macos-arm64` | macOS arm64 | CLI only (no Qt) | 51.3 MB |
+| `opennavicat-cli-linux-x64` | Linux x64 | CLI only (no Qt) | 86.0 MB |
+| `opennavicat-windows-x64.exe` | Windows x64 | Full GUI with PySide6 | 90.6 MB |
+| `opennavicat-macos-arm64` | macOS arm64 | Full GUI with PySide6 | 79.8 MB |
+| `opennavicat-linux-x64` | Linux x64 | Full GUI with PySide6 | 146.9 MB |
 
-> Sizes are onefile executables measured on Windows x64 with Python 3.12. They self-extract at startup (~90 MB / ~180 MB in a temp dir). Linux and macOS builds are larger — the DuckDB manylinux wheel alone is 20 MB versus 12 MB on Windows.
+> Sizes are the v0.9.0 release assets: onefile executables built with Python 3.12, self-extracting at startup to roughly twice their size in a temp directory. Linux builds are much larger than Windows and macOS because the DuckDB manylinux wheel alone is 20 MB versus 12 MB elsewhere.
 
 > **Package managers:** If you'd like to see OpenNavicat on [Homebrew](https://brew.sh), [Scoop](https://scoop.sh), or [Chocolatey](https://chocolatey.org), upvote or open an issue on GitHub!
 
@@ -276,10 +280,14 @@ docker run --rm ghcr.io/hackmagic/opennavicat:latest conn list
 
 | 包 | 平台 | 说明 | 体积 |
 |----|------|------|------|
-| `opennavicat-cli-*` | Win/Mac/Linux | 纯 CLI，不含 Qt | ~50 MB（Windows x64） |
-| `opennavicat-*` | Win/Mac/Linux | 完整 GUI + PySide6 | ~86 MB（Windows x64） |
+| `opennavicat-cli-windows-x64.exe` | Windows x64 | 纯 CLI，不含 Qt | 50.6 MB |
+| `opennavicat-cli-macos-arm64` | macOS arm64 | 纯 CLI，不含 Qt | 51.3 MB |
+| `opennavicat-cli-linux-x64` | Linux x64 | 纯 CLI，不含 Qt | 86.0 MB |
+| `opennavicat-windows-x64.exe` | Windows x64 | 完整 GUI + PySide6 | 90.6 MB |
+| `opennavicat-macos-arm64` | macOS arm64 | 完整 GUI + PySide6 | 79.8 MB |
+| `opennavicat-linux-x64` | Linux x64 | 完整 GUI + PySide6 | 146.9 MB |
 
-> 体积为 Windows x64 + Python 3.12 实测的单文件可执行程序，启动时自解压（临时目录约 90 MB / 180 MB）。Linux 与 macOS 版本更大——仅 DuckDB 的 manylinux wheel 就有 20 MB，Windows 版为 12 MB。
+> 体积为 v0.9.0 发布产物实测值：Python 3.12 构建的单文件可执行程序，启动时自解压到临时目录，占用约为自身的两倍。Linux 版本显著大于 Windows 与 macOS——仅 DuckDB 的 manylinux wheel 就有 20 MB，其他平台为 12 MB。
 
 ```bash
 # 添加连接

@@ -59,8 +59,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and this proj
 
 ### Build
 - CI and release matrices install all extras; Python 3.13 and 3.14 are green
-- Corrected the documented binary sizes, which had been off by ~3×: the CLI is
-  ~48 MB (not ~15 MB) and the GUI ~86 MB (not ~120 MB) on Windows x64
+- macOS builds no longer fail: PyInstaller's contributed `hook-pyodbc.py`
+  imports the extension at analysis time, and the macOS pyodbc wheel links
+  against Homebrew's unixODBC, which the runner does not have. A local
+  `hooks/hook-pyodbc.py` (empty `hiddenimports`) now takes priority over it
+- Corrected the documented binary sizes, which had been off by ~3×: measured
+  v0.9.0 assets are CLI 50.6 MB / GUI 90.6 MB on Windows x64 (not ~15 MB /
+  ~120 MB), 51.3 MB / 79.8 MB on macOS arm64, and 86.0 MB / 146.9 MB on Linux
+  x64 — the DuckDB manylinux wheel alone is 20 MB versus 12 MB on Windows
 - Excluded dev-only packages (`mypy`, `setuptools`, `pytest`, …) from the CLI
   build, saving ~1.4 MB
 
