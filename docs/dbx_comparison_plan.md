@@ -13,7 +13,7 @@
 | 项 | DBX | OpenNavicat |
 | --- | --- | --- |
 | 核对 commit | `497d7c9`（2026-09-29） | `651a42d`（master） |
-| 版本 | 滚动发布（README 标注 100+ 数据库 / ~25 MB） | `0.8.0`（见 `open_navicat/__init__.py`） |
+| 版本 | 滚动发布（README 标注 100+ 数据库 / ~25 MB） | `0.9.0`（见 `open_navicat/__init__.py`） |
 | 主语言 | Rust（前端 TypeScript；扩展 Go / JDBC Agent） | Python 3.10+（PySide6 / Typer） |
 | 许可 | Apache-2.0 | MIT |
 | 社区规模（核对时） | ~21.6k stars / 2.07k forks | ~2 stars |
@@ -21,7 +21,7 @@
 
 DBX 核对锚点：`README.md`、`crates/ARCHITECTURE.md`、`plugins/README.md`、`packages/mcp-server/README.md`、`docs/backend-error-handling.md`、`plugins/connection-types/`（86 个连接描述）、`plugins/dialects/`（37 个方言）、`agents/drivers/`（约 50 个 Agent 驱动）。
 
-OpenNavicat 核对锚点：`open_navicat/dal/`（`base_connector.py` + 6 个 connector）、`open_navicat/services/`、`open_navicat/plugin/` + `open_navicat/plugins/`、`open_navicat/utils/`、`open_navicat/ui/`、`open_navicat/cli/`。
+OpenNavicat 核对锚点：`open_navicat/drivers/`（`base_connector.py` + `registry.py` + 9 个 connector）、`open_navicat/services/`、`open_navicat/plugin/` + `open_navicat/plugins/`、`open_navicat/mcp/`、`open_navicat/utils/`、`open_navicat/ui/`、`open_navicat/cli/`。
 
 > 上游是滚动发布，数据会持续变化。建议每季度重跑一次本核对，并更新上表的 commit。
 
@@ -205,8 +205,8 @@ desktop / web / cli / mcp
 
 | 维度 | DBX | OpenNavicat |
 | --- | --- | --- |
-| 运行时依赖 | 无（无 JRE / 无 venv / 无 Chromium），单文件二进制 | 需 Python + PySide6（GUI 包 ~120 MB） |
-| 体积 | ~25 MB | CLI ~15 MB / GUI ~120 MB |
+| 运行时依赖 | 无（无 JRE / 无 venv / 无 Chromium），单文件二进制 | 需 Python + PySide6（GUI 包 ~86 MB） |
+| 体积 | ~25 MB | CLI ~50 MB / GUI ~86 MB（Windows x64 实测） |
 | 形态 | Desktop / Web / Docker / CLI / MCP + 独立二进制 | CLI / GUI / Docker |
 | 包管理 | Homebrew / Scoop / WinGet / Flatpak / Nix / npm | pip / install.sh / PyInstaller |
 | 自动更新 | 内置 | 无 |

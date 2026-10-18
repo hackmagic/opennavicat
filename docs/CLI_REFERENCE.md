@@ -1,6 +1,6 @@
 # OpenNavicat CLI 参考手册
 
-> 版本: 0.5.0 | 命令总数: 51+
+> 版本: 0.9.0 | 命令总数: 79（13 个命令组 + `init` + `ask` 别名）
 
 `opennavicat` 是 CLI-First 设计，所有功能通过命令行暴露。GUI 只是可选的可视化包装。
 
@@ -852,7 +852,139 @@ opennavicat snippet show 1            # 显示片段 #1 的完整内容
 
 ---
 
-## 8. 输出格式
+## 8. init — 交互式初始化向导
+
+无子命令，直接运行即进入向导，依次配置 AI 提供商、默认连接和汇总确认。
+
+```bash
+opennavicat init
+```
+
+向导会引导你选择 AI 提供商（OpenAI / DeepSeek / Ollama / 自定义 API）、
+填写 API 地址与模型名、创建第一个连接，最后打印一份配置摘要。
+所有选择写入配置文件（`%APPDATA%/OpenNavicat` 或 `~/.config/OpenNavicat`）。
+
+---
+
+## 9. plugin — 插件安装、信任与生命周期
+
+```bash
+opennavicat plugin list                 # 列出已安装插件
+opennavicat plugin info <plugin_id>     # 查看清单、权限与信任记录
+opennavicat plugin verify <plugin_id>   # 按已签名清单校验已安装文件
+opennavicat plugin inspect <pkg>        # 只读查看包清单与权限，不建立信任
+opennavicat plugin install <pkg>        # 校验并安装已签名插件包
+opennavicat plugin uninstall <plugin_id>  # 卸载（被依赖时拒绝）
+opennavicat plugin enable <plugin_id>
+opennavicat plugin disable <plugin_id>
+opennavicat plugin keygen               # 生成用于签名的 Ed25519 密钥对
+opennavicat plugin key-list             # 列出受信任的签名公钥
+opennavicat plugin key-add <pubkey>     # 信任一个签名公钥
+opennavicat plugin key-remove <pubkey>  # 取消信任（已装插件不卸载）
+```
+
+### 9.1 plugin install
+
+```bash
+opennavicat plugin install my-plugin-1.0.0.onvpkg [--dry-run]
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `package` | str | — | `.onvpkg` 文件路径 |
+| `--dry-run` | bool | false | 只校验不安装 |
+
+校验顺序固定为 **布局 → 清单 → 摘要 → 签名 → 宿主版本**。签名覆盖规范化后的
+清单而不是 zip 本身（zip 中央目录不可复现）。插件权限为拒绝优先的 14 项权限
+目录，属于同意与审计机制，不是操作系统级沙箱。
+
+### 9.2 plugin keygen
+
+```bash
+opennavicat plugin keygen --output ./keys
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--output`, `-o` | str | 当前目录 | 密钥输出目录 |
+
+---
+
+## 10. sql — 方言翻译与优化
+
+```bash
+opennavicat sql translate "SELECT * FROM users LIMIT 10" --from mysql --to postgresql
+opennavicat sql optimize "SELECT * FROM t WHERE 1=1" --dialect mysql
+```
+
+### 10.1 sql translate
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `sql` | str | — | 待翻译的 SQL |
+| `--from`, `-f` | str | `mysql` | 源方言 |
+| `--to`, `-t` | str | `postgresql` | 目标方言 |
+
+### 10.2 sql optimize
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `sql` | str | — | 待优化的 SQL |
+| `--dialect`, `-d` | str | `mysql` | SQL 方言 |
+
+基于 sqlglot AST 做等价变换，不访问数据库，也不会执行语句。
+
+---
+
+## 11. template — 社区模板
+
+```bash
+opennavicat template list                          # 列出可用模板
+opennavicat template generate <name> --output .    # 生成模板文件
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `name` | str | — | 模板名（`template generate`） |
+| `--output`, `-o` | str | `.` | 输出目录 |
+
+---
+
+## 12. cloud — 云数据库发现
+
+```bash
+opennavicat cloud discover --provider aws --region ap-east-1
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--provider`, `-p` | str | `aws` | 云厂商 |
+| `--region`, `-r` | str | — | 区域 |
+
+发现的是本地已配置的凭据能看到的实例；命令本身不保存任何凭据。
+
+---
+
+## 13. mcp — 把数据库作为工具暴露给 AI 客户端
+
+```bash
+opennavicat mcp serve [--access read|safe-write|full] [--transport stdio]
+```
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--access` | str | `read` | 客户端可请求的最大权限：`read` 只读、`safe-write` 增加行级写入、`full` 增加破坏性操作。客户端**无法**自行提权 |
+| `--transport` | str | `stdio` | v1 只支持 stdio |
+
+服务进程本身不持有连接：客户端通过 `open_session` 工具建立会话，会话存活于该进程内。
+需要安装可选依赖 `pip install open-navicat[mcp]`；缺少 SDK 时命令以退出码 1 结束并提示安装。
+
+> 权限上限是**静态词法**判定（去除注释后按语句动词分类），无法看到存储过程内部做了什么，
+> 因此它是叠加在最小权限数据库账号之上的额外一层，而不是替代品。
+
+---
+
+## 14. 输出格式
 
 所有支持 `--format` 的命令可以使用以下输出格式:
 
@@ -865,7 +997,7 @@ opennavicat snippet show 1            # 显示片段 #1 的完整内容
 
 ---
 
-## 9. 环境配置
+## 15. 环境配置
 
 ```bash
 # AI 提供商配置

@@ -208,12 +208,14 @@ poetry publish --dry-run       # 发布测试
 ```bash
 pip install pyinstaller
 
-# CLI 包 (~15MB，不含 Qt)
+# CLI 包 (~50MB，不含 Qt)
 pyinstaller opennavicat-cli.spec
 
-# GUI 包 (~120MB，含 PySide6)
+# GUI 包 (~86MB，含 PySide6)
 pyinstaller opennavicat-gui.spec
 ```
+
+> 体积为 Windows x64 + Python 3.12 实测值；Linux 的 CLI 包约 68 MB（DuckDB manylinux wheel 更大）。
 
 产物在 `dist/` 目录：
 - `dist/opennavicat-cli` (或 `.exe`) — 纯 CLI

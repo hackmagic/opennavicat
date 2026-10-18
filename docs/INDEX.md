@@ -1,6 +1,6 @@
 # OpenNavicat Documentation
 
-> Version: 0.8.0 | Updated: 2026-07-10 | GitHub: https://github.com/hackmagic/OpenNavicat
+> Version: 0.9.0 | Updated: 2026-10-18 | GitHub: https://github.com/hackmagic/OpenNavicat
 
 ## User Guide
 
@@ -39,14 +39,14 @@
 
 # OpenNavicat 文档目录
 
-> 版本: 0.8.0 | 更新: 2026-07-10 | 开源地址: https://github.com/hackmagic/OpenNavicat
+> 版本: 0.9.0 | 更新: 2026-10-18 | 开源地址: https://github.com/hackmagic/OpenNavicat
 
 ## 用户文档
 
 | 文档 | 适合 | 内容 |
 |------|------|------|
 | [README](../README.md) | 所有人 | 项目介绍、快速上手 ([EN](../README.md#english) / [中文](../README.md#简体中文)) |
-| [CLI 参考手册](CLI_REFERENCE.md) | 所有用户 | 全部 40+ 条 CLI 命令完整参考 |
+| [CLI 参考手册](CLI_REFERENCE.md) | 所有用户 | 全部 79 条 CLI 命令完整参考 |
 | [安全设计](SECURITY.md) | 运维/安全 | 加密方案、传输安全 |
 | [隐私保护](PRIVACY.md) | 所有用户 | AI 数据发送范围、数据脱敏、Ollama 离线方案 |
 | [教程](tutorials/README.md) | 所有用户 | 端到端实战示例 |
@@ -78,7 +78,7 @@
 
 | 指标 | 数值 |
 |------|------|
-| 总文档数 | **18 篇** |
-| 总行数 | **~3,000 行** |
-| CLI 命令覆盖 | **40+ 条** |
+| 总文档数 | **23 篇**（`docs/` 目录） |
+| 总行数 | **~4,400 行** |
+| CLI 命令覆盖 | **79 条** |
 | 语言支持 | **中文 / English** |

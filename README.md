@@ -30,7 +30,7 @@ OpenNavicat is a full-featured database management tool inspired by [Navicat Pre
 - **AI-Native** — Natural language to SQL, query optimization, auto-fix broken SQL, intelligent data generation.
 - **Full GUI** — Navicat-like graphical interface with object browser, SQL editor, table designer, data viewer, BI dashboard, and more.
 - **Multi-Database** — MySQL/MariaDB + PostgreSQL + SQLite + DuckDB + SQL Server + ClickHouse + Oracle + MongoDB + Redis. New engines are one registry row plus one connector module.
-- **7 Export Formats** — CSV, JSON, XML, HTML, SQL, TXT, Excel.
+- **Streaming I/O** — batched import (CSV, TSV, JSON, JSONL, XLSX, Parquet) and export (CSV, TSV, JSON, Markdown, XLSX, SQL), so a large table never has to fit in memory.
 - **Privacy-First** — Data masking for AI requests. Full offline mode with Ollama. Encrypted credential storage.
 - **Open Source** — MIT License. Free for personal and commercial use.
 
@@ -55,7 +55,8 @@ OpenNavicat is a full-featured database management tool inspired by [Navicat Pre
 | **SSH Tunnel** | ✅ (asyncssh) | ✅ | ✅ | ✅ |
 | **i18n** | ✅ zh_CN / en_US | ✅ 10+ langs | ✅ 20+ langs | ✅ 15+ langs |
 | **CLI ↔ GUI Bridge** | 🚧 Planned | ❌ | ❌ | ❌ |
-| **Plugin System** | 🔮 Future | ❌ | ✅ | ✅ |
+| **Plugin System** | ✅ Signed plugin packages (MVP) | ❌ | ✅ | ✅ |
+| **MCP Server** | ✅ `opennavicat mcp serve` | ❌ | ❌ | ❌ |
 | **Open Source** | ✅ MIT | ❌ Proprietary | 🟡 (Community edition) | ❌ Proprietary |
 | **Docker Image** | ✅ ghcr.io | ❌ | ❌ | ❌ |
 
@@ -87,8 +88,10 @@ docker run --rm ghcr.io/hackmagic/opennavicat:latest conn list
 
 | Package | Platform | Description | Size |
 |---------|----------|-------------|------|
-| `opennavicat-cli-*` | Win/Mac/Linux | CLI only (no Qt) | ~15 MB |
-| `opennavicat-*` | Win/Mac/Linux | Full GUI with PySide6 | ~120 MB |
+| `opennavicat-cli-*` | Win/Mac/Linux | CLI only (no Qt) | ~50 MB (Windows x64) |
+| `opennavicat-*` | Win/Mac/Linux | Full GUI with PySide6 | ~86 MB (Windows x64) |
+
+> Sizes are onefile executables measured on Windows x64 with Python 3.12. They self-extract at startup (~90 MB / ~180 MB in a temp dir). Linux and macOS builds are larger — the DuckDB manylinux wheel alone is 20 MB versus 12 MB on Windows.
 
 > **Package managers:** If you'd like to see OpenNavicat on [Homebrew](https://brew.sh), [Scoop](https://scoop.sh), or [Chocolatey](https://chocolatey.org), upvote or open an issue on GitHub!
 
@@ -129,25 +132,37 @@ opennavicat gui
 
 ```
 opennavicat
+├── init             Interactive setup wizard
 ├── conn             Connection management
 │   ├── list / add / edit / remove / test / open / close
+│   ├── export / import / group
 │
 ├── query            SQL queries
-│   ├── run / file / explain / nl / history
+│   ├── run / file / explain / nl / history / stream
+│
+├── plugin           Plugin install, trust & lifecycle
+│   ├── list / info / verify / inspect / install / uninstall
+│   ├── enable / disable / keygen / key-list / key-add / key-remove
 │
 ├── schema           Schema management
 │   ├── databases / list / show / create / diff / sync / design
 │
 ├── data             Data operations
-│   ├── browse / export / import / generate
+│   ├── browse / export / import / generate / sync / compare
 │
 ├── backup           Backup & restore
 │   ├── create / restore / list / delete / history / schedule
 │   ├── jobs / job-remove / job-toggle
 │
-├── ai               AI assistant
+├── ai               AI assistant (alias: ask)
 │   ├── ask / optimize / explain / fix / chat / tables
 │   ├── agent / config / test / chat-history
+│
+├── snippet          Reusable SQL snippets (list / add / remove / show)
+├── cloud            Cloud database discovery (discover)
+├── sql              Dialect translation & optimization (translate / optimize)
+├── template         Community templates (list / generate)
+├── mcp              Serve these databases to an AI client (serve)
 │
 └── gui              Launch GUI (optional)
 ```
@@ -203,7 +218,7 @@ OpenNavicat 是一款功能齐全的数据库管理工具，灵感来源于 [Nav
 - **完整 GUI** — 类 Navicat 图形界面，包含对象浏览器、SQL 编辑器、表设计器、数据查看器、BI 看板等。
 - **多数据库** — MySQL/MariaDB + PostgreSQL + SQLite + DuckDB + SQL Server + ClickHouse + Oracle + MongoDB + Redis。
   新增引擎只需在注册表加一行 + 写一个 connector 模块。
-- **7 种导出格式** — CSV、JSON、XML、HTML、SQL、TXT、Excel。
+- **流式导入导出** — 导入支持 CSV、TSV、JSON、JSONL、XLSX、Parquet，导出支持 CSV、TSV、JSON、Markdown、XLSX、SQL，均分批读写，大表不必一次性读进内存。
 - **隐私优先** — AI 请求自动脱敏，支持 Ollama 全离线模式，凭据加密存储。
 - **开源免费** — MIT 许可证，个人和商业用途均可免费使用。
 
@@ -228,7 +243,8 @@ OpenNavicat 是一款功能齐全的数据库管理工具，灵感来源于 [Nav
 | **SSH 隧道** | ✅ (asyncssh) | ✅ | ✅ | ✅ |
 | **国际化** | ✅ 中/英 | ✅ 10+ 语言 | ✅ 20+ 语言 | ✅ 15+ 语言 |
 | **CLI ↔ GUI 联动** | 🚧 规划中 | ❌ | ❌ | ❌ |
-| **插件系统** | 🔮 未来计划 | ❌ | ✅ | ✅ |
+| **插件系统** | ✅ 签名插件包 (MVP) | ❌ | ✅ | ✅ |
+| **MCP 服务** | ✅ `opennavicat mcp serve` | ❌ | ❌ | ❌ |
 | **开源** | ✅ MIT | ❌ 专有 | 🟡 (社区版) | ❌ 专有 |
 | **Docker 镜像** | ✅ ghcr.io | ❌ | ❌ | ❌ |
 
@@ -260,8 +276,10 @@ docker run --rm ghcr.io/hackmagic/opennavicat:latest conn list
 
 | 包 | 平台 | 说明 | 体积 |
 |----|------|------|------|
-| `opennavicat-cli-*` | Win/Mac/Linux | 纯 CLI，不含 Qt | ~15 MB |
-| `opennavicat-*` | Win/Mac/Linux | 完整 GUI + PySide6 | ~120 MB |
+| `opennavicat-cli-*` | Win/Mac/Linux | 纯 CLI，不含 Qt | ~50 MB（Windows x64） |
+| `opennavicat-*` | Win/Mac/Linux | 完整 GUI + PySide6 | ~86 MB（Windows x64） |
+
+> 体积为 Windows x64 + Python 3.12 实测的单文件可执行程序，启动时自解压（临时目录约 90 MB / 180 MB）。Linux 与 macOS 版本更大——仅 DuckDB 的 manylinux wheel 就有 20 MB，Windows 版为 12 MB。
 
 ```bash
 # 添加连接

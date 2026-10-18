@@ -66,6 +66,11 @@ a = Analysis(
         "open_navicat.drivers.oracle_connector",
         "open_navicat.models", "open_navicat.services",
         "open_navicat.config", "open_navicat.utils",
+        # `mcp serve` imports the SDK lazily inside the command, so PyInstaller
+        # cannot see it.  Both the package and the adapter module are named here
+        # so a binary built with the [mcp] extra actually serves.
+        "open_navicat.mcp", "open_navicat.mcp.server", "open_navicat.mcp.tools",
+        "open_navicat.mcp.runner", "open_navicat.mcp.safety",
         # The third-party driver packages.  They are imported inside connector
         # functions, so name them explicitly or the shipped binary is missing
         # the engine the user expects to work.
@@ -76,6 +81,12 @@ a = Analysis(
         "PySide6", "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets",
         "PySide6.QtSvg", "PySide6.QtPrintSupport", "PySide6.QtSvgWidgets",
         "shiboken6", "matplotlib", "numpy", "pandas",
+        # Development-only packages.  The release build reuses the virtualenv the
+        # tests ran in, so they are importable, but nothing in the CLI imports
+        # them at runtime.  Leaving them in adds a few hundred modules for no
+        # benefit — mypy alone ships its own type stubs and checker.
+        "mypy", "mypy_extensions", "setuptools", "pkg_resources", "_pytest",
+        "pytest", "py", "pluggy", "iniconfig",
     ],
     hookspath=[], hooksconfig={}, runtime_hooks=[],
     win_no_prefer_redirects=False, win_private_assemblies=False,

@@ -13,6 +13,7 @@ from open_navicat.cli.cloud_cmd import cloud_app
 from open_navicat.cli.conn_cmd import conn_app
 from open_navicat.cli.data_cmd import data_app
 from open_navicat.cli.init_cmd import init_app
+from open_navicat.cli.mcp_cmd import mcp_app
 from open_navicat.cli.plugin_cmd import plugin_app
 from open_navicat.cli.query_cmd import query_app
 from open_navicat.cli.schema_cmd import schema_app
@@ -40,6 +41,7 @@ app.add_typer(snippet_app, name="snippet", help="Manage reusable SQL snippets")
 app.add_typer(cloud_app, name="cloud", help="Cloud database discovery")
 app.add_typer(sql_app, name="sql", help="SQL dialect translation & optimization")
 app.add_typer(template_app, name="template", help="Community templates & starter projects")
+app.add_typer(mcp_app, name="mcp", help="Serve these databases to an AI client over MCP")
 
 # Also register as top-level aliases for common operations
 app.add_typer(ai_app, name="ask", help="Shortcut: AI ask (see 'ai' subcommand for full features)")

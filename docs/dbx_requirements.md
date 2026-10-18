@@ -14,7 +14,7 @@
 
 | 项 | DBX | OpenNavicat |
 | --- | --- | --- |
-| 核对 commit | `497d7c9`（2026-09-29） | `651a42d`（master, v0.8.0） |
+| 核对 commit | `497d7c9`（2026-09-29） | `86ccc80`（master, v0.9.0） |
 | 许可 | Apache-2.0 | MIT |
 | 主语言 | Rust | Python 3.10+ |
 
