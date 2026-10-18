@@ -44,15 +44,15 @@ typer = {extras = ["all"], version = "^0.27.0"}
 rich = "^13.7.0"
 httpx = "^0.27.0"
 openai = "^1.12.0"
-asyncpg = {version = "^0.29.0", optional = true}
+asyncpg = {version = "^0.31.0", optional = true}
 aiosqlite = "^0.20.0"
 duckdb = "^1.5.4"
 click = "^8.3.3"
 motor = {version = "^3.6.0", optional = true}
 redis = {version = "^5.0.0", optional = true}
 pyodbc = {version = "^5.1.0", optional = true}
-clickhouse-connect = {version = "^0.7.0", optional = true}
-oracledb = {version = "^2.4.0", optional = true}
+clickhouse-connect = {version = "^0.10.0", optional = true}
+oracledb = {version = "^3.3.0", optional = true}
 mcp = {version = "^2.2.0", optional = true}
 
 [tool.poetry.extras]
@@ -67,7 +67,7 @@ oracle = ["oracledb"]
 [tool.poetry.group.dev.dependencies]
 pytest = "^9.0.3"
 pytest-qt = "^4.4.0"
-pytest-asyncio = "^0.23.0"
+pytest-asyncio = "^1.4.0"
 pytest-cov = "^4.1.0"
 ruff = "^0.3.0"
 mypy = "^1.8.0"

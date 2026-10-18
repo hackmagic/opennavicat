@@ -13,6 +13,31 @@ import pytest
 from open_navicat.ui import themes
 
 
+def _qt_available() -> bool:
+    from unittest.mock import MagicMock
+
+    import PySide6
+
+    return not isinstance(PySide6.QtWidgets, MagicMock)
+
+
+@pytest.fixture(scope="module")
+def qapp():
+    """Real QApplication, or skip when PySide6 is mocked out (no Qt installed).
+
+    ``conftest.py`` installs MagicMock stand-ins for PySide6 when the package is
+    absent, which is what happens on Python 3.14 where PySide6 is capped below.
+    pytest-qt's own ``qapp`` fixture then dies in ``isinstance()`` against the
+    mock, so these tests need a local fixture that skips instead.
+    """
+    if not _qt_available():
+        pytest.skip("PySide6 is not installed")
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    yield app
+
+
 class TestResolveTheme:
     def test_exact_key_is_returned_unchanged(self) -> None:
         assert themes.resolve_theme("pro-dark") == "pro-dark"
