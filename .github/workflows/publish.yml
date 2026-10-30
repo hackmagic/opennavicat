@@ -15,28 +15,29 @@ on:
   workflow_call:
     inputs:
       tag:
-        description: "Release tag being published (e.g. v0.9.3)"
+        description: "Release tag being published (e.g. v0.9.4)"
         required: false
         type: string
     # PYPI_API_TOKEN is NOT declared here: it lives in the PYPI_API_TOKEN
     # environment, which the publish job below attaches to directly. Declaring
     # it as a callable secret would require the caller to pass it, and the
     # caller cannot see an environment-scoped value.
-    # The publish job needs `id-token: write` (Trusted Publishing) and the
-    # docker job needs `packages: write`; a called workflow is capped by the
-    # caller's permissions, so ask for them here rather than silently failing.
-    permissions:
-      contents: read
-      packages: write
-      id-token: write
   release:
     types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v0.9.3)"
+        description: "Release tag (e.g. v0.9.4)"
         required: false
         type: string
+
+# Declared at the top level, not inside `workflow_call`: a called workflow is
+# capped by the caller's permissions, and the publish job needs
+# `id-token: write` while the docker job needs `packages: write`.
+permissions:
+  contents: read
+  packages: write
+  id-token: write
 
 jobs:
   build:
