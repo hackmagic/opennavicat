@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import socket
 import threading
+from typing import TYPE_CHECKING, Any
 
-import paramiko
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import paramiko
 
 from open_navicat.models.connection import ConnectionInfo
 
@@ -19,7 +21,7 @@ class SSHTunnel:
 
     def __init__(self, info: ConnectionInfo) -> None:
         self._info = info
-        self._client: paramiko.SSHClient | None = None
+        self._client: Any = None
         self._local_port: int = 0
         self._server_sock: socket.socket | None = None
         self._running = False
@@ -28,8 +30,25 @@ class SSHTunnel:
     def local_port(self) -> int:
         return self._local_port
 
+    @staticmethod
+    def _require_paramiko() -> Any:
+        """Import paramiko on first use.
+
+        A CLI process that never opens a tunnel should not pay for
+        paramiko (and its cryptography stack) at import time; the
+        standalone CLI build excludes it entirely.
+        """
+        try:
+            import paramiko
+        except ImportError:
+            return None
+        return paramiko
+
     def connect(self) -> bool:
         """Establish SSH connection and start local port forwarding."""
+        paramiko = self._require_paramiko()
+        if paramiko is None:
+            return False
         try:
             self._client = paramiko.SSHClient()
             self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())

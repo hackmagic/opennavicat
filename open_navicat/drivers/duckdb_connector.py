@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import duckdb
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    import duckdb
 
 from open_navicat.drivers.base_connector import BaseConnector
 from open_navicat.models import (
@@ -24,10 +25,12 @@ class DuckDBConnector(BaseConnector):
     def __init__(self, info: ConnectionInfo) -> None:
         super().__init__()
         self._info = info
-        self._db: duckdb.DuckDBPyConnection | None = None
+        self._db: Any = None
 
     async def connect(self) -> bool:
         try:
+            import duckdb
+
             path = self._info.database or ":memory:"
             self._db = duckdb.connect(path)
             return True

@@ -35,7 +35,6 @@ from open_navicat.plugin import loader
 from open_navicat.plugin.loader import InstalledPlugin, installed_root, read_installed
 from open_navicat.plugin.manifest import PluginManifest, satisfies
 from open_navicat.plugin.package import PACKAGE_SUFFIX, open_package, verify_package
-from open_navicat.plugin.signing import public_key_fingerprint
 
 logger = logging.getLogger("opennavicat.plugin.registry")
 
@@ -78,6 +77,8 @@ def trust_public_key(settings: Any, public_key_b64: str) -> str:
     key = str(public_key_b64).strip()
     if not key:
         raise PluginPermissionError("empty public key")
+    from open_navicat.plugin.signing import public_key_fingerprint
+
     fingerprint = public_key_fingerprint(key)
     keys = trusted_public_keys(settings)
     if key not in keys:
@@ -99,6 +100,8 @@ def untrust_public_key(settings: Any, fingerprint: str) -> bool:
     removed = False
     for key in trusted_public_keys(settings):
         try:
+            from open_navicat.plugin.signing import public_key_fingerprint
+
             if public_key_fingerprint(key).lower() == want:
                 removed = True
                 continue
@@ -241,6 +244,7 @@ def install_package(data: bytes, settings: Any) -> InstallResult:
             )
 
     from open_navicat.plugin.package import PACKAGE_SUFFIX
+    from open_navicat.plugin.signing import public_key_fingerprint
 
     root = loader.installed_root() / manifest.id
     if root.exists():
@@ -249,9 +253,8 @@ def install_package(data: bytes, settings: Any) -> InstallResult:
         loader.unload_plugin_module(manifest.id)
     loader.extract_package(pkg, loader.installed_root().parent)
     loader.write_state(manifest.id, previous.enabled if previous is not None else True)
-    _write_trust_record(
-        manifest.id, _signing_key(pkg, keys), public_key_fingerprint(_signing_key(pkg, keys))
-    )
+    signing_key = _signing_key(pkg, keys)
+    _write_trust_record(manifest.id, signing_key, public_key_fingerprint(signing_key))
 
     if previous is None:
         action = "installed"
@@ -267,7 +270,7 @@ def install_package(data: bytes, settings: Any) -> InstallResult:
         version=manifest.version,
         action=action,
         permissions=manifest.permissions,
-        fingerprint=public_key_fingerprint(_signing_key(pkg, keys)),
+        fingerprint=public_key_fingerprint(signing_key),
     )
 
 

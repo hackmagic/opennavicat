@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from open_navicat.utils.output_formatter import format_output
-from open_navicat.utils.safe_password import decrypt_password, encrypt_password, mask_password
 from open_navicat.utils.sql_formatter import (
     beautify,
     extract_table_names,
@@ -31,3 +30,12 @@ __all__ = [
     "encrypt_password", "decrypt_password", "mask_password",
     "format_output",
 ]
+
+
+def __getattr__(name: str) -> object:
+    if name in ("encrypt_password", "decrypt_password", "mask_password"):
+        from open_navicat.utils import safe_password
+
+        return getattr(safe_password, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    "format_output",

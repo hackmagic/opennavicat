@@ -32,7 +32,6 @@ from open_navicat.plugin.registry import (
     untrust_public_key,
     verify_installed,
 )
-from open_navicat.plugin.signing import generate_keypair, public_key_fingerprint
 from open_navicat.utils.output_formatter import format_output
 
 plugin_app = typer.Typer(
@@ -208,6 +207,10 @@ def keygen(
     output: str = typer.Option(None, "--output", "-o", help="Write the keypair here"),
 ) -> None:
     """Generate a new Ed25519 keypair for signing plugins."""
+    # cryptography is only needed here; keep it off the import path so
+    # every other plugin command starts without it.
+    from open_navicat.plugin.signing import generate_keypair
+
     pub, priv = generate_keypair()
     if output:
         p = Path(output)
@@ -230,6 +233,8 @@ def key_list() -> None:
         console.print("[yellow]No trusted keys.[/yellow]")
         console.print("[dim]Add one with: opennavicat plugin key add <key>[/dim]")
         return
+    from open_navicat.plugin.signing import public_key_fingerprint
+
     table = Table(title="Trusted Keys")
     table.add_column("fingerprint")
     table.add_column("public key", overflow="fold")

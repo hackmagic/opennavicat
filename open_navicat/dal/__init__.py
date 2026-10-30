@@ -24,27 +24,31 @@ __all__ = [
     "LocalConfigDB",
 ]
 
-# Re-export the connectors that are actually installed.  Every driver is an
-# optional third-party package, so a missing one must never turn
-# ``import open_navicat.dal`` into an ImportError for unrelated features —
-# callers who really need a driver get a typed DriverNotFoundError from
-# ``open_navicat.drivers.registry.get_connector_class`` instead.
-for _module, _name in (
-    ("open_navicat.drivers.mysql_connector", "MySQLConnector"),
-    ("open_navicat.drivers.postgresql_connector", "PostgreSQLConnector"),
-    ("open_navicat.drivers.sqlite_connector", "SQLiteConnector"),
-    ("open_navicat.drivers.duckdb_connector", "DuckDBConnector"),
-    ("open_navicat.drivers.mongo_connector", "MongoConnector"),
-    ("open_navicat.drivers.redis_connector", "RedisConnector"),
-    ("open_navicat.drivers.sqlserver_connector", "SQLServerConnector"),
-    ("open_navicat.drivers.clickhouse_connector", "ClickHouseConnector"),
-    ("open_navicat.drivers.oracle_connector", "OracleConnector"),
-):
-    try:
-        _cls = getattr(importlib.import_module(_module), _name)
-    except ImportError:  # pragma: no cover - depends on the local install
-        continue
-    globals()[_name] = _cls
-    __all__.append(_name)
+# Re-export the connectors lazily.  ``open_navicat.dal`` is imported by the
+# CLI on every run, and eagerly importing all nine connector modules pulled in
+# every optional driver (and its transitive dependencies) whether or not the
+# command needed it.  PEP 562 module ``__getattr__`` keeps
+# ``from open_navicat.dal import MySQLConnector`` working while deferring the
+# import until the name is actually touched.
+_CONNECTORS: dict[str, str] = {
+    "MySQLConnector": "open_navicat.drivers.mysql_connector",
+    "PostgreSQLConnector": "open_navicat.drivers.postgresql_connector",
+    "SQLiteConnector": "open_navicat.drivers.sqlite_connector",
+    "DuckDBConnector": "open_navicat.drivers.duckdb_connector",
+    "MongoConnector": "open_navicat.drivers.mongo_connector",
+    "RedisConnector": "open_navicat.drivers.redis_connector",
+    "SQLServerConnector": "open_navicat.drivers.sqlserver_connector",
+    "ClickHouseConnector": "open_navicat.drivers.clickhouse_connector",
+    "OracleConnector": "open_navicat.drivers.oracle_connector",
+}
 
-del _module, _name, _cls
+__all__.extend(_CONNECTORS)
+
+
+def __getattr__(name: str) -> object:
+    """Import a connector module on first attribute access."""
+    module_path = _CONNECTORS.get(name)
+    if module_path is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module = importlib.import_module(module_path)
+    return getattr(module, name)
