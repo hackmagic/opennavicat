@@ -12,6 +12,9 @@ on:
 
 permissions:
   contents: write
+  # The reusable publish workflow pushes a container image; a called workflow
+  # can never exceed the caller's permissions, so this must be granted here too.
+  packages: write
 
 jobs:
   test:
@@ -196,3 +199,22 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publish to PyPI and GHCR as part of the same release run.
+  #
+  # This exists because the Release above is created with GITHUB_TOKEN, and
+  # GitHub suppresses workflow runs caused by that token. A separate
+  # `release: published` workflow therefore never fired, so PyPI was never
+  # updated. Calling the reusable workflow here is explicit and needs no
+  # elevated token.
+  publish:
+    name: Publish Package
+    needs: release
+    uses: ./.github/workflows/publish.yml
+    with:
+      tag: ${{ github.ref_name }}
+    # No secret is forwarded here on purpose. PYPI_API_TOKEN exists only inside
+    # the PYPI_API_TOKEN *environment*, not at repository level, so
+    # `secrets.PYPI_API_TOKEN` in this (caller) workflow resolves to empty. The
+    # called workflow's publish job declares that environment itself and gets
+    # the value directly.

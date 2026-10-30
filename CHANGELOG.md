@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and this proj
 
 ---
 
+## [0.9.4] - 2026-10-30
+
+### Fixed
+
+- **PyPI publishing was never triggered at all.** The publish workflow
+  listened for `release: published`, but the Release is created by
+  `release.yml` using the repository `GITHUB_TOKEN`, and GitHub suppresses
+  workflow runs caused by that token (to prevent recursion). The publish
+  workflow therefore never ran, which is why PyPI remained on an old
+  version regardless of how many tags were pushed. `release.yml` now calls
+  `publish.yml` directly via `workflow_call`, and the caller grants the
+  `packages: write` permission the container job needs.
+- **CI security audit failed for the wrong reason.** `poetry export`
+  dropped the `python_version` markers, so `pip` tried to install packages
+  pinned to another interpreter (`backports-asyncio-runner` is 3.10-only),
+  failed to resolve, and `pip-audit` exited before reporting anything.
+  Both audit workflows now export with `--with-markers`.
+
 ## [0.9.3] - 2026-10-30
 
 ### Fixed

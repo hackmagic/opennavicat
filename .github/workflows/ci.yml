@@ -58,7 +58,11 @@ jobs:
       - name: Security audit
         run: |
           pip install pip-audit
-          poetry export -f requirements.txt --without-hashes -o /tmp/requirements.txt
+          # --with-markers keeps `python_version < "3.14"` style constraints on
+          # the exported lines. Without them pip tries to install a package on an
+          # interpreter it cannot support (e.g. backports-asyncio-runner, pinned
+          # to 3.10), fails to resolve, and the audit dies instead of reporting.
+          poetry export -f requirements.txt --without-hashes --with-markers -o /tmp/requirements.txt
           pip-audit -r /tmp/requirements.txt
 
   build:
