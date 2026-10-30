@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and this proj
 
 ---
 
+## [0.9.6] - 2026-10-30
+
+### Fixed
+
+- **GHCR image build pointed at the wrong registry.** The `images:` input
+  was dropped from the docker/metadata-action block, so it defaulted to the
+  Docker Hub `library/...` namespace and the push failed with 401
+  "access token has insufficient scopes".
+- **The reusable publish workflow failed to load.** It referenced
+  `secrets.PYPI_API_TOKEN` without declaring it under `workflow_call`, so
+  `release.yml` aborted with a logless `startup_failure`.
+
+0.9.4 is confirmed live on PyPI (wheel and sdist), which verifies the
+environment-scoped token fix.
+
 ## [0.9.4] - 2026-10-30
 
 ### Fixed
