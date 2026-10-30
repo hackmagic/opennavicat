@@ -213,8 +213,10 @@ jobs:
     uses: ./.github/workflows/publish.yml
     with:
       tag: ${{ github.ref_name }}
-    # No secret is forwarded here on purpose. PYPI_API_TOKEN exists only inside
-    # the PYPI_API_TOKEN *environment*, not at repository level, so
-    # `secrets.PYPI_API_TOKEN` in this (caller) workflow resolves to empty. The
-    # called workflow's publish job declares that environment itself and gets
-    # the value directly.
+    # A reusable workflow that reads an undeclared secret fails to load, so the
+    # secret is declared in publish.yml and wired through here. This value is
+    # empty at repository level (the real one lives in the PYPI_API_TOKEN
+    # environment), which is harmless: the called job attaches that environment
+    # and resolves secrets.PYPI_API_TOKEN there.
+    secrets:
+      PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}

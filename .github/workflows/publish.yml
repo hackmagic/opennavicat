@@ -18,10 +18,14 @@ on:
         description: "Release tag being published (e.g. v0.9.4)"
         required: false
         type: string
-    # PYPI_API_TOKEN is NOT declared here: it lives in the PYPI_API_TOKEN
-    # environment, which the publish job below attaches to directly. Declaring
-    # it as a callable secret would require the caller to pass it, and the
-    # caller cannot see an environment-scoped value.
+    # Must be declared even though the real value comes from the environment:
+    # a reusable workflow that references an undeclared secret fails to load,
+    # and releasing release.yml reported only "startup_failure" with no logs.
+    # Required: false keeps it optional for callers that cannot see an
+    # environment-scoped value; the job's `environment:` supplies it at runtime.
+    secrets:
+      PYPI_API_TOKEN:
+        required: false
   release:
     types: [published]
   workflow_dispatch:
@@ -113,13 +117,18 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
+          # Target repository is required: without it metadata-action falls back
+          # to the Docker Hub "library/..." namespace, which this token cannot
+          # push to, and the build failed with
+          # 401 "access token has insufficient scopes".
+          images: ghcr.io/${{ github.repository }}
           # Prefer the tag this build is publishing; fall back to the git ref so
           # a workflow_call run (where github.ref is a branch) still gets a
           # useful image tag instead of an empty one.
           tags: |
             type=semver,pattern={{version}},value=${{ inputs.tag || github.ref_name }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag || github.ref_name }}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ github.ref_name == 'master' || startsWith(github.ref_name, 'v') }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
