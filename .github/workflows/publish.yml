@@ -33,6 +33,11 @@ jobs:
     name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
+    # The PYPI_API_TOKEN secret lives in the environment of the same name, not
+    # at repository level. A job only receives an environment's secrets when it
+    # declares that environment, so without this line `secrets.PYPI_API_TOKEN`
+    # resolved to an empty string and the upload failed authentication.
+    environment: PYPI_API_TOKEN
     permissions:
       id-token: write
     steps:

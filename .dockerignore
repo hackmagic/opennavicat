@@ -11,8 +11,9 @@ dist/
 build/
 tests/
 docs/
-*.md
-LICENSE
 *.spec
-poetry.lock
-pyproject.toml
+
+# Deliberately NOT ignored: pyproject.toml, poetry.lock, README.md, LICENSE.
+# The image builds the package wheel from this tree, and those files are build
+# inputs (metadata, pinned dependencies, long_description, license text).
+# Ignoring them made the Docker build unable to construct a wheel at all.

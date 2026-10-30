@@ -6,6 +6,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and this proj
 
 ---
 
+## [0.9.3] - 2026-10-30
+
+### Fixed
+
+- **PyPI publishing could never succeed.** The `PYPI_API_TOKEN` secret was
+  stored in a GitHub *environment* named `PYPI_API_TOKEN`, but the publish
+  job never declared that environment - and a job only receives an
+  environment's secrets when it declares it. `secrets.PYPI_API_TOKEN`
+  therefore resolved to an empty string and the upload failed
+  authentication. The job now declares `environment: PYPI_API_TOKEN`.
+- **The Docker image could not build.** The Dockerfile ran
+  `pip install open-navicat`, which can only install a version PyPI actually
+  has; while publishing was broken that pulled an old release or failed
+  outright. It now builds the wheel from the checked-out tree, so the image
+  always matches the commit that triggered it. `.dockerignore` no longer
+  excludes `pyproject.toml`, `poetry.lock`, `README.md` and `LICENSE`, which
+  are build inputs the wheel cannot be produced without.
+
 ## [0.9.2] - 2026-10-30
 
 ### Fixed
