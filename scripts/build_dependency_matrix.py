@@ -34,6 +34,12 @@ LAYERS: dict[str, int] = {
     "dal": 1,
     "utils": 1,
     "config": 1,
+    # `sql` is a pure helper layer (quoting, limit clauses, schema diff): it
+    # imports nothing from this package, and the drivers now use its quoting
+    # so generated DDL is engine-correct instead of MySQL-only.  Listing it
+    # here is what makes the guard actually police that edge -- an undeclared
+    # unit is skipped by the violation check.
+    "sql": 1,
     "services": 2,
     "plugin": 2,
     "plugins": 2,

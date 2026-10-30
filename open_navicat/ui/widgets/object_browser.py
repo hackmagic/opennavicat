@@ -94,6 +94,30 @@ def _maintenance_sql(engine: str, operation: str, database: str, table: str) -> 
     return None
 
 
+def _rename_table_sql(
+    engine: str, old_ref: str, old_name: str, new_name: str, database: str
+) -> str:
+    """Rename statement the engine actually accepts.
+
+    ``RENAME TABLE a TO b`` is MySQL's multi-table form; PostgreSQL, SQL Server
+    and SQLite have no such statement, so renaming used to fail on every engine
+    but MySQL.  Oracle uses the same ``ALTER TABLE ... RENAME TO`` shape as
+    PostgreSQL.
+    """
+    if engine in ("mysql", "mariadb"):
+        return f"RENAME TABLE {old_ref} TO {quote_qualified(new_name, engine, database)}"
+    if engine in ("postgresql", "oracle", "sqlite", "clickhouse"):
+        return f"ALTER TABLE {old_ref} RENAME TO {quote_identifier(new_name, engine)}"
+    if engine == "sqlserver":
+        # sp_rename takes strings, not identifiers; the schema stays the same.
+        return (
+            f"EXEC sp_rename '{database}.{old_name}', '{new_name}'"
+            if database
+            else f"EXEC sp_rename '{old_name}', '{new_name}'"
+        )
+    return f"ALTER TABLE {old_ref} RENAME TO {quote_identifier(new_name, engine)}"
+
+
 def _maintenance_actions(engine: str) -> list[tuple[str, str]]:
     """(operation key, i18n label key) pairs this engine actually supports."""
     if engine in ("mysql", "mariadb"):
@@ -896,8 +920,11 @@ class ObjectBrowser(QTreeWidget):
         connector = connection_pool.get(conn_id)
         if not connector:
             return
+        engine = self._engine_of(conn_id)
         try:
-            pool_loop.run_until_complete(connector.execute(f"TRUNCATE TABLE `{table_name}`"))
+            pool_loop.run_until_complete(
+                connector.execute(f"TRUNCATE TABLE {quote_qualified(table_name, engine, db_name)}")
+            )
         except Exception as e:
             logger.warning("truncate table failed: %s", e)
 
@@ -931,9 +958,12 @@ class ObjectBrowser(QTreeWidget):
         connector = connection_pool.get(conn_id)
         if not connector:
             return
+        new = new_name.strip()
+        engine = self._engine_of(conn_id)
+        old_ref = quote_qualified(old_name, engine, db_name)
         try:
             pool_loop.run_until_complete(
-                connector.execute(f"RENAME TABLE `{old_name}` TO `{new_name.strip()}`")
+                connector.execute(_rename_table_sql(engine, old_ref, old_name, new, db_name))
             )
             self._reload_table_list(conn_id, db_name, table_widget)
         except Exception as e:
@@ -1765,8 +1795,11 @@ class ObjectBrowser(QTreeWidget):
 
         connector = connection_pool.get(data["connection_id"])
         if connector:
+            engine = self._engine_of(data["connection_id"])
             pool_loop.run_until_complete(
-                connector.execute(f"TRUNCATE TABLE `{data['database']}`.`{data['name']}`")
+                connector.execute(
+                    f"TRUNCATE TABLE {quote_qualified(data['name'], engine, data['database'])}"
+                )
             )
 
     def _empty_table(self, item: QTreeWidgetItem) -> None:
@@ -2170,9 +2203,16 @@ class ObjectBrowser(QTreeWidget):
                 pool_loop = _pool_loop_getter()
 
                 try:
+                    engine = self._engine_of(data["connection_id"])
                     pool_loop.run_until_complete(
                         connector.execute(
-                            f"RENAME TABLE `{data['database']}`.`{data['name']}` TO `{data['database']}`.`{new_name.strip()}`"
+                            _rename_table_sql(
+                                engine,
+                                quote_qualified(data["name"], engine, data["database"]),
+                                data["name"],
+                                new_name.strip(),
+                                data["database"],
+                            )
                         )
                     )
                     item.setText(0, new_name.strip())

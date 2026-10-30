@@ -31,6 +31,7 @@ from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.i18n import t
 from open_navicat.services.connection_manager import connection_manager
 from open_navicat.services.metadata_service import metadata_service
+from open_navicat.sql.quoting import quote_identifier, quote_qualified
 
 _log = logging.getLogger(__name__)
 
@@ -77,32 +78,29 @@ class _TransferWorker(QThread):
         src_engine = getattr(src_info, "engine", "mysql") if src_info else "mysql"
         tgt_info = getattr(tgt, "_info", None)
         tgt_engine = getattr(tgt_info, "engine", "mysql") if tgt_info else "mysql"
-        sq = '"' if src_engine == "postgresql" else "`"
-        tq = '"' if tgt_engine == "postgresql" else "`"
 
         # 1. Get source structure
         if opts.get("structure", True):
-            from open_navicat.services.metadata_service import metadata_service
-
-            # Use connection_id-based approach if available, otherwise fallback
-            result = pool_loop.run_until_complete(
-                src.execute(
-                    f"SHOW CREATE TABLE {sq}{table}{sq}"
-                    if src_engine != "postgresql"
-                    else f"SELECT pg_get_tabledef('{table}')"
-                )
-            )
-            if result.rows and result.rows[0]:
-                ddl = result.rows[0][1] if src_engine != "postgresql" else result.rows[0][0]
+            ddl = self._source_ddl(src, table, src_engine)
+            if ddl:
+                self._ensure_target_schema(tgt, table, tgt_engine, errors)
                 if opts.get("drop_if_exists", False):
                     pool_loop.run_until_complete(
-                        tgt.execute(f"DROP TABLE IF EXISTS {tq}{table}{tq}")
+                        tgt.execute(
+                            f"DROP TABLE IF EXISTS {quote_qualified(table, tgt_engine)}"
+                        )
                     )
-                pool_loop.run_until_complete(tgt.execute(ddl))
+                created = pool_loop.run_until_complete(tgt.execute(ddl))
+                if not created.success:
+                    # Surface the database's own message instead of reporting
+                    # success for a table that was never created.
+                    errors.append(f"{table} structure: {created.error_message}")
+                    return
 
         # 2. Copy data
         if opts.get("data", True):
-            result = pool_loop.run_until_complete(src.execute(f"SELECT * FROM {sq}{table}{sq}"))
+            src_ref = quote_qualified(table, src_engine)
+            result = pool_loop.run_until_complete(src.execute(f"SELECT * FROM {src_ref}"))
             if not result.rows:
                 return
 
@@ -111,20 +109,83 @@ class _TransferWorker(QThread):
                 return
 
             batch_size = opts.get("batch_size", 1000)
-            placeholders = ", ".join(["%s"] * len(cols))
-            col_list = ", ".join(f"`{c}`" for c in cols)
-            insert_sql = f"INSERT INTO `{table}` ({col_list}) VALUES ({placeholders})"
+            tgt_ref = quote_qualified(table, tgt_engine)
+            col_list = ", ".join(quote_identifier(c, tgt_engine) for c in cols)
+            placeholders = self._placeholders(len(cols), tgt_engine)
+            insert_sql = f"INSERT INTO {tgt_ref} ({col_list}) VALUES ({placeholders})"
 
             if opts.get("truncate", False) and not opts.get("drop_if_exists", False):
-                pool_loop.run_until_complete(tgt.execute(f"TRUNCATE TABLE `{table}`"))
+                pool_loop.run_until_complete(
+                    tgt.execute(f"TRUNCATE TABLE {tgt_ref}")
+                )
 
             for start in range(0, len(result.rows), batch_size):
                 batch = result.rows[start : start + batch_size]
                 for row in batch:
                     try:
-                        pool_loop.run_until_complete(tgt.execute(insert_sql, list(row)))
+                        pool_loop.run_until_complete(
+                            tgt.execute(insert_sql, tuple(row))
+                        )
                     except Exception as e:
                         errors.append(f"{table} row insert: {e}")
+
+    @staticmethod
+    def _ensure_target_schema(
+        tgt, table: str, tgt_engine: str, errors: list[str]
+    ) -> None:
+        """Create the target schema a cross-schema table needs.
+
+        A table listed as ``sales.leads`` carries its schema in the name. The
+        target database may not have that schema, and executing the dumped
+        ``CREATE TABLE sales.leads`` then failed with ``模式 "sales" 不存在``
+        -- after the user had already been told the transfer succeeded. Creating
+        the schema up front is what makes a non-public object migratable at all.
+        """
+        schema, _, name = table.partition(".")
+        if not name or not schema:
+            return
+        if tgt_engine == "mysql" or tgt_engine == "mariadb":
+            # MySQL has no CREATE SCHEMA worth doing here: the database prefix
+            # is the schema, and it must already exist on the target server.
+            return
+        sql = f"CREATE SCHEMA IF NOT EXISTS {quote_identifier(schema, tgt_engine)}"
+        result = pool_loop.run_until_complete(tgt.execute(sql))
+        if not result.success and result.error_message:
+            errors.append(f"{schema} schema: {result.error_message}")
+
+    @staticmethod
+    def _placeholders(count: int, engine: str) -> str:
+        """Parameter placeholders in the target engine's own style.
+
+        PostgreSQL binds with ``$1, $2, ...`` and rejects MySQL's ``%s``, so a
+        cross-engine copy must not reuse one placeholder spelling everywhere.
+        """
+        if engine == "postgresql":
+            return ", ".join(f"${i + 1}" for i in range(count))
+        if engine in ("sqlserver",):
+            return ", ".join("?" for _ in range(count))
+        return ", ".join("%s" for _ in range(count))
+
+    def _source_ddl(self, src, table: str, src_engine: str) -> str:
+        """CREATE TABLE text for the source table, engine-appropriate.
+
+        PostgreSQL used ``pg_get_tabledef``, a pgAdmin helper that does not
+        exist in PostgreSQL, so structure copy always failed there. Route through
+        ``metadata_service``, which knows how to obtain the real DDL.
+        """
+        from open_navicat.services.metadata_service import metadata_service
+
+        if src_engine == "postgresql":
+            # `table` may be schema-qualified; the service splits it correctly.
+            return metadata_service.get_create_table_sql(
+                self._src_id, self._src_db, table
+            )
+        result = pool_loop.run_until_complete(
+            src.execute(f"SHOW CREATE TABLE {quote_qualified(table, src_engine)}")
+        )
+        if result.rows and result.rows[0] and len(result.rows[0]) > 1:
+            return str(result.rows[0][1])
+        return ""
 
 
 class DataTransferWidget(QWidget):

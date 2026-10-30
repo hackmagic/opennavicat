@@ -33,6 +33,7 @@ from open_navicat.errors import (
     QueryTimeoutError,
 )
 from open_navicat.models.query_result import QueryResult
+from open_navicat.sql.quoting import quote_qualified
 from open_navicat.utils.query_cache import query_cache
 
 _log = logging.getLogger(__name__)
@@ -368,22 +369,50 @@ class QueryEngine:
         return self.execute(connection_id, f"EXPLAIN {sql}")
 
     def explain_format_json(self, connection_id: str, sql: str) -> QueryResult:
-        """Run EXPLAIN FORMAT=JSON for detailed plan."""
-        return self.execute(connection_id, f"EXPLAIN FORMAT=JSON {sql}")
+        """Run EXPLAIN in the engine's own plan format.
+
+        ``EXPLAIN FORMAT=JSON`` is MySQL's spelling.  PostgreSQL rejects it
+        outright with *syntax error at or near "FORMAT"*, so the plan request
+        has to be engine-aware: PostgreSQL takes ``EXPLAIN (FORMAT JSON, ...)``
+        as an option list, and SQLite/SQL Server do not support JSON plans at
+        all, where falling back to plain ``EXPLAIN`` still gives the caller a
+        usable plan instead of a hard failure.
+        """
+        connector = connection_pool.get(connection_id)
+        info = getattr(connector, "_info", None) if connector else None
+        engine = getattr(info, "engine", "mysql") if info else "mysql"
+
+        if engine == "postgresql":
+            return self.execute(connection_id, f"EXPLAIN (FORMAT JSON, ANALYZE FALSE) {sql}")
+        if engine in ("mysql", "mariadb"):
+            return self.execute(connection_id, f"EXPLAIN FORMAT=JSON {sql}")
+        if engine == "sqlserver":
+            # SQL Server returns XML with SET SHOWPLAN; plain EXPLAIN is not a
+            # statement there at all.
+            return self.execute(connection_id, f"SET SHOWPLAN_XML ON; {sql}")
+        return self.explain(connection_id, sql)
 
     def count_rows(self, connection_id: str, database: str, table: str) -> int:
+        """Row count for ``table``, addressed the way each engine allows.
+
+        PostgreSQL cannot reference a table through its database (that is a
+        rejected cross-database reference); it qualifies by *schema*, so the
+        database argument is dropped and the name keeps any schema it carries.
+        """
         connector = connection_pool.get(connection_id)
         if connector is None:
             return 0
         info = getattr(connector, "_info", None)
         engine = getattr(info, "engine", "mysql") if info else "mysql"
         if engine == "postgresql":
-            q = '"'
-            sql = f"SELECT COUNT(*) FROM {q}{database}{q}.{q}{table}{q}"
+            ref = quote_qualified(table, engine)
+        elif engine in ("sqlite", "duckdb"):
+            ref = quote_qualified(table, engine)
         else:
             safe_db = database.replace("`", "``")
             safe_table = table.replace("`", "``")
-            sql = f"SELECT COUNT(*) FROM `{safe_db}`.`{safe_table}`"
+            ref = f"`{safe_db}`.`{safe_table}`"
+        sql = f"SELECT COUNT(*) FROM {ref}"
         result = _pool_loop().run_until_complete(connector.execute(sql))
         if result.success and result.rows:
             return result.rows[0][0]

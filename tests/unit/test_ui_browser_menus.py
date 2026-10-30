@@ -115,8 +115,10 @@ class TestMaintenanceSql:
     def test_postgresql_has_no_check_or_repair(self) -> None:
         assert _maintenance("postgresql", "check", "shop", "orders") is None
         assert _maintenance("postgresql", "repair", "shop", "orders") is None
-        assert _maintenance("postgresql", "analyze", "shop", "orders") == 'ANALYZE "shop"."orders"'
-        assert _maintenance("postgresql", "vacuum", "shop", "orders") == 'VACUUM (ANALYZE) "shop"."orders"'
+        # `shop` is the database, and PostgreSQL cannot address a table through
+        # its database, so the reference stays bare and search_path applies.
+        assert _maintenance("postgresql", "analyze", "shop", "orders") == 'ANALYZE "orders"'
+        assert _maintenance("postgresql", "vacuum", "shop", "orders") == 'VACUUM (ANALYZE) "orders"'
 
     def test_sqlite_analyze_and_reindex(self) -> None:
         assert _maintenance("sqlite", "analyze", "shop", "orders") == 'ANALYZE "orders"'
@@ -246,7 +248,7 @@ class TestDropObjects:
                 },
             )
         )
-        assert fake.executed == ['DROP TRIGGER IF EXISTS "trg_audit" ON "shop"."orders"']
+        assert fake.executed == ['DROP TRIGGER IF EXISTS "trg_audit" ON "orders"']
 
     def test_drop_trigger_without_table_is_refused(self, browser) -> None:
         widget, fake, boxes = browser
@@ -286,7 +288,7 @@ class TestMaintenanceDispatch:
         widget, fake, _ = browser
         fake._info = ConnectionInfo(id="c1", name="Fake", engine="postgresql")
         widget._maintenance("analyze", "orders", "c1", "shop")
-        assert fake.executed == ['ANALYZE "shop"."orders"']
+        assert fake.executed == ['ANALYZE "orders"']
 
     def test_unsupported_operation_warns_and_does_not_run_sql(self, browser) -> None:
         widget, fake, boxes = browser

@@ -93,7 +93,11 @@ class TestTableRef:
         "engine,expected",
         [
             ("mysql", "`app`.`users`"),
-            ("postgresql", '"app"."users"'),
+            # PostgreSQL has no cross-database references: a statement naming
+            # "app"."users" is rejected with 'cross-database references are not
+            # implemented'. Only schemas qualify, and `database` is not one, so
+            # a bare name stays bare and resolves through search_path.
+            ("postgresql", '"users"'),
             ("sqlserver", "[app].[users]"),
             ("clickhouse", "`app`.`users`"),
             ("sqlite", '"app"."users"'),
@@ -101,6 +105,11 @@ class TestTableRef:
     )
     def test_qualified_quoting(self, engine, expected) -> None:
         assert table_ref("users", engine, "app") == expected
+
+    def test_postgresql_uses_a_schema_from_the_name_not_the_database(self) -> None:
+        """A schema-qualified name is honoured; the database name is ignored."""
+        assert table_ref("public.users", "postgresql", "app") == '"public"."users"'
+        assert table_ref("sales.orders", "postgresql", "app") == '"sales"."orders"'
 
     def test_no_database(self) -> None:
         assert table_ref("users", "mysql") == "`users`"

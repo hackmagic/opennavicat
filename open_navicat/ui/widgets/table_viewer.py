@@ -958,21 +958,29 @@ class TableViewerWidget(QWidget):
         return f"[BLOB {_fmt_bytes(size)}]"
 
     def _fetch_column_types(self) -> dict[str, str]:
-        """Fetch column data types from information_schema."""
+        """Column name -> data type for the type icons in the header.
+
+        Read through ``get_table_info`` rather than ``information_schema``
+        directly: that query used ``TABLE_SCHEMA = %s``, which is MySQL's
+        spelling.  PostgreSQL keys columns by *schema*, has no
+        ``information_schema`` column of that name shaped that way, and binds
+        parameters as ``$1`` instead of ``%s`` -- so the query silently returned
+        nothing and every header lost its type icon.  The connector method is
+        already engine-correct, so going through it works everywhere.
+        """
         connector = connection_pool.get(self._connection_id)
         if not connector:
             return {}
         try:
-            sql = (
-                "SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS "
-                "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION"
+            info = pool_loop.run_until_complete(
+                connector.get_table_info(self._database, self._table)
             )
-            result = pool_loop.run_until_complete(
-                connector.execute(sql, (self._database, self._table))
-            )
-            return {row[0]: row[1].lower() for row in (result.rows or [])}
-        except Exception:
+        except Exception:  # noqa: BLE001 - type icons are cosmetic
             return {}
+        return {
+            column.name: (column.data_type or "").lower()
+            for column in (info.columns or [])
+        }
 
     def _type_icon(self, dtype: str) -> str:
         """Return a short type icon for a column data type."""
@@ -1380,41 +1388,43 @@ class TableViewerWidget(QWidget):
         self._load_page()
 
     def _add_row(self) -> None:
-        """Insert a new blank row into the table, then reload."""
+        """Insert one row filled with explicit defaults, then reload.
+
+        Every value is an explicit ``NULL``: an empty column list (``() VALUES ()``)
+        is a MySQL spelling that PostgreSQL, SQL Server and Oracle all reject,
+        and letting the server apply defaults would not be "a blank row" either.
+        The column list comes from table metadata so this works on every engine.
+        """
         connector = connection_pool.get(self._connection_id)
         if not connector:
             return
 
-        # Build INSERT with default values — insert one row with no columns specified
-        sql = f"INSERT INTO `{self._database}`.`{self._table}` () VALUES ()"
+        engine = self._engine()
+        try:
+            info = pool_loop.run_until_complete(
+                connector.get_table_info(self._database, self._table)
+            )
+        except Exception as exc:  # noqa: BLE001 - surface the engine's own message
+            self._status_msg.setText(t("table_viewer.add_row_failed", error=exc))
+            return
+
+        if not info.columns:
+            self._status_msg.setText(t("table_viewer.add_row_failed", error="no columns"))
+            return
+
+        columns = [c.name for c in info.columns]
+        literals = ", ".join(quote_literal(None, engine) for _ in columns)
+        col_list = ", ".join(quote_identifier(c, engine) for c in columns)
+        sql = f"INSERT INTO {self._table_ref()} ({col_list}) VALUES ({literals})"
+
         try:
             result = pool_loop.run_until_complete(connector.execute(sql))
             if result.insert_id:
                 self._status_msg.setText(t("table_viewer.inserted_row", id=result.insert_id))
-            # Reload to show the new row
             self._current_page = 0
             self._load_page()
-        except Exception:
-            # If bare INSERT fails (e.g. NOT NULL columns), use a smarter approach:
-            # get column names and insert with NULL/defaults for each
-            try:
-                info_sql = (
-                    "SELECT COLUMN_NAME FROM information_schema.COLUMNS "
-                    "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s "
-                    "ORDER BY ORDINAL_POSITION"
-                )
-                rows = pool_loop.run_until_complete(
-                    connector._fetch_all(info_sql, (self._database, self._table))
-                )
-                cols = [r[0] for r in rows]
-                placeholders = ", ".join(["NULL"] * len(cols))
-                col_names = ", ".join(f"`{c}`" for c in cols)
-                sql2 = f"INSERT INTO `{self._database}`.`{self._table}` ({col_names}) VALUES ({placeholders})"
-                pool_loop.run_until_complete(connector.execute(sql2))
-                self._current_page = 0
-                self._load_page()
-            except Exception as e2:
-                self._status_msg.setText(t("table_viewer.add_row_failed", error=e2))
+        except Exception as exc:  # noqa: BLE001 - surface the engine's own message
+            self._status_msg.setText(t("table_viewer.add_row_failed", error=exc))
 
     def _delete_selected(self) -> None:
         """Delete the selected rows, addressed by primary key.
@@ -1671,25 +1681,20 @@ class TableViewerWidget(QWidget):
 
         self._status_msg.setText(t("table_viewer.generating_data"))
         try:
-            # Get table info for schema
-            info_sql = "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, COLUMN_COMMENT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s ORDER BY ORDINAL_POSITION"
-            rows = pool_loop.run_until_complete(
-                connector._fetch_all(info_sql, (self._database, self._table))
-            )
-            from open_navicat.models.table_schema import ColumnInfo, TableInfo
+            # Column metadata comes from the connector: the information_schema
+            # query this used to run named MySQL-only columns (COLUMN_TYPE,
+            # EXTRA, COLUMN_COMMENT) and keyed by TABLE_SCHEMA = %s, so on
+            # PostgreSQL it returned nothing and the generator saw no columns.
+            from open_navicat.models.table_schema import TableInfo
 
-            table_info = TableInfo(name=self._table, database=self._database)
-            for r in rows:
-                table_info.columns.append(
-                    ColumnInfo(
-                        name=r[0],
-                        data_type=r[1],
-                        nullable=(r[2] == "YES"),
-                        default=r[3],
-                        is_auto_increment="auto_increment" in (r[4] or ""),
-                        comment=r[5] or "",
-                    )
+            table_info = pool_loop.run_until_complete(
+                connector.get_table_info(self._database, self._table)
+            )
+            if not isinstance(table_info, TableInfo) or not table_info.columns:
+                self._status_msg.setText(
+                    t("table_viewer.generate_error", error="no column metadata")
                 )
+                return
 
             # Use pattern-based generator (fast, no AI needed)
             from open_navicat.services.data_generator import data_generator
@@ -1712,38 +1717,46 @@ class TableViewerWidget(QWidget):
     # ---- new toolbar actions ----
 
     def _show_table_profile(self) -> None:
-        """Show table metadata: engine, row count, data size, indexes, etc."""
+        """Show table metadata: engine, row count, data size, indexes, etc.
+
+        Built from the connector's engine-neutral ``TableInfo`` rather than a
+        hand-written ``information_schema.TABLES`` query.  That query named
+        MySQL-only columns (``ENGINE``, ``TABLE_ROWS``, ``TABLE_COLLATION``,
+        ``TABLE_COMMENT``) which PostgreSQL does not expose under those names,
+        so on PostgreSQL the whole dialog collapsed to "unavailable".
+        """
         connector = connection_pool.get(self._connection_id)
         if not connector:
             return
         try:
-            sql = (
-                "SELECT TABLE_NAME, ENGINE, TABLE_ROWS, DATA_LENGTH, INDEX_LENGTH, "
-                "CREATE_TIME, UPDATE_TIME, TABLE_COLLATION, TABLE_COMMENT "
-                "FROM information_schema.TABLES "
-                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s"
+            info = pool_loop.run_until_complete(
+                connector.get_table_info(self._database, self._table)
             )
-            r = pool_loop.run_until_complete(connector.execute(sql, (self._database, self._table)))
-            if not r.rows:
+            if info is None:
                 QMessageBox.information(
                     self, t("table_viewer.table_info"), t("table_viewer.table_info_unavailable")
                 )
                 return
-            row = r.rows[0]
             dlg = QDialog(self)
             dlg.setWindowTitle(t("table_viewer.table_info_title", table=self._table))
             dlg.resize(450, 300)
             layout = QVBoxLayout(dlg)
             items = [
-                (t("table_viewer.profile.table_name"), row[0]),
-                (t("table_viewer.profile.engine"), row[1] or "—"),
-                (t("table_viewer.profile.row_count"), f"{row[2]:,}" if row[2] is not None else "—"),
-                (t("table_viewer.profile.data_size"), _fmt_bytes(row[3]) if row[3] else "—"),
-                (t("table_viewer.profile.index_size"), _fmt_bytes(row[4]) if row[4] else "—"),
-                (t("table_viewer.profile.create_time"), str(row[5] or "—")),
-                (t("table_viewer.profile.update_time"), str(row[6] or "—")),
-                (t("table_viewer.profile.collation"), row[7] or "—"),
-                (t("table_viewer.profile.comment"), row[8] or "—"),
+                (t("table_viewer.profile.table_name"), info.name),
+                (t("table_viewer.profile.engine"), info.engine or "—"),
+                (
+                    t("table_viewer.profile.row_count"),
+                    f"{info.row_count:,}" if info.row_count else "—",
+                ),
+                (
+                    t("table_viewer.profile.data_size"),
+                    _fmt_bytes(info.data_length) if info.data_length else "—",
+                ),
+                (t("table_viewer.profile.index_size"), "—"),
+                (t("table_viewer.profile.create_time"), str(info.create_time or "—")),
+                (t("table_viewer.profile.update_time"), str(info.update_time or "—")),
+                (t("table_viewer.profile.collation"), info.collation or "—"),
+                (t("table_viewer.profile.comment"), info.comment or "—"),
             ]
             for label, val in items:
                 row_w = QHBoxLayout()
@@ -2140,8 +2153,9 @@ class TableViewerWidget(QWidget):
         layout = QVBoxLayout(dlg)
         tabs = QTabWidget(dlg)
 
+        engine = self._engine()
         try:
-            db_table = f"`{self._database}`.`{self._table}`"
+            db_table = self._table_ref()
 
             # ── Tab 1: Overview ──
             overview = QTableWidget(tabs)
@@ -2151,20 +2165,20 @@ class TableViewerWidget(QWidget):
             stats_sql = f"SELECT COUNT(*) as total FROM {db_table}"
             pool_loop.run_until_complete(connector.execute(stats_sql))
 
-            # Per-column stats via information_schema
-            info_sql = (
-                "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, "
-                "CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE "
-                "FROM information_schema.COLUMNS "
-                "WHERE TABLE_SCHEMA=%s AND TABLE_NAME=%s "
-                "ORDER BY ORDINAL_POSITION"
-            )
-            col_meta = pool_loop.run_until_complete(
-                connector.execute(info_sql, (self._database, self._table))
-            )
-            col_types = {}
-            for r in col_meta.rows or []:
-                col_types[r[0]] = r[1].lower() if r[1] else "text"
+            # Per-column types come from table metadata.  This used to query
+            # information_schema with ``TABLE_SCHEMA = %s``, which is MySQL's
+            # spelling: PostgreSQL keys columns by schema, not database, and
+            # binds with ``$1``, so the analysis pane lost every column type
+            # (and the numeric detectors below with them).
+            col_types: dict[str, str] = {}
+            try:
+                table_info = pool_loop.run_until_complete(
+                    connector.get_table_info(self._database, self._table)
+                )
+                for column in table_info.columns or []:
+                    col_types[column.name] = (column.data_type or "text").lower()
+            except Exception as exc:  # noqa: BLE001 - analysis is best effort
+                _log.debug("column metadata unavailable for %s: %s", self._table, exc)
 
             # Build column stats
             overview.setColumnCount(6)
@@ -2190,12 +2204,23 @@ class TableViewerWidget(QWidget):
                 "double",
                 "decimal",
                 "real",
+                "numeric",
+                "int2",
+                "int4",
+                "int8",
+                "smallserial",
+                "serial",
+                "bigserial",
             }
             data = []
             for i, col_name in enumerate(self._loaded_column_names):
                 dtype = col_types.get(col_name, "text")
+                quoted_col = quote_identifier(col_name, engine)
                 try:
-                    q = f"SELECT COUNT(*), COUNT(`{col_name}`), COUNT(DISTINCT `{col_name}`) FROM {db_table}"
+                    q = (
+                        f"SELECT COUNT(*), COUNT({quoted_col}), "
+                        f"COUNT(DISTINCT {quoted_col}) FROM {db_table}"
+                    )
                     r = pool_loop.run_until_complete(connector.execute(q))
                     if r.rows:
                         cnt, nonnull, distinct = r.rows[0]
@@ -2210,7 +2235,10 @@ class TableViewerWidget(QWidget):
 
                         # Numeric stats
                         if dtype in numeric_types and nonnull and nonnull > 0:
-                            q2 = f"SELECT MIN(`{col_name}`), MAX(`{col_name}`), AVG(`{col_name}`) FROM {db_table}"
+                            q2 = (
+                                f"SELECT MIN({quoted_col}), MAX({quoted_col}), "
+                                f"AVG({quoted_col}) FROM {db_table}"
+                            )
                             r2 = pool_loop.run_until_complete(connector.execute(q2))
                             if r2.rows and r2.rows[0][0] is not None:
                                 overview.setColumnCount(9)
@@ -2247,14 +2275,16 @@ class TableViewerWidget(QWidget):
             freq_tab.setStyleSheet(overview.styleSheet())
             tabs.addTab(freq_tab, t("table_viewer.value_distribution"))
 
-            freq_parts: list[list[str]] = []
+            freq_parts: list[str] = []
             for col_name in self._loaded_column_names:
+                quoted_col = quote_identifier(col_name, engine)
                 try:
                     q = (
-                        f"SELECT `{col_name}`, COUNT(*) as cnt FROM {db_table} "
-                        f"WHERE `{col_name}` IS NOT NULL "
-                        f"GROUP BY `{col_name}` ORDER BY cnt DESC LIMIT 10"
-                    )
+                        f"SELECT {quoted_col}, COUNT(*) as cnt FROM {db_table} "
+                        f"WHERE {quoted_col} IS NOT NULL "
+                        f"GROUP BY {quoted_col} ORDER BY cnt DESC "
+                        f"{limit_clause(10, 0, engine)}"
+                    ).strip()
                     r = pool_loop.run_until_complete(connector.execute(q))
                     if r.rows:
                         freq_parts.append(f"── {col_name} ──")

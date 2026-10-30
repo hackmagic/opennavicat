@@ -141,7 +141,20 @@ class LocalConfigDB:
     # ---- connection CRUD ----
 
     def save_connection(self, info: ConnectionInfo) -> None:
+        """Insert or update one connection profile.
+
+        The key is the *name*, not just the id.  ``ConnectionInfo.id`` is
+        generated randomly per instance, so re-running ``conn add`` with the
+        same name produced a brand-new row every time and the profile list
+        grew without bound (one local database accumulated 200+ duplicate
+        "w" entries).  Updating by name makes "add" mean "save", which is what
+        the command reads as.
+        """
         conn = self._connect()
+        existing = conn.execute(
+            "SELECT id FROM connections WHERE name = ?", (info.name,)
+        ).fetchone()
+        connection_id = existing[0] if existing else info.id
         conn.execute(
             """INSERT OR REPLACE INTO connections
                (id, name, engine, host, port, user, password, database, charset,
@@ -149,7 +162,7 @@ class LocalConfigDB:
                 use_ssl, ssl_ca, ssl_cert, ssl_key, color, conn_group)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                info.id,
+                connection_id,
                 info.name,
                 info.engine or "mysql",
                 info.host,

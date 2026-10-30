@@ -141,7 +141,11 @@ def show_schema(
         ddl_sql = metadata_service.get_create_table_sql(cid, database, table_name)
         if ddl_sql:
             console.print("\n[bold]DDL:[/bold]")
-            console.print(Syntax(beautify(ddl_sql), "sql", theme="monokai", word_wrap=True))
+            # No word_wrap: a CREATE TABLE is meant to be copied, and wrapping it
+            # into a narrow ribbon makes the statement unreadable and unpasteable.
+            console.print(Syntax(beautify(ddl_sql), "sql", theme="monokai", word_wrap=False))
+        else:
+            console.print("[yellow]No DDL available for this object[/yellow]")
 
 
 @schema_app.command("create")

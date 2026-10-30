@@ -64,8 +64,52 @@ def quote_identifier(name: str | None, engine: str = "mysql") -> str:
     return '"' + text.replace('"', '""') + '"'
 
 
+def _quote_postgresql_qualified(name: str | None, engine: str) -> str:
+    """Render a PostgreSQL object reference, database prefix stripped.
+
+    PostgreSQL has no cross-database references: a statement naming
+    ``"mydb"."table"`` is rejected outright with *"cross-database references are
+    not implemented"*.  Objects are qualified by **schema** instead, so the
+    ``database`` argument is meaningless here and must be dropped.
+
+    A name that already carries a schema is rendered ``"schema"."table"``, which
+    is what makes objects outside the default schema addressable.  A *bare*
+    name is deliberately left unqualified: PostgreSQL resolves unqualified
+    names through ``search_path`` (typically ``"$user", public``), so pinning
+    ``"public"."table"`` would break every table a connection legitimately
+    reaches through a custom or per-user search path.  Prepending ``public``
+    was measured on PostgreSQL 18.6 to turn a working
+    ``select * from "custom_t"`` into *relation "public.custom_t" does not
+    exist*, which is why the bare-name shape is preserved unchanged.
+
+    Only the first ``.`` is treated as the separator: it is the schema/table
+    boundary, and any further dots belong to the (unusual) table name itself.
+    ``None`` and the empty string are bare names, so they keep the historical
+    ``""`` rendering and this function stays total (callers pass unvalidated
+    tree-node labels straight in).
+    """
+    text = str(name or "")
+    schema, separator, table = text.partition(".")
+    if not separator:
+        # Bare name: keep it unqualified so search_path still applies.
+        return quote_identifier(text, engine)
+    return f"{quote_identifier(schema, engine)}.{quote_identifier(table, engine)}"
+
+
 def quote_qualified(name: str | None, engine: str = "mysql", database: str | None = None) -> str:
-    """Quote a possibly-qualified name, quoting each part separately."""
+    """Quote a possibly-qualified name, quoting each part separately.
+
+    ``database`` is only a *database* qualifier on engines that have one
+    (MySQL, SQL Server, ...), where ``db.table`` is valid and often required.
+    PostgreSQL resolves objects through schemas and rejects a database prefix,
+    so it takes a dedicated branch: ``database`` is ignored entirely and any
+    schema is taken from ``name`` itself (see
+    :func:`_quote_postgresql_qualified`).  Every other engine keeps the
+    historical ``if database:`` short-circuit unchanged, because moving them
+    would silently retarget statements on those servers.
+    """
+    if normalize_engine(engine) == "postgresql":
+        return _quote_postgresql_qualified(name, engine)
     if database:
         return f"{quote_identifier(database, engine)}.{quote_identifier(name, engine)}"
     text = str(name or "")

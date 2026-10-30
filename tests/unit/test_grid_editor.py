@@ -79,7 +79,9 @@ class TestQuotingPerEngine:
         "engine,expected",
         [
             ("mysql", "UPDATE `app`.`users` SET `email` = %s WHERE `id` = %s"),
-            ("postgresql", 'UPDATE "app"."users" SET "email" = %s WHERE "id" = %s'),
+            # PostgreSQL rejects a database qualifier outright, so `database`
+            # is dropped and a bare table name stays bare (search_path applies).
+            ("postgresql", 'UPDATE "users" SET "email" = %s WHERE "id" = %s'),
             ("sqlserver", "UPDATE [app].[users] SET [email] = %s WHERE [id] = %s"),
             ("clickhouse", "UPDATE `app`.`users` SET `email` = %s WHERE `id` = %s"),
         ],
@@ -113,7 +115,9 @@ class TestCompositeKeys:
             key_values={"tenant_id": 9, "id": 3},
         )
         preview = build_delete(change, "postgresql")
-        assert preview.sql == ('DELETE FROM "sales"."orders" WHERE "tenant_id" = %s AND "id" = %s')
+        # `sales` is the database here, and PostgreSQL cannot address a table
+        # through its database, so the reference stays bare.
+        assert preview.sql == ('DELETE FROM "orders" WHERE "tenant_id" = %s AND "id" = %s')
         assert preview.params == (9, 3)
 
     def test_extra_safety_predicate_is_appended(self) -> None:

@@ -71,7 +71,10 @@ class TestIdentifiers:
 
 class TestQualifiedNames:
     def test_database_and_name(self) -> None:
-        assert quote_qualified("users", "postgresql", "app") == '"app"."users"'
+        # A database qualifier is only meaningful on engines that actually have
+        # cross-database references; PostgreSQL is covered by its own class
+        # below, where the same call must NOT produce this reference.
+        assert quote_qualified("users", "mysql", "app") == "`app`.`users`"
 
     def test_no_database_means_no_prefix(self) -> None:
         assert quote_qualified("users", "mysql", None) == "`users`"
@@ -79,6 +82,125 @@ class TestQualifiedNames:
 
     def test_already_dotted_name_is_split(self) -> None:
         assert quote_qualified("sales.orders", "mysql") == "`sales`.`orders`"
+
+
+class TestPostgreSQLSchemaQualification:
+    """PostgreSQL qualifies objects by SCHEMA; ``database`` is not a schema.
+
+    Emitting ``"alpha"."orders"`` for a PostgreSQL connection made the server
+    reject the statement with *ERROR: cross-database references are not
+    implemented: "alpha.orders"*, which left the Table List empty.  These tests
+    pin the schema-based contract from the shared bug contract (revision 2).
+
+    Two halfs matter equally: a schema-carrying name keeps its schema so non-
+    default objects stay addressable, while a *bare* name must stay unqualified
+    so PostgreSQL still resolves it through ``search_path``.  Pinning
+    ``"public"."table"`` was measured to break tables reached via a custom or
+    ``"$user"`` search path, so that is guarded against explicitly.
+    """
+
+    def test_bare_name_stays_unqualified(self) -> None:
+        # No schema in the name => leave it bare so search_path still applies.
+        assert quote_qualified("orders", "postgresql", "alpha") == '"orders"'
+
+    def test_database_is_ignored_for_bare_names(self) -> None:
+        assert quote_qualified("orders", "postgresql", None) == '"orders"'
+        assert quote_qualified("orders", "postgresql", "") == '"orders"'
+
+    def test_explicit_schema_is_preserved(self) -> None:
+        assert (
+            quote_qualified("reporting.hidden_table", "postgresql", "alpha")
+            == '"reporting"."hidden_table"'
+        )
+
+    def test_explicit_schema_never_gets_public_prepended(self) -> None:
+        qualified = quote_qualified("reporting.hidden_table", "postgresql", "alpha")
+        assert qualified == '"reporting"."hidden_table"'
+        assert "public" not in qualified
+
+    def test_bare_name_never_gets_public_prepended(self) -> None:
+        # The search_path regression: a bare name must not be pinned to public.
+        for name in ("orders", "users", "hp_table", "custom_t"):
+            qualified = quote_qualified(name, "postgresql", "alpha")
+            assert qualified == quote_identifier(name, "postgresql")
+            assert "public" not in qualified
+
+    def test_only_the_first_dot_is_the_schema_boundary(self) -> None:
+        # PostgreSQL cannot represent a dot inside an unquoted name, so the
+        # remaining dots stay part of the table identifier.
+        assert quote_qualified("sales.2026.orders", "postgresql", "alpha") == (
+            '"sales"."2026.orders"'
+        )
+
+    def test_database_name_no_longer_appears_in_output(self) -> None:
+        # The regression that caused the bug: the reference used to be
+        # `"alpha"."orders"`, which PostgreSQL rejects.  Whatever the shape,
+        # the database name must never survive into the emitted reference.
+        for name in ("orders", "reporting.hidden_table", "reporting.orders"):
+            assert "alpha" not in quote_qualified(name, "postgresql", "alpha")
+
+    def test_old_cross_database_form_is_gone(self) -> None:
+        # Exact byte-level regression against the pre-fix output.
+        assert quote_qualified("orders", "postgresql", "alpha") != '"alpha"."orders"'
+
+    def test_empty_name_does_not_crash(self) -> None:
+        # No dot, so the bare-name rule applies and the historical rendering is
+        # preserved; the point is that the call stays total on a bad label.
+        assert quote_qualified(None, "postgresql", "alpha") == '""'
+        assert quote_qualified("", "postgresql", None) == '""'
+        assert quote_qualified("", "postgresql", "") == '""'
+
+    def test_engine_is_case_insensitive(self) -> None:
+        assert quote_qualified("orders", "PostgreSQL", "alpha") == '"orders"'
+        assert (
+            quote_qualified("reporting.hidden_table", "POSTGRESQL", "alpha")
+            == '"reporting"."hidden_table"'
+        )
+
+    def test_embedded_quote_in_a_part_is_escaped(self) -> None:
+        assert quote_qualified('reporting.we"ird', "postgresql", "alpha") == (
+            '"reporting"."we""ird"'
+        )
+
+    @pytest.mark.parametrize(
+        "engine,expected",
+        [
+            ("mysql", "`alpha`.`orders`"),
+            ("mariadb", "`alpha`.`orders`"),
+            ("duckdb", "`alpha`.`orders`"),
+            ("clickhouse", "`alpha`.`orders`"),
+            ("sqlite", '"alpha"."orders"'),
+            ("sqlserver", "[alpha].[orders]"),
+            ("oracle", '"alpha"."orders"'),
+        ],
+    )
+    def test_other_engines_keep_the_database_qualifier(self, engine: str, expected: str) -> None:
+        # Guards the blast radius: the PostgreSQL branch must not leak into any
+        # other engine, whose servers DO accept ``database.table``.
+        assert quote_qualified("orders", engine, "alpha") == expected
+
+    @pytest.mark.parametrize(
+        "engine,expected",
+        [
+            ("mysql", "`orders`"),
+            ("mariadb", "`orders`"),
+            ("duckdb", "`orders`"),
+            ("clickhouse", "`orders`"),
+            ("sqlite", '"orders"'),
+            ("sqlserver", "[orders]"),
+            ("oracle", '"orders"'),
+        ],
+    )
+    def test_other_engines_unchanged_without_database(self, engine: str, expected: str) -> None:
+        # Without a database the other engines never gained a PostgreSQL-style
+        # ``public`` prefix either.
+        assert quote_qualified("orders", engine, None) == expected
+        assert quote_qualified("orders", engine, "") == expected
+
+    def test_other_engine_dotted_database_qualifier_still_unsplit(self) -> None:
+        # Non-PostgreSQL engines keep today's exact treatment of a dotted name
+        # when a database is supplied: the whole name is one identifier.
+        assert quote_qualified("sales.orders", "sqlserver", "alpha") == "[alpha].[sales.orders]"
 
 
 class TestLiterals:

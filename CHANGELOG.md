@@ -6,6 +6,76 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and this proj
 
 ---
 
+## [0.9.1] — 2026-10-30
+
+PostgreSQL was the least-tested engine and it showed: a table list could render
+empty while the database was full, and a structure copy could report success
+without creating a single table. All of this was found by running every feature
+against a live PostgreSQL 18.6 rather than by reading code.
+
+### Fixed
+
+**PostgreSQL metadata (the reported empty table list)**
+
+- `list_tables` / `list_views` / `list_routines` / `list_triggers` ignored the
+  `database` argument and always read the pool's own database, so every node in
+  the object tree showed the same list. They now open a session per target
+  database and read the correct catalogs.
+- Only schema `public` was visible. All non-system schemas are listed now, and
+  objects outside `public` are shown as `schema.name`.
+- `list_tables_with_info` was not overridden, so the Table List grid rendered
+  blank metadata. It now reports real on-disk size (`pg_total_relation_size`)
+  and access method (`pg_am`).
+- `get_table_info` hard-coded schema `public`. It accepts `schema.table` and
+  resolves a bare name server-side through `search_path` via `to_regclass`.
+
+**Cross-database references**
+
+- `quote_qualified` emitted `"database"."table"` for PostgreSQL, which the
+  server rejects outright (*cross-database references are not implemented*).
+  PostgreSQL now qualifies by schema only; every other engine is byte-identical.
+- A **bare** name is deliberately left unqualified: forcing `"public"` was
+  measured to break tables reached through a custom or `"$user"` search_path.
+
+**Queries and DDL**
+
+- `execute_many` raised `AttributeError: 'NoneType' object has no attribute
+  'split'` on every call: asyncpg's `executemany` returns `None`, not a command
+  tag. Bulk writes were reported as failed after succeeding.
+- Multi-statement DDL could not be executed at all — `prepare()` rejects it with
+  *cannot insert multiple commands into a prepared statement*. Add a
+  quote/comment/dollar-quote-aware splitter and route scripts to the simple-query
+  protocol. This is what made structure copy and pg_dump output usable.
+- `EXPLAIN FORMAT=JSON` is MySQL-only syntax; PostgreSQL answered *syntax error
+  at or near "FORMAT"*. Plans are now requested in each engine's own spelling.
+- `get_create_table_sql` called `pg_get_tabledef`, a pgAdmin helper that does
+  **not exist** in PostgreSQL, so "copy DDL" always yielded a placeholder
+  comment. It now uses `pg_dump` (with the table's owned sequences, which a
+  `-t name` pattern alone omits) and rebuilds from the catalog as a fallback.
+
+**Data and metadata correctness**
+
+- Foreign-key actions were always reported as `NO ACTION`: PostgreSQL's
+  `"char"` columns come back from asyncpg as **bytes** (`b'c'`), which matched
+  no lookup key. `ON DELETE CASCADE` now reads correctly.
+- Row counts showed 0 for any table that had never been `ANALYZE`d
+  (`reltuples = -1`). Unanalyzed tables now fall back to a real `COUNT(*)`.
+- Cross-schema copies failed with *schema "sales" does not exist*; the target
+  schema is created first. A failed structure copy is now reported instead of
+  silently counting as success.
+
+**Other**
+
+- `conn add` with an existing name created a new row every run, because
+  profiles were keyed by a randomly generated id. Saving is now keyed by name;
+  one local database had accumulated 189 duplicate entries.
+
+### Changed
+
+- Optional drivers and `paramiko`/`cryptography` are imported lazily, so a CLI
+  invocation no longer loads every connector it does not use
+  (`import open_navicat.dal`: 0.114 s, zero heavy drivers loaded).
+
 ## [0.9.0] — 2026-10-18
 
 > Note: the MongoDB/Redis work below was previously listed under `[0.8.0]`, but

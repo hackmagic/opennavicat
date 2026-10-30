@@ -8,7 +8,7 @@ Supports MySQL, MariaDB, and more.
 
 from __future__ import annotations
 
-__version__ = "0.9.0"
+__version__ = "0.9.1"
 __app_name__ = "OpenNavicat"
 __org_name__ = "OpenNavicat"
 __author__ = "hackmagic"
