@@ -1,43 +1,27 @@
 name: Publish to PyPI
 
-# How this gets triggered matters more than it looks.
+# Manual escape hatch only.
 #
-# `release: published` alone did NOT work: the Release is created by
-# release.yml using the repository's GITHUB_TOKEN, and GitHub deliberately
-# suppresses workflow runs caused by that token, to stop infinite recursion. So
-# this workflow never ran, and PyPI stayed on an old release no matter how many
-# tags were pushed.
+# The real publishing path lives in release.yml (`pypi` and `docker` jobs,
+# which run after the Release is created). This workflow stays for the case
+# where a release needs to be re-published without cutting a new tag.
 #
-# release.yml now calls this workflow directly over `workflow_call`, which does
-# not depend on the event at all. `release` and `workflow_dispatch` stay for
-# manual runs and for a Release created by a human in the UI.
+# History worth keeping in mind before "simplifying" it back:
+#   * `release: published` never fired, because the Release is created by
+#     release.yml using GITHUB_TOKEN and GitHub suppresses runs caused by that
+#     token.
+#   * A `workflow_call` indirection from release.yml aborted with a logless
+#     `startup_failure`, so publishing could not be observed or debugged.
+#   * PYPI_API_TOKEN is scoped to the environment of the same name; a job only
+#     receives an environment's secrets when it declares that environment.
 on:
-  workflow_call:
-    inputs:
-      tag:
-        description: "Release tag being published (e.g. v0.9.4)"
-        required: false
-        type: string
-    # Must be declared even though the real value comes from the environment:
-    # a reusable workflow that references an undeclared secret fails to load,
-    # and releasing release.yml reported only "startup_failure" with no logs.
-    # Required: false keeps it optional for callers that cannot see an
-    # environment-scoped value; the job's `environment:` supplies it at runtime.
-    secrets:
-      PYPI_API_TOKEN:
-        required: false
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (e.g. v0.9.4)"
+        description: "Release tag to publish (e.g. v0.9.6)"
         required: false
         type: string
 
-# Declared at the top level, not inside `workflow_call`: a called workflow is
-# capped by the caller's permissions, and the publish job needs
-# `id-token: write` while the docker job needs `packages: write`.
 permissions:
   contents: read
   packages: write
@@ -71,12 +55,9 @@ jobs:
     name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
-    # The PYPI_API_TOKEN secret lives in the environment of the same name, not
-    # at repository level. A job only receives an environment's secrets when it
-    # declares that environment, so without this line `secrets.PYPI_API_TOKEN`
-    # resolved to an empty string and every upload failed authentication.
     environment: PYPI_API_TOKEN
     permissions:
+      contents: read
       id-token: write
     steps:
       - name: Download dist artifacts
@@ -117,18 +98,12 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # Target repository is required: without it metadata-action falls back
-          # to the Docker Hub "library/..." namespace, which this token cannot
-          # push to, and the build failed with
-          # 401 "access token has insufficient scopes".
+          # `images` is required; otherwise the action targets Docker Hub's
+          # `library/...` namespace, which this token cannot push to.
           images: ghcr.io/${{ github.repository }}
-          # Prefer the tag this build is publishing; fall back to the git ref so
-          # a workflow_call run (where github.ref is a branch) still gets a
-          # useful image tag instead of an empty one.
           tags: |
             type=semver,pattern={{version}},value=${{ inputs.tag || github.ref_name }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag || github.ref_name }}
-            type=raw,value=latest,enable=${{ github.ref_name == 'master' || startsWith(github.ref_name, 'v') }}
 
       - name: Build and push
         uses: docker/build-push-action@v6

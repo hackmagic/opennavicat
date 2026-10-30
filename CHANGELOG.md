@@ -6,20 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and this proj
 
 ---
 
-## [0.9.6] - 2026-10-30
+## [0.9.7] - 2026-10-30
 
-### Fixed
+### Changed
 
-- **GHCR image build pointed at the wrong registry.** The `images:` input
-  was dropped from the docker/metadata-action block, so it defaulted to the
-  Docker Hub `library/...` namespace and the push failed with 401
-  "access token has insufficient scopes".
-- **The reusable publish workflow failed to load.** It referenced
-  `secrets.PYPI_API_TOKEN` without declaring it under `workflow_call`, so
-  `release.yml` aborted with a logless `startup_failure`.
+- **PyPI publishing now runs inside the release workflow.** Every attempt to
+  chain it (`release: published`, then `workflow_call`) failed: the former
+  never fired because the Release is created with `GITHUB_TOKEN` (whose
+  triggered runs GitHub suppresses), and the latter aborted with a logless
+  `startup_failure`. The `pypi` and `docker` jobs are now inline in
+  `release.yml`, so a tag push publishes end to end in one observable run.
+  `publish.yml` remains only as a manual re-publish escape hatch.
 
-0.9.4 is confirmed live on PyPI (wheel and sdist), which verifies the
-environment-scoped token fix.
+0.9.4 is confirmed live on PyPI (wheel and sdist), which verifies that the
+environment-scoped token was the other real blocker.
 
 ## [0.9.4] - 2026-10-30
 
