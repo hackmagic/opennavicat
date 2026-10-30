@@ -159,11 +159,20 @@ jobs:
         id: changelog
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
+          # Resolve the commit range defensively. A `workflow_dispatch` run can
+          # name a tag that was never pushed, and `git log prev..tag` then exits
+          # 128 and aborts the job before the Release is created.
+          if ! git rev-parse --verify --quiet "${TAG}^{commit}" >/dev/null; then
+            echo "::warning::tag ${TAG} is not in this checkout; falling back to recent history"
+            TAG_REF=""
+          else
+            TAG_REF="$TAG"
+          fi
           PREV_TAG=$(git tag -l "v*" --sort=-version:refname | head -2 | tail -1)
-          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$TAG" ]; then
+          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$TAG" ] || [ -z "$TAG_REF" ]; then
             CHANGES=$(git log --oneline --no-decorate -20)
           else
-            CHANGES=$(git log --oneline --no-decorate ${PREV_TAG}..${TAG})
+            CHANGES=$(git log --oneline --no-decorate ${PREV_TAG}..${TAG_REF})
           fi
           echo "changes<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGES" >> $GITHUB_OUTPUT
