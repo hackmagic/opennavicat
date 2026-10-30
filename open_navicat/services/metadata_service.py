@@ -14,6 +14,30 @@ from open_navicat.models.table_schema import (
 )
 
 
+def _nextval_sequence(default: str) -> str:
+    """Pull the sequence name out of a nextval('...'::regclass) default.
+
+    PostgreSQL renders a serial column's default either qualified
+    (nextval('public.users_id_seq'::regclass)) or, when the sequence sits
+    on the search_path, bare (nextval('users_id_seq'::regclass)).  Return
+    whatever is inside the quotes so the caller can qualify it with the table's
+    schema.
+    """
+    marker = "nextval('"
+    start = default.find(marker)
+    if start == -1:
+        return ""
+    start += len(marker)
+    end = default.find("'", start)
+    return default[start:end] if end != -1 else ""
+
+
+def _pg_quote(value: object) -> str:
+    """Quote an identifier the PostgreSQL way (double quotes, doubled inside)."""
+    text = "" if value is None else str(value)
+    return '"' + text.replace('"', '""') + '"'
+
+
 class MetadataService:
     """Service layer for reading database schema metadata.
 
@@ -223,7 +247,18 @@ class MetadataService:
         return "\n".join(kept).strip()
 
     def _pg_rebuild_ddl(self, connector, database: str, table: str) -> str:
-        """Rebuild a CREATE TABLE from ``TableInfo`` when pg_dump is unavailable."""
+        """Rebuild a ``CREATE TABLE`` from catalog metadata, without pg_dump.
+
+        This is the path a packaged build actually takes: the frozen binary
+        cannot see a ``pg_dump`` that lives outside its PATH, so the earlier
+        "fallback" was effectively the only implementation -- and it emitted
+        just the bare columns, silently dropping the table's sequence, indexes,
+        foreign keys and CHECK constraints. A user copying that DDL got a table
+        that could not reproduce the original.
+
+        Everything here is read from ``TableInfo``, which the connector fills
+        from the catalogs, so no external process is involved.
+        """
         try:
             info = _pool_loop().run_until_complete(
                 connector.get_table_info(database, table)
@@ -232,23 +267,79 @@ class MetadataService:
             return ""
         if info is None or not info.columns:
             return ""
+
         schema, _, name = table.partition(".")
         if not name:
             schema, name = "public", table
-        q = lambda v: self._quote(v, "postgresql")  # noqa: E731
-        cols = []
-        for c in info.columns:
-            piece = f"    {q(c.name)} {c.data_type}"
-            if c.default is not None:
-                piece += f" DEFAULT {c.default}"
-            if not c.nullable:
+        q = _pg_quote
+        ref = f"{q(schema)}.{q(name)}"
+
+        statements: list[str] = []
+
+        # Order matters and PostgreSQL is strict about it:
+        #   1. CREATE SEQUENCE            (no dependencies)
+        #   2. CREATE TABLE               (DEFAULT nextval() needs the sequence)
+        #   3. ALTER SEQUENCE ... OWNED BY (needs both the sequence and a column)
+        #   4. indexes
+        #   5. foreign keys
+        # A previous version emitted the OWNED BY before the table existed and
+        # failed with: relation "public.users" does not exist.
+        owned: list[str] = []
+        for col in info.columns:
+            default = str(col.default or "")
+            if "nextval(" not in default:
+                continue
+            seq = _nextval_sequence(default)
+            if not seq:
+                continue
+            seq_schema, _, seq_name = seq.partition(".")
+            if not seq_name:
+                seq_schema, seq_name = schema, seq
+            seq_ref = f"{q(seq_schema)}.{q(seq_name)}"
+            statements.append(f"CREATE SEQUENCE {seq_ref} START WITH 1 INCREMENT BY 1;")
+            owned.append(f"ALTER SEQUENCE {seq_ref} OWNED BY {ref}.{q(col.name)};")
+
+        cols: list[str] = []
+        for col in info.columns:
+            piece = f"    {q(col.name)} {col.data_type}"
+            if col.default is not None:
+                piece += f" DEFAULT {col.default}"
+            if not col.nullable:
                 piece += " NOT NULL"
             cols.append(piece)
         pks = [q(c.name) for c in info.columns if c.is_primary_key]
         if pks:
             cols.append(f"    PRIMARY KEY ({', '.join(pks)})")
-        body = ",\n".join(cols)
-        return f"CREATE TABLE {q(schema)}.{q(name)} (\n{body}\n);"
+        statements.append(f"CREATE TABLE {ref} (" + "".join(
+            "\n" + line for line in [",\n".join(cols)]
+        ) + "\n);")
+        # OWNED BY can only run once the table exists.
+        statements.extend(owned)
+
+        pk_index_names = {i.name for i in info.indexes if i.is_primary}
+        for index in info.indexes:
+            if index.name in pk_index_names:
+                continue
+            kind = "CREATE UNIQUE INDEX" if index.is_unique else "CREATE INDEX"
+            using = f" USING {index.index_type.lower()}" if index.index_type else ""
+            cols_sql = ", ".join(q(c) for c in index.columns)
+            statements.append(f"{kind} {q(index.name)} ON {ref}{using} ({cols_sql});")
+
+        for fk in info.foreign_keys:
+            target = fk.ref_table or ""
+            target_schema, _, target_name = target.partition(".")
+            if not target_name:
+                target_schema, target_name = schema, target
+            target_ref = f"{q(target_schema)}.{q(target_name)}"
+            on_delete = f" ON DELETE {fk.on_delete}" if fk.on_delete else ""
+            on_update = f" ON UPDATE {fk.on_update}" if fk.on_update else ""
+            statements.append(
+                f"ALTER TABLE {ref} ADD CONSTRAINT {q(fk.name)} "
+                f"FOREIGN KEY ({q(fk.column)}) REFERENCES {target_ref} ({q(fk.ref_column)})"
+                f"{on_delete}{on_update};"
+            )
+
+        return "\n".join(statements)
 
 
 # Module-level singleton

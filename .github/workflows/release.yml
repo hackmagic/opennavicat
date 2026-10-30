@@ -141,10 +141,16 @@ jobs:
         id: tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+            TAG="${{ github.event.inputs.tag }}"
           else
-            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            TAG="${GITHUB_REF#refs/tags/}"
           fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          # The assets are stamped "v0.9.1", but a package version must not
+          # carry the prefix: `pip install pkg==v0.9.1` is not a valid
+          # requirement, and the release notes were publishing exactly that.
+          # Strip the `v` for anything that needs a PEP 440 version.
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
 
       - name: Generate changelog
         id: changelog
@@ -172,9 +178,8 @@ jobs:
 
             ## Installation
 
-            ```bash
-            pip install open-navicat==${{ steps.tag.outputs.tag }}
-            ```
+            This release is distributed as the executables below; download the
+            one for your platform. (From source: `pip install open-navicat==${{ steps.tag.outputs.version }}`)
 
             ## Executables
 

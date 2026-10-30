@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and this proj
 
 ---
 
+## [0.9.2] - 2026-10-30
+
+### Fixed
+
+- **Packaged builds emitted incomplete DDL.** The frozen binary cannot see a
+  `pg_dump` that lives outside its PATH, so the catalog-reconstruction
+  fallback was in practice the only implementation - and it emitted bare
+  columns only, dropping the table's sequence, indexes, foreign keys and
+  CHECK constraints. It now builds the full statement set in dependency
+  order (sequence, table, OWNED BY, indexes, foreign keys), verified by
+  executing the output on a live server and comparing the resulting
+  structure against the original.
+- Release notes published `pip install open-navicat==v0.9.1`; a version in
+  a requirement must not carry the `v` prefix.
+
 ## [0.9.1] — 2026-10-30
 
 PostgreSQL was the least-tested engine and it showed: a table list could render
