@@ -58,11 +58,11 @@ jobs:
       - name: Security audit
         run: |
           pip install pip-audit
-          # --with-markers keeps `python_version < "3.14"` style constraints on
-          # the exported lines. Without them pip tries to install a package on an
-          # interpreter it cannot support (e.g. backports-asyncio-runner, pinned
-          # to 3.10), fails to resolve, and the audit dies instead of reporting.
-          poetry export -f requirements.txt --without-hashes --with-markers -o /tmp/requirements.txt
+          # poetry-plugin-export already writes the `python_version` markers, so
+          # the exported lines stay gated on their supported interpreter (e.g.
+          # backports-asyncio-runner is 3.10-only). There is no --with-markers
+          # flag in the plugin; passing it aborts the step before pip-audit runs.
+          poetry export -f requirements.txt --without-hashes -o /tmp/requirements.txt
           pip-audit -r /tmp/requirements.txt
 
   build:

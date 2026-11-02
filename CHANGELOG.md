@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and this proj
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Both dependency audits passed a flag that does not exist.** `0.9.4`
+  "fixed" a false audit failure by adding `--with-markers` to `poetry export`,
+  but `poetry-plugin-export` has never had that option, so the step died on
+  `The option "--with-markers" does not exist` before `pip-audit` ever ran —
+  trading one non-report for another. The flag is gone from `ci.yml` and
+  `security-audit.yml`. Markers were never actually missing: the plugin
+  already writes them by default, and all 62 exported lines carry their
+  `python_version` gate.
+
+- **`certifi` 2026.6.17 carried PYSEC-2026-4320.** With the audit running
+  again, it reported a real advisory: eight eMudhra intermediate CAs chaining
+  to `emSign ECC Root CA - G3` had their private keys compromised, so
+  `certifi` could validate attacker-issued certificates. Bumped to
+  2026.10.23 (note: 2026.10.18 removed *all* emSign roots and 2026.10.19
+  restored the unaffected ones, so 2026.10.19+ is the correct floor).
+
 ## [0.9.7] - 2026-10-30
 
 ### Changed
@@ -33,11 +53,12 @@ environment-scoped token was the other real blocker.
   version regardless of how many tags were pushed. `release.yml` now calls
   `publish.yml` directly via `workflow_call`, and the caller grants the
   `packages: write` permission the container job needs.
-- **CI security audit failed for the wrong reason.** `poetry export`
-  dropped the `python_version` markers, so `pip` tried to install packages
-  pinned to another interpreter (`backports-asyncio-runner` is 3.10-only),
-  failed to resolve, and `pip-audit` exited before reporting anything.
-  Both audit workflows now export with `--with-markers`.
+- **CI security audit failed without reporting a vulnerability.**
+  `pip-audit` exited before producing a report. The trigger was originally
+  believed to be dropped `python_version` markers, so both audit workflows
+  were changed to export with `--with-markers` — an option the export plugin
+  does not have. That made the step fail harder, on the unknown flag itself.
+  See [Unreleased] for the actual fix.
 
 ## [0.9.3] - 2026-10-30
 
