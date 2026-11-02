@@ -8,6 +8,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and this proj
 
 ## [Unreleased]
 
+### Added
+
+- **Offline dependency audit** (`scripts/audit_offline.sh`). Runs `osv-scanner`
+  against a local OSV database, so an air-gapped runner can answer the same
+  question as `pip-audit` without sending the dependency list anywhere, and
+  the same lockfile always yields the same verdict. Pass `--no-download` to
+  guarantee no network access; `--refresh` updates the cached database (the
+  PyPI set is ~37 MB). Wired into `security-audit.yml` as a non-blocking
+  second opinion, with `pip-audit` remaining the gate.
+
+  It scans the exported requirements set rather than `poetry.lock` on
+  purpose: the lockfile carries optional extras that are switched off
+  (`urllib3` only arrives with `clickhouse`) and dev-only tooling, so scanning
+  it reported 78 findings for a tree that is actually clean.
+
 ### Fixed
 
 - **Both dependency audits passed a flag that does not exist.** `0.9.4`

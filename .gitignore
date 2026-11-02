@@ -41,3 +41,6 @@ version_info_cli.txt
 
 # Tool scratch dirs
 /.tmp-dsh-*/
+
+# Offline audit scratch export (scripts/audit_offline.sh)
+/.opennavicat-audit-requirements.txt

@@ -41,3 +41,25 @@ jobs:
           poetry export -f requirements.txt --without-hashes -o /tmp/requirements.txt
           safety check -r /tmp/requirements.txt --full-report
         continue-on-error: true
+
+      - name: Install osv-scanner
+        # Pinned so the audit cannot change behaviour under us; the SLSA3
+        # binary is fetched from the release URL rather than a marketplace
+        # action, which keeps it usable from the same script locally.
+        env:
+          OSV_SCANNER_VERSION: "2.7.0"
+        run: |
+          curl -sSL -o /usr/local/bin/osv-scanner \
+            "https://github.com/google/osv-scanner/releases/download/v${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          chmod +x /usr/local/bin/osv-scanner
+          osv-scanner --version
+
+      - name: Offline audit (OSV database, no network at scan time)
+        # The air-gapped counterpart to pip-audit: same question, but answered
+        # against a local database copy so the result is reproducible and no
+        # dependency list leaves the runner. scripts/audit_offline.sh explains
+        # why it scans the exported requirements set rather than poetry.lock.
+        # Non-blocking for now: pip-audit above is the gate, and this proves
+        # the offline path keeps working.
+        run: bash scripts/audit_offline.sh
+        continue-on-error: true
