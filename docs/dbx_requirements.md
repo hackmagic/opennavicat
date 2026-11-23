@@ -217,12 +217,22 @@ Trino / Presto、国产数据库（达梦 / GaussDB / KingbaseES）**不在本�
 - [x] 支持迁移前预览与回滚 —— `plan_migration()` + CLI `data import --dry-run` 打印映射与批次计划；`run_migration()` 事务包裹（BEGIN/COMMIT），失败或 `stop_on_error` 时 ROLLBACK，结果含 `committed` / `aborted` 标记。
 - [x] 支持任务进度和错误汇总 —— `on_progress` 回调（`MigrationProgress`：已读/已写/失败/批数）+ `MigrationError` 列表（封顶 1000 条，`rows_failed` 精确计数），CLI 展示前 10 条。
 - [x] 支持文件预览（CSV / Parquet / JSON / Excel）—— `importers.preview()` / `list_sheets()` / `count_rows()`（CSV/TSV/JSONL 真流式，JSON/XLSX 明确标注非流式）。
-- [x] 支持连接配置导入（DBeaver / Navicat 导出格式）—— `open_navicat/services/connection_import.py`：
+- [x] 支持连接配置导入（DBeaver / Navicat / DataGrip / RDM / AnotherRDM / DBX 六种来源）—— `open_navicat/services/connection_import.py`：
+  - **格式自动探测**：按内容而非扩展名判定（各工具都用 `.json`/`.xml`），`detect_format()` 区分 DataGrip（`<data-source>`）、Navicat（`<Connection>`）、DBX（`format: dbx-*` 或带 `db_type` 的记录）、DBeaver（`connections`/`dataSources` 按 id 键控的字典）、RDM（JSON 数组）、AnotherRDM（Base64 包裹的 UTF-8 JSON）；也可用 `--format` 显式指定。
   - DBeaver `data-sources.json` 两种布局（workspace `connections` / project `dataSources`）全量解析，provider 别名表映射到本仓引擎；
-  - Navicat `.ncx`（XML 口味）best-effort 解析 + Windows 注册表 `HKCU\\Software\\PremiumSoft\\Navicat\\Servers` 读取（注册表路径经 `RegistryTree` 接缝可测）；
-  - SSH 隧道不导入（记入 `note` 提醒用户重设）、Navicat 密码恒不导入（加密格式，导入坏值比留空更糟）、未知 provider/类型记入 `skipped` 而非静默丢弃；
-  - `find_duplicates()` 按 引擎+host+port+database+user 或同名判重，`save_imported()` 支持 `--dry-run`；
-  - CLI：`conn import-from <file>` / `--registry` / `--dry-run`；测试 `tests/unit/test_connection_import.py` 30 例。
+  - Navicat `.ncx`（XML 口味）best-effort 解析 + Windows 注册表 `HKCU\Software\PremiumSoft\Navicat\Servers` 读取（注册表路径经 `RegistryTree` 接缝可测）；
+  - DataGrip `dataSources.xml`：`<driver-ref>` → JDBC 子协议 → `<database-info product>` 三级识别引擎；JDBC URL 解析覆盖 PostgreSQL/MySQL/SQL Server（`;databaseName=`）/Oracle（`@host:port:sid` 与 `@//host:port/service` 两种形状）/SQLite/DuckDB 文件路径；同目录 `dataSources.local.xml` 自动补全用户名与产品名；`group` 属性导入为连接分组；`$USER_HOME$` 宏展开为本机家目录；
+  - RedisDesktopManager JSON：递归分组树 → 分组路径、`auth` 密码、TLS/SSH（agent/私钥/密码）保留；
+  - Another Redis Desktop Manager `.ano`：Base64 包裹的 UTF-8 JSON 解包，保留嵌套分组、Sentinel/Cluster 模式标记与 SSH/TLS；文件上限 16 MiB；NAT 映射无对应项时**显式拒绝**而非静默丢弃；
+  - **DBX `.dbx` 导出（含口令加密）**：明文 `dbx-config` 与 `dbx-encrypted` 都支持。后者按 DBX 公开的格式用 PBKDF2-HMAC-SHA256（100k 轮、32 字节密钥）+ AES-256-GCM 解密——这是唯一能真正恢复密码的来源，因为参数是公开的且口令本就在用户手里；错误口令报「wrong passphrase, or the DBX export is corrupted」；
+  - **诚实边界**：其它工具（Navicat/RDM/AnotherRDM/DataGrip）的加密密码一律不导入并记入 `note`，绝不塞入会导致后续认证失败的坏值；未知 provider/类型/驱动记入 `skipped` 并附原因；
+  - `ConnectionInfo` 的 SSH/TLS/分组字段随导入落库（不再只导 host/port/user）；
+  - `find_duplicates()` 按 引擎+host+port+database+user 或同名判重，`save_imported()` 支持 `--dry-run`（`store` 参数可注入，测试不触碰真实配置库）；
+  - `export_connections()` 写回本仓自有格式并可被 `parse_opennavicat()` 读回，**向后兼容**无 `engine` 字段的旧版裸 JSON 导出；
+  - CLI：`conn import-from <file>` / `--format` / `--passphrase` / `--registry` / `--dry-run`，失败按 `ONV-CFG-001`（配置问题）而非 `ONV-QRY-001`（查询问题）报错；
+  - GUI：侧边栏顶部「导入/导出」下拉菜单——每种来源一个菜单项 + 「导出连接」，导入后展示 保存/重复/失败/跳过 明细；
+  - i18n：zh_CN / en_US 同步新增 16 个键；
+  - 测试：`tests/unit/test_connection_import.py`（31 例）+ `test_connection_import_formats.py`（46 例）+ `test_ui_io_menu.py`（12 例）。
 
 ---
 

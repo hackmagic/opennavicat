@@ -9,6 +9,7 @@ from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -27,6 +28,7 @@ from open_navicat.dal.connection_pool import connection_pool
 from open_navicat.dal.local_config import local_db
 from open_navicat.i18n import t
 from open_navicat.models.connection import ConnectionInfo
+from open_navicat.services.connection_import import IMPORT_FORMATS
 from open_navicat.services.object_catalog import (
     Catalog,
     ObjectKind,
@@ -152,7 +154,10 @@ class ObjectBrowser(QTreeWidget):
         self._catalogs: dict[tuple[str, str], Catalog] = {}
         # Results of the last cross-database search, shown as a flat list.
         self._search_results_item: QTreeWidgetItem | None = None
+        # The "导入/导出" dropdown that floats above the tree's top margin.
+        self._io_button: QPushButton | None = None
         self._setup_ui()
+        self._setup_io_menu()
         self._load_saved_connections()
 
     def _setup_ui(self) -> None:
@@ -168,13 +173,69 @@ class ObjectBrowser(QTreeWidget):
 
         self._search_bar.setPlaceholderText(t("browser.search_connections"))
         self._search_bar.textChanged.connect(self._filter_connections)
-        # Reserve space at top for the search bar
+        # Reserve space at top for the search bar and the export menu button.
         self.setContentsMargins(0, 26, 0, 0)
         self._search_bar.setGeometry(2, 2, self.width() - 4, 22)
 
+    def _setup_io_menu(self) -> None:
+        """Build the "导入/导出" dropdown pinned to the tree's top-right corner.
+
+        This is the sidebar-header menu the reference Navicat screenshot shows:
+        one dropdown holding an entry per importable tool plus the export
+        action, so migration never depends on knowing which file to pick from a
+        generic dialog first.
+        """
+        from PySide6.QtWidgets import QToolButton
+
+        button = QToolButton(self)
+        button.setObjectName("ioMenuButton")
+        button.setText(t("browser.io_menu"))
+        button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        button.setAutoRaise(True)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        menu = QMenu(button)
+        for fmt in IMPORT_FORMATS:
+            action = menu.addAction(t(f"browser.import_format.{fmt.key}"))
+            # Bind fmt per-iteration; a bare closure would import the last one.
+            action.triggered.connect(lambda _checked=False, key=fmt.key: self._import_as(key))
+        menu.addSeparator()
+        export_action = menu.addAction(t("browser.export_connections_menu"))
+        export_action.triggered.connect(lambda: self.export_connections_file())
+        button.setMenu(menu)
+
+        self._io_button = button
+        self._position_io_menu()
+
+    def _position_io_menu(self) -> None:
+        """Keep the menu button in the strip reserved above the tree.
+
+        Positions are recomputed from the current width rather than cached, so
+        a sidebar resize or a late geometry change cannot strand the button
+        outside the widget.
+        """
+        if self._io_button is None:
+            return
+        self._io_button.adjustSize()
+        width = min(self._io_button.sizeHint().width(), max(40, self.width() - 4))
+        self._io_button.setGeometry(max(2, self.width() - width - 2), 1, width, 24)
+        self._io_button.raise_()
+
+    def _import_as(self, fmt: str) -> int:
+        """Import using an explicitly chosen source format."""
+        return self.import_connections(fmt=fmt)
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        self._search_bar.setGeometry(2, 2, self.width() - 4, 22)
+        self._layout_header_widgets()
+
+    def _layout_header_widgets(self) -> None:
+        """Share the reserved top strip between the search box and the menu button."""
+        button_width = 0
+        if self._io_button is not None:
+            button_width = min(self._io_button.sizeHint().width(), max(40, self.width() - 44)) + 4
+        self._search_bar.setGeometry(2, 2, max(40, self.width() - button_width - 4), 22)
+        self._position_io_menu()
 
     # ---- public API ----
 
@@ -2008,59 +2069,115 @@ class ObjectBrowser(QTreeWidget):
     # ---- new context menu actions ----
 
     def _wizard_import(self, item: QTreeWidgetItem) -> None:
-        """Import connection config from JSON file."""
-        import json
+        """Import connections from any supported tool's export file.
 
-        from PySide6.QtWidgets import QFileDialog
+        The old handler read a bare JSON array of pre-shaped connection fields,
+        which is OpenNavicat's own export and nothing else — DBeaver, Navicat,
+        DataGrip and the two Redis clients all write different layouts, so they
+        were rejected as "import failed".  The format is now sniffed from the
+        file and every source goes through one parser registry.
+        """
+        self.import_connections()
 
-        path, _ = QFileDialog.getOpenFileName(
-            self, t("browser.import_connection"), "", t("browser.json_filter")
+    def _ask_dbx_passphrase(self) -> str | None:
+        """Ask for the passphrase of a DBX export, or None when cancelled."""
+        from PySide6.QtWidgets import QInputDialog, QLineEdit
+
+        text, ok = QInputDialog.getText(
+            self.window(),
+            t("browser.import_passphrase_title"),
+            t("browser.import_passphrase_prompt"),
+            QLineEdit.EchoMode.Password,
+        )
+        return text if ok else None
+
+    def import_connections(
+        self, fmt: str = "auto", path: str = "", passphrase: str = ""
+    ) -> int:
+        """Import connections from one export file and refresh the tree.
+
+        Returns how many profiles were saved.  Structured ``ValueError``s from
+        the parsers are shown as-is: they say which field or driver was
+        unsupported, which is the only useful thing a user can act on.  A DBX
+        export may be passphrase-protected, so the single passphrase error path
+        re-prompts once instead of dead-ending the import.
+        """
+        from open_navicat.services.connection_import import import_file, save_imported
+
+        if not path:
+            path, _ = QFileDialog.getOpenFileName(
+                self, t("browser.import_connection"), "", t("browser.import_filters")
+            )
+            if not path:
+                return 0
+        try:
+            parsed = import_file(path, fmt=fmt, passphrase=passphrase)
+        except ValueError as exc:
+            if "passphrase" in str(exc):
+                entered = self._ask_dbx_passphrase()
+                if entered is None:
+                    return 0
+                return self.import_connections(fmt, path, entered)
+            QMessageBox.critical(self, t("browser.import_failed"), str(exc))
+            return 0
+        except OSError as exc:
+            QMessageBox.critical(self, t("browser.import_failed"), str(exc))
+            return 0
+
+        if not parsed.ok and not parsed.skipped:
+            QMessageBox.information(
+                self, t("browser.import_failed"), t("browser.import_nothing_found")
+            )
+            return 0
+        outcomes = save_imported(parsed.connections, store=local_db)
+        saved = [o for o in outcomes if o.status == "saved"]
+        duplicates = [o for o in outcomes if o.status == "duplicate"]
+        failed = [o for o in outcomes if o.status == "failed"]
+        self._load_saved_connections()
+
+        detail = t("browser.import_result_detail", saved=len(saved), duplicate=len(duplicates))
+        if failed:
+            detail += "\n" + t("browser.import_result_failed", count=len(failed))
+            detail += "\n" + "\n".join(f"{o.connection.name}: {o.detail}" for o in failed)
+        if parsed.skipped:
+            detail += "\n" + t("browser.import_result_skipped", count=len(parsed.skipped))
+        notes = sorted({o.connection.note for o in saved if o.connection.note})
+        if notes:
+            detail += "\n\n" + "\n".join(notes)
+        QMessageBox.information(self, t("browser.import_success"), detail)
+        return len(saved)
+
+    def export_connections_file(self) -> str:
+        """Ask where to save, then write every saved profile there.
+
+        Returns ``"<count>:<path>"`` on success and ``""`` when cancelled or
+        when the write failed, so a menu handler can report either.
+        """
+        from open_navicat.services.connection_import import export_connections
+
+        connections = local_db.list_connections()
+        if not connections:
+            QMessageBox.information(
+                self, t("browser.export_connection"), t("browser.export_nothing")
+            )
+            return ""
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            t("browser.export_connection"),
+            "opennavicat-connections.json",
+            t("browser.json_filter"),
         )
         if not path:
-            return
+            return ""
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                configs = json.load(f)
-            if not isinstance(configs, list):
-                configs = [configs]
-            from open_navicat.dal.local_config import local_db
-            from open_navicat.models.connection import ConnectionInfo
-
-            count = 0
-            for cfg in configs:
-                info = ConnectionInfo(
-                    name=cfg.get("name", "Imported"),
-                    host=cfg.get("host", "localhost"),
-                    port=int(cfg.get("port", 3306)),
-                    user=cfg.get("user", "root"),
-                    password=cfg.get("password", ""),
-                    database=cfg.get("database", ""),
-                    charset=cfg.get("charset", "utf8mb4"),
-                    use_ssh=cfg.get("use_ssh", False),
-                    ssh_host=cfg.get("ssh_host", ""),
-                    ssh_port=int(cfg.get("ssh_port", 22)),
-                    ssh_user=cfg.get("ssh_user", ""),
-                    ssh_password=cfg.get("ssh_password", ""),
-                    ssh_key_file=cfg.get("ssh_key_file", ""),
-                    use_ssl=cfg.get("use_ssl", False),
-                    ssl_ca=cfg.get("ssl_ca", ""),
-                    ssl_cert=cfg.get("ssl_cert", ""),
-                    ssl_key=cfg.get("ssl_key", ""),
-                    color=cfg.get("color", "#4A90D9"),
-                    group=cfg.get("group", ""),
-                )
-                local_db.save_connection(info)
-                count += 1
-            self._load_saved_connections()
-            from PySide6.QtWidgets import QMessageBox
-
-            QMessageBox.information(
-                self, t("browser.import_success"), t("browser.import_success_detail", count=count)
-            )
-        except Exception as e:
-            from PySide6.QtWidgets import QMessageBox
-
-            QMessageBox.critical(self, t("browser.import_failed"), str(e))
+            count = export_connections(connections, path)
+        except OSError as exc:
+            QMessageBox.critical(self, t("browser.export_failed"), str(exc))
+            return ""
+        QMessageBox.information(
+            self, t("browser.export_success"), t("browser.export_success_detail", path=path)
+        )
+        return f"{count}:{path}"
 
     def _wizard_export(self, item: QTreeWidgetItem) -> None:
         """Export connection config to JSON file."""

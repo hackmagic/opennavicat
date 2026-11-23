@@ -155,7 +155,7 @@ desktop / web / cli / mcp
 | 导出 | 整库 dump | `backup_service.py`（mysqldump/pg_dump） |
 | 数据比较 | 支持 | `query_compare_dialog.py` |
 | 文件预览 | Parquet / CSV / JSON（DuckDB 驱动） | **缺失** |
-| 连接导入 | 支持 DBeaver / Navicat 配置导入 | **缺失** |
+| 连接导入 | 支持 DBeaver / Navicat / DataGrip / RDM / AnotherRDM / DBX 六种来源 | ✅ `connection_import.py`（自动探测格式；DBX 加密导出口令可解密，其余工具加密密码如实不导入） |
 
 ### 3.6 专用浏览器与消息中间件
 

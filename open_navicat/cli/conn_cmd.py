@@ -14,7 +14,13 @@ from open_navicat.drivers.registry import (
     normalize_engine,
     supported_engines,
 )
-from open_navicat.errors import ConfigError, NavicatError, redact
+from open_navicat.errors import (
+    SOURCE_CONFIG,
+    STAGE_PARSE,
+    ConfigError,
+    NavicatError,
+    redact,
+)
 from open_navicat.models.connection import ConnectionInfo
 from open_navicat.services.connection_manager import connection_manager
 from open_navicat.utils.output_formatter import format_output
@@ -540,7 +546,21 @@ def delete_group(
 
 @conn_app.command("import-from")
 def import_from_tool(
-    file: str = typer.Argument("", help="DBeaver data-sources.json or Navicat .ncx export"),
+    file: str = typer.Argument(
+        "", help="DBX .dbx, Navicat .ncx, DBeaver data-sources.json, DataGrip dataSources.xml, "
+        "RedisDesktopManager JSON or Another Redis Desktop Manager .ano export"
+    ),
+    format: str = typer.Option(
+        "auto",
+        "--format",
+        "-f",
+        help="Source format: auto|dbx|navicat|dbeaver|datagrip|rdm|another_rdm",
+    ),
+    passphrase: str = typer.Option(
+        "",
+        "--passphrase",
+        help="Passphrase for a passphrase-encrypted DBX export",
+    ),
     registry: bool = typer.Option(
         False, "--registry", "-r", help="Read Navicat connections from the Windows registry"
     ),
@@ -548,7 +568,7 @@ def import_from_tool(
         False, "--dry-run", "-n", help="Show what would be imported without saving"
     ),
 ) -> None:
-    """Import connections from a DBeaver or Navicat export."""
+    """Import connections from another database tool's export."""
     from open_navicat.services.connection_import import (
         import_file,
         read_navicat_registry,
@@ -557,14 +577,25 @@ def import_from_tool(
     )
 
     try:
-        result = read_navicat_registry() if registry else import_file(file)
+        if registry:
+            result = read_navicat_registry()
+        else:
+            if not file:
+                console.print("[red]A file is required unless --registry is used.[/red]")
+                raise typer.Exit(1)
+            result = import_file(file, fmt=format, passphrase=passphrase)
     except (OSError, ValueError) as exc:
-        _fail("conn import-from", NavicatError.from_exception(exc))
+        # A refused import is a problem with the *file* (unknown format, wrong
+        # passphrase, unsupported driver), not with a query — reporting it as a
+        # query failure sent users looking in the wrong place.
+        err = ConfigError(str(exc), source=SOURCE_CONFIG, stage=STAGE_PARSE, from_exc=exc)
+        _fail("conn import-from", err)
         return
 
     if not result.ok and not result.skipped:
         console.print(f"[yellow]Nothing found in {result.source}.[/yellow]")
         raise typer.Exit(1)
+    console.print(f"[dim]format: {result.format or 'unknown'}[/dim]")
     console.print(result.render())
 
     outcomes = save_imported(result.connections, dry_run=dry_run)

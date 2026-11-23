@@ -10,6 +10,58 @@ The format follows [Keep a Changelog](https://keepachangelog.com/) and this proj
 
 ### Added
 
+### Fixed
+
+## [0.10.0] - 2026-11-23
+
+### Added
+
+- **Connection import from six third-party tools**, matching what DBX offers so
+  switching from a commercial client no longer means retyping dozens of
+  profiles. `services/connection_import.py` gained parsers for DBX `.dbx`
+  exports, DataGrip `dataSources.xml`, RedisDesktopManager JSON and Another
+  Redis Desktop Manager `.ano`, alongside the existing DBeaver and Navicat
+  readers, and the sidebar grew an "Import/Export" dropdown with one entry per
+  source plus "Export Connections".
+
+  The format is detected from a file's *content*, never its extension: all
+  these tools write `.json`/`.xml`. That is also how one real bug surfaced —
+  an Another-RDM export (`{connections: [...], groups: [...]}`) was being read
+  as a DBeaver file, because DBeaver's own `connections` section is always an
+  id-keyed object. `--format`/the explicit menu entries override detection when
+  a file is ambiguous.
+
+- **DBX's passphrase-protected exports are genuinely decrypted.** DBX publishes
+  its envelope (PBKDF2-HMAC-SHA256, 100k rounds, AES-256-GCM), so a passphrase
+  the user already knows is enough to recover the passwords inside. Every other
+  source keeps to one honest rule: its encrypted password is *not* recovered,
+  the field is left blank and a note says so, rather than importing a blob that
+  would fail authentication later with a confusing error.
+
+- **DataGrip import resolves engines from three signals** — `<driver-ref>`, the
+  JDBC subprotocol, then `<database-info product>` — and parses the URL shapes
+  that actually differ: PostgreSQL/MySQL, SQL Server's `;databaseName=`, and
+  Oracle's two legacy forms (`@host:port:sid`, `@//host:port/service`).
+  `dataSources.local.xml` is auto-discovered for user names, `group` becomes a
+  connection group, and DataGrip's `$USER_HOME$` macro expands to this machine's
+  home so a SQLite path stays usable.
+
+- **Imported profiles keep their SSH tunnel, TLS paths and group**, not just
+  host/port/user/database; `save_imported()` now takes an injectable `store` so
+  tests never touch the real profile database.
+
+### Fixed
+
+- **The GUI import handler could block forever under test.** It imported
+  `QMessageBox` inside the method, shadowing the module-level symbol a test
+  patches, so a real modal dialog opened and the suite hung. Both dialogs are
+  now module-level symbols.
+
+- **A refused import reported `ONV-QRY-001` (query failed).** The problem is
+  with the file — unknown format, wrong passphrase, unsupported driver — so it
+  now reports `ONV-CFG-001` (invalid configuration) instead of sending the user
+  looking at a query that never ran.
+
 - **Offline dependency audit** (`scripts/audit_offline.sh`). Runs `osv-scanner`
   against a local OSV database, so an air-gapped runner can answer the same
   question as `pip-audit` without sending the dependency list anywhere, and

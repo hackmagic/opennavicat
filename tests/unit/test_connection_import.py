@@ -251,9 +251,17 @@ class TestImportFile:
 
     def test_unknown_format(self, tmp_path):
         path = tmp_path / "whatever.json"
-        path.write_text("[]", encoding="utf-8")
+        path.write_text("this is not a connection export", encoding="utf-8")
         with pytest.raises(ValueError, match="unrecognised connection-export format"):
             import_file(path)
+
+    def test_empty_redis_array_is_an_empty_rdm_export(self, tmp_path):
+        """A JSON array is RedisDesktopManager's shape even when it is empty."""
+        path = tmp_path / "rdm.json"
+        path.write_text("[]", encoding="utf-8")
+        result = import_file(path)
+        assert result.format == "rdm"
+        assert result.connections == []
 
 
 class TestFindDuplicates:
